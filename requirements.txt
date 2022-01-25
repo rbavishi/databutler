@@ -1,0 +1,4 @@
+pytest
+nbconvert
+loguru~=0.5.3
+IPython~=7.18.1
