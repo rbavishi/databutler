@@ -29,6 +29,7 @@ class NL2CodeTests(unittest.TestCase):
         #  Run the generated code to see if it does the right thing
         ctx = {}
         exec(generated_code, ctx)
+        self.assertIn('f', ctx.keys())
         self.assertEqual(5, ctx['f'](10, 5))  # 10 - 5 = 5
         self.assertEqual(-15, ctx['f'](5, 20))  # 5 - 20 = -15
 
@@ -39,6 +40,7 @@ class NL2CodeTests(unittest.TestCase):
         #  Run the generated code to see if it does the right thing
         ctx = {}
         exec(generated_code, ctx)
+        self.assertIn('func', ctx.keys())
         self.assertEqual(5, ctx['func'](10, 5))  # 10 - 5 = 5
         self.assertEqual(-15, ctx['func'](5, 20))  # 5 - 20 = -15
 
