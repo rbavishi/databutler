@@ -17,7 +17,20 @@ class BaseNatLangToCode(ABC):
     @abstractmethod
     def get_code(self, few_shot_examples: List[FewShotExample], target_nl: Union[str, List[str]],
                  output_prefix: Optional[str] = None) -> str:
-        pass
+        """
+        Generates code with language-models using the provided few-shot examples.
+
+        The output_prefix can be used to constrain and influence the output of the model by enforcing that the output
+        begins with the supplied prefix.
+
+        This must be implemented by all subclasses.
+
+        :param few_shot_examples: A list of FewShotExample instances.
+        :param target_nl: A string or a list of strings (bullet points) describing the code to generate.
+        :param output_prefix: A string corresponding to the prefix the generated code *must* start with.
+        :return: A string corresponding to the generated code. If the output_prefix is supplied, it is included
+                 in the output.
+        """
 
 
 @attrs.define(eq=False)
@@ -30,6 +43,15 @@ class SimpleNatLangToCode(BaseNatLangToCode):
 
     def _create_completion_prompt(self, few_shot_examples: List[FewShotExample], target_nl: Union[str, List[str]],
                                   output_prefix: Optional[str] = None) -> str:
+        """
+        Helper method to create the prompt. Strings the few-shot examples together, and adds the target description to
+        the end of the prompt.
+
+        :param few_shot_examples: A list of FewShotExample instances.
+        :param target_nl: A string or a list of strings (bullet points) describing the code to generate.
+        :param output_prefix: A string corresponding to the prefix the generated code *must* start with.
+        :return: A string corresponding to the prompt to use for OpenAI completion.
+        """
         prompt_strs: List[str] = []
 
         #  First add in the few-shot examples.
@@ -63,6 +85,11 @@ class SimpleNatLangToCode(BaseNatLangToCode):
 
     def get_code(self, few_shot_examples: List[FewShotExample], target_nl: Union[str, List[str]],
                  output_prefix: Optional[str] = None) -> str:
+        """
+        Creates a simple prompt stringing examples together and uses it to generate the code.
+
+        See base method for a description of the arguments and return value.
+        """
         completion_prompt = self._create_completion_prompt(few_shot_examples, target_nl, output_prefix)
 
         resp = langmodels.openai_completion(
