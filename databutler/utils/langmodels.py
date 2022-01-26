@@ -5,6 +5,7 @@ import os
 import time
 from typing import Optional, List, Union
 
+import attrs
 import openai
 
 from databutler.utils import paths
@@ -49,6 +50,21 @@ def _setup_openai_key() -> None:
             )
 
 
+@attrs.define
+class OpenAICompletion:
+    text: str
+    logprob: Optional[float]
+    finish_reason: str
+
+
+@attrs.define
+class OpenAICompletionResponse:
+    completions: List[OpenAICompletion]
+    timestamp: str
+    model: str
+    id: str
+
+
 def openai_completion(engine: str,
                       prompt: str,
                       temperature: float = 0,
@@ -60,7 +76,7 @@ def openai_completion(engine: str,
                       *,
                       max_retries: int = 5,
                       **completion_kwargs,
-                      ):
+                      ) -> OpenAICompletionResponse:
     """
     Wraps the OpenAI completion API, primarily for handling errors in a retry loop.
 
@@ -107,25 +123,22 @@ def openai_completion(engine: str,
             num_retries += 1
 
         else:
-            #  Get rid of irrelevant fields, and rename to better reflect the meaning.
-            result = {
-                "completions": response['choices'],
-                "model": response['model'],
-                "id": response['id'],
-                "timestamp": response['created'],
-            }
-
-            result['completions'] = [
-                {
-                    "text": c['text'],
-                    "logprob": None,
-                    "finish_reason": c['finish_reason'],
-                } for c in result['completions']
-            ]
+            result = OpenAICompletionResponse(
+                completions=[
+                    OpenAICompletion(
+                        text=c['text'],
+                        logprob=None,
+                        finish_reason=c['finish_reason']
+                    ) for c in response['choices']
+                ],
+                timestamp=response['created'],
+                model=response['model'],
+                id=response['id'],
+            )
 
             if return_logprobs:
                 #  We need to compute log-probability of the completion(s).
-                for c, orig_c in zip(result['completions'], response['choices']):
+                for c, orig_c in zip(result.completions, response['choices']):
                     if orig_c['finish_reason'] == "stop":
                         stop_set = {stop} if isinstance(stop, str) else set(stop)
                         logprob_sum = 0
@@ -136,9 +149,9 @@ def openai_completion(engine: str,
 
                             logprob_sum += log_prob
 
-                        c["logprob"] = logprob_sum
+                        c.logprob = logprob_sum
 
                     else:
-                        c["logprob"] = sum(orig_c["token_logprobs"])
+                        c.logprob = sum(orig_c["token_logprobs"])
 
             return result

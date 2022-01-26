@@ -28,7 +28,7 @@ class CompletionWrapperTests(unittest.TestCase):
             return_logprobs=True
         )
 
-        self.assertEqual("Brussels", resp1['completions'][0]['text'].strip())
-        self.assertEqual("Brussels", resp2['completions'][0]['text'].strip())
-        self.assertIsNone(resp1['completions'][0]['logprob'])
-        self.assertIsNotNone(resp2['completions'][0]['logprob'])
+        self.assertEqual("Brussels", resp1.completions[0].text.strip())
+        self.assertEqual("Brussels", resp2.completions[0].text.strip())
+        self.assertIsNone(resp1.completions[0].logprob)
+        self.assertIsNotNone(resp2.completions[0].logprob)
