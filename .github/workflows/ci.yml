@@ -22,5 +22,7 @@ jobs:
         pip install -r requirements-dev.txt
         pip install -e .
     - name: Test with pytest
+      env:
+        OPENAI_KEY: ${{ secrets.OPENAI_KEY_RBAVISHI }}
       run: |
         pytest
