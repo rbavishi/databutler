@@ -4,6 +4,8 @@ Your personal assistant to help you curate, analyze, and visualize your data bet
 
 ## Installation
 
+NOTE: Using a virtual environment is highly recommended.
+
 ### Library Install
 
 Not implemented yet.
