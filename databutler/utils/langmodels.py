@@ -95,7 +95,10 @@ def openai_completion(engine: str,
     :param max_retries: An integer representing the maximum number of retries.
     :param completion_kwargs: Other keyword arguments accepted by openai.Completion.create.
                               See https://beta.openai.com/docs/api-reference/completions/create for a full list.
-    :return:
+
+    :return: An OpenAICompletionResponse object containing the completions along with metadata.
+    :raises InvalidRequestError: If the request is invalid. This can happen if the wrong model is specified, or invalid
+        values for max_tokens, temperature, stop etc. are provided.
     """
 
     #  Ensure the API-key is set up.
