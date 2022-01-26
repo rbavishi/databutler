@@ -18,3 +18,10 @@ In the top-level project directory, run the following:
 pip install -r requirements-dev.txt
 pip install -e .
 ```
+
+### Testing
+
+In the top-level project directory, run the command below to run all tests:
+```shell
+pytest tests
+```
