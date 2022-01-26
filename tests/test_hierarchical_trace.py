@@ -206,6 +206,7 @@ class HierarchicalTraceTests(unittest.TestCase):
 
     def test_stress_test_1(self):
         code = """
+        import os
         import pandas as pd
         from numpy import nan, ndarray
         import matplotlib.pyplot
@@ -227,8 +228,10 @@ class HierarchicalTraceTests(unittest.TestCase):
         for m in [10, 20]:
             print(m)
 
-        with open('/tmp/trial.txt', 'w') as f:
+        with open('trial.txt', 'w') as f:
             pass
+            
+        os.unlink('trial.txt')
         """
         code = textwrap.dedent(code).strip()
         code_ast = astlib.parse(code)
