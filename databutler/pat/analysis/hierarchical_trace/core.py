@@ -11,7 +11,7 @@ import intervaltree
 from sortedcontainers import SortedKeyList
 
 from databutler.pat import astlib
-from databutler.utils import cacheutils
+from databutler.utils import caching
 
 
 class TraceItemType(Enum):
@@ -227,7 +227,7 @@ class HierarchicalTrace:
         """
         return self._direct_children_map[item]
 
-    @cacheutils.caching_method
+    @caching.caching_method
     def get_internal_dependencies(self, item: TraceItem) -> List[Dependency]:
         """
 
@@ -236,7 +236,7 @@ class HierarchicalTrace:
         """
         return [i.data for i in self._deps_tree.envelop(item.start_time, item.end_time)]
 
-    @cacheutils.caching_method
+    @caching.caching_method
     def get_external_dependencies(self, item: TraceItem) -> List[Dependency]:
         """
 
@@ -248,7 +248,7 @@ class HierarchicalTrace:
         return [d for d in self._deps_dst_timestamps[left_index:right_index]
                 if d.src.timestamp < item.start_time]
 
-    @cacheutils.caching_method
+    @caching.caching_method
     def get_dependencies(self, item: TraceItem) -> List[Dependency]:
         """
 
@@ -257,7 +257,7 @@ class HierarchicalTrace:
         """
         return self.get_external_dependencies(item) + self.get_internal_dependencies(item)
 
-    @cacheutils.caching_method
+    @caching.caching_method
     def get_explicitly_resolving_items(self, dependency: Dependency) -> List[TraceItem]:
         """
 
@@ -276,7 +276,7 @@ class HierarchicalTrace:
         else:
             raise ValueError(f"Unrecognized dependency of type {dependency.type}")
 
-    @cacheutils.caching_method
+    @caching.caching_method
     def get_implicitly_resolving_items(self, dependency: Dependency) -> List[TraceItem]:
         """
 
@@ -285,7 +285,7 @@ class HierarchicalTrace:
         """
         return list(self.get_enveloping_items(dependency.src.timestamp, dependency.dst.timestamp))
 
-    @cacheutils.caching_method
+    @caching.caching_method
     def get_resolving_items(self, dependency: Dependency) -> List[TraceItem]:
         """
 
@@ -294,7 +294,7 @@ class HierarchicalTrace:
         """
         return self.get_explicitly_resolving_items(dependency) + self.get_implicitly_resolving_items(dependency)
 
-    @cacheutils.caching_method
+    @caching.caching_method
     def get_affording_items(self, event: TraceEvent) -> List[TraceItem]:
         """
 
@@ -351,7 +351,7 @@ class HierarchicalTrace:
                 if (min_start_time <= d.start_time < max_start_time and
                     min_end_time <= d.end_time < max_end_time)]
 
-    @cacheutils.caching_method
+    @caching.caching_method
     def get_objs_item_depends_on(self, item: TraceItem) -> Set[int]:
         """
 
@@ -381,27 +381,27 @@ class HierarchicalTrace:
     #  Data-structures for answering queries
     # --------------------------------------- #
 
-    @cacheutils.cached_property
+    @caching.cached_property
     def _default_event_end_time(self) -> int:
         return max((e.timestamp for e in self.events), default=-1) + 1
 
-    @cacheutils.cached_property
+    @caching.cached_property
     def _default_item_end_time(self) -> int:
         return max(i.end_time for i in self.items)
 
-    @cacheutils.cached_property
+    @caching.cached_property
     def _tree_events(self) -> intervaltree.IntervalTree:
         return intervaltree.IntervalTree(
             intervaltree.Interval(begin=e.timestamp, end=e.timestamp + 1, data=e) for e in self.events
         )
 
-    @cacheutils.cached_property
+    @caching.cached_property
     def _tree_items(self) -> intervaltree.IntervalTree:
         return intervaltree.IntervalTree(
             intervaltree.Interval(begin=i.start_time, end=i.end_time, data=i) for i in self.items
         )
 
-    @cacheutils.cached_property
+    @caching.cached_property
     def _direct_children_map(self) -> Dict[TraceItem, List[TraceItem]]:
         res: Dict[TraceItem, List[TraceItem]] = collections.defaultdict(list)
 
@@ -411,7 +411,7 @@ class HierarchicalTrace:
 
         return res
 
-    @cacheutils.cached_property
+    @caching.cached_property
     def _dependencies(self) -> List[Dependency]:
         dependencies: List[Dependency] = []
         last_write: Dict[int, ObjWriteEvent] = {}
@@ -433,21 +433,21 @@ class HierarchicalTrace:
 
         return dependencies
 
-    @cacheutils.cached_property
+    @caching.cached_property
     def _deps_tree(self) -> intervaltree.IntervalTree:
         interval_class = intervaltree.Interval
         return intervaltree.IntervalTree([interval_class(d.src.timestamp, d.dst.timestamp + 1, data=d)
                                           for d in self._dependencies])
 
-    @cacheutils.cached_property
+    @caching.cached_property
     def _deps_src_timestamps(self) -> SortedKeyList:
         return SortedKeyList(self._dependencies, key=lambda x: x.src.timestamp)
 
-    @cacheutils.cached_property
+    @caching.cached_property
     def _deps_dst_timestamps(self) -> SortedKeyList:
         return SortedKeyList(self._dependencies, key=lambda x: x.dst.timestamp)
 
-    @cacheutils.cached_property
+    @caching.cached_property
     def _items_exposing_defs(self) -> Dict[DefEvent, List[TraceItem]]:
         last_def_map: Dict[TraceItem, Dict[Hashable, DefEvent]] = collections.defaultdict(dict)
         items_exposing_defs: Dict[DefEvent, List[TraceItem]] = collections.defaultdict(list)
@@ -464,7 +464,7 @@ class HierarchicalTrace:
 
         return items_exposing_defs
 
-    @cacheutils.cached_property
+    @caching.cached_property
     def _def_events_by_obj_id(self) -> Dict[int, List[DefEvent]]:
         def_events_by_obj_id: Dict[int, List[DefEvent]] = collections.defaultdict(list)
         for e in self.events:
@@ -473,7 +473,7 @@ class HierarchicalTrace:
 
         return def_events_by_obj_id
 
-    @cacheutils.cached_property
+    @caching.cached_property
     def _expr_items_by_obj_id(self) -> Dict[int, List[TraceItem]]:
         expr_items_by_obj_id: Dict[int, List[TraceItem]] = collections.defaultdict(list)
         for i in self.items:
