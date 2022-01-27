@@ -1,19 +1,19 @@
 import unittest
 
-from databutler.datana.training import nl2code
+from databutler.datana.training import nl2code, few_shot
 
 
 class NL2CodeTests(unittest.TestCase):
     def test_1(self):
         few_shot_examples = [
-            nl2code.FewShotExample(
+            few_shot.FewShotExampleCodeAndNL(
                 nl="A function to add two numbers",
                 code=(
                     "def f(a, b):\n"
                     "    return a + b"
                 )
             ),
-            nl2code.FewShotExample(
+            few_shot.FewShotExampleCodeAndNL(
                 nl="A function to multiply two numbers",
                 code=(
                     "def f(a, b):\n"
@@ -29,6 +29,7 @@ class NL2CodeTests(unittest.TestCase):
         #  Run the generated code to see if it does the right thing
         ctx = {}
         exec(generated_code, ctx)
+        self.assertIn('f', ctx.keys())
         self.assertEqual(5, ctx['f'](10, 5))  # 10 - 5 = 5
         self.assertEqual(-15, ctx['f'](5, 20))  # 5 - 20 = -15
 
@@ -39,12 +40,13 @@ class NL2CodeTests(unittest.TestCase):
         #  Run the generated code to see if it does the right thing
         ctx = {}
         exec(generated_code, ctx)
+        self.assertIn('func', ctx.keys())
         self.assertEqual(5, ctx['func'](10, 5))  # 10 - 5 = 5
         self.assertEqual(-15, ctx['func'](5, 20))  # 5 - 20 = -15
 
     def test_2(self):
         few_shot_examples = [
-            nl2code.FewShotExample(
+            few_shot.FewShotExampleCodeAndNL(
                 nl=[
                     "A function that takes two integers as input",
                     "Returns their xor"
@@ -54,7 +56,7 @@ class NL2CodeTests(unittest.TestCase):
                     "    return a ^ b"
                 )
             ),
-            nl2code.FewShotExample(
+            few_shot.FewShotExampleCodeAndNL(
                 nl=[
                     "A function that takes two integers as input",
                     "Returns their product"

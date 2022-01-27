@@ -3,19 +3,14 @@ from typing import List, Optional, Union
 
 import attrs
 
+from databutler.datana.training import few_shot
 from databutler.utils import langmodels
-
-
-@attrs.define
-class FewShotExample:
-    code: str
-    nl: Union[str, List[str]]
 
 
 @attrs.define(eq=False)
 class BaseNatLangToCode(ABC):
     @abstractmethod
-    def get_code(self, few_shot_examples: List[FewShotExample], target_nl: Union[str, List[str]],
+    def get_code(self, few_shot_examples: List[few_shot.FewShotExampleCodeAndNL], target_nl: Union[str, List[str]],
                  output_prefix: Optional[str] = None) -> str:
         """
         Generates code with language-models using the provided few-shot examples.
@@ -25,7 +20,7 @@ class BaseNatLangToCode(ABC):
 
         This must be implemented by all subclasses.
 
-        :param few_shot_examples: A list of FewShotExample instances.
+        :param few_shot_examples: A list of few_shot.FewShotExampleCodeAndNL instances.
         :param target_nl: A string or a list of strings (bullet points) describing the code to generate.
         :param output_prefix: A string corresponding to the prefix the generated code *must* start with.
         :return: A string corresponding to the generated code. If the output_prefix is supplied, it is included
@@ -41,13 +36,13 @@ class SimpleNatLangToCode(BaseNatLangToCode):
 
     stop_token: str = "END"
 
-    def _create_completion_prompt(self, few_shot_examples: List[FewShotExample], target_nl: Union[str, List[str]],
-                                  output_prefix: Optional[str] = None) -> str:
+    def _create_completion_prompt(self, few_shot_examples: List[few_shot.FewShotExampleCodeAndNL],
+                                  target_nl: Union[str, List[str]], output_prefix: Optional[str] = None) -> str:
         """
         Helper method to create the prompt. Strings the few-shot examples together, and adds the target description to
         the end of the prompt.
 
-        :param few_shot_examples: A list of FewShotExample instances.
+        :param few_shot_examples: A list of few_shot.FewShotExampleCodeAndNL instances.
         :param target_nl: A string or a list of strings (bullet points) describing the code to generate.
         :param output_prefix: A string corresponding to the prefix the generated code *must* start with.
         :return: A string corresponding to the prompt to use for OpenAI completion.
@@ -83,7 +78,7 @@ class SimpleNatLangToCode(BaseNatLangToCode):
 
         return "\n".join(prompt_strs)
 
-    def get_code(self, few_shot_examples: List[FewShotExample], target_nl: Union[str, List[str]],
+    def get_code(self, few_shot_examples: List[few_shot.FewShotExampleCodeAndNL], target_nl: Union[str, List[str]],
                  output_prefix: Optional[str] = None) -> str:
         """
         Creates a simple prompt stringing examples together and uses it to generate the code.
