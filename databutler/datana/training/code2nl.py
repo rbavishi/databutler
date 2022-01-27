@@ -28,6 +28,16 @@ class BaseCodeToNatLang(ABC):
 
     def get_nl_bullets(self, few_shot_examples: List[few_shot.FewShotExampleCodeAndNL],
                        target_code: str) -> Iterator[str]:
+        """
+        Generates natural language description as a sequence of bullet points. This method should return an iterator.
+        This helps the client consume as much as they need. However, the iterator will stop as soon as the model
+        starts repeating itself.
+
+        :param few_shot_examples: A list of few_shot.FewShotExampleCodeAndNL instances.
+        :param target_code: A string corresponding to the code to describe.
+
+        :return: An iterator of strings where each string corresponds to a single bullet point description.
+        """
         #  By default, just return a single bullet that is just the plain NL.
         yield self.get_nl(few_shot_examples, target_code, num_results=1)[0]
         return
@@ -100,6 +110,11 @@ class SimpleCodeToNatLang(BaseCodeToNatLang):
 
         See base method for a description of the arguments and return value.
         """
+        #  Ensure that the few-shot examples do not use bullet-points.
+        if any(isinstance(ex.nl, list) for ex in few_shot_examples):
+            raise ValueError("Few-shot examples cannot contain bullet-point descriptions "
+                             "when generating single-line descriptions.")
+
         completion_prompt = self._create_completion_prompt(few_shot_examples, target_code)
 
         resp = langmodels.openai_completion(
@@ -122,6 +137,17 @@ class SimpleCodeToNatLang(BaseCodeToNatLang):
 
     def get_nl_bullets(self, few_shot_examples: List[few_shot.FewShotExampleCodeAndNL],
                        target_code: str) -> Iterator[str]:
+        """
+        Simply invokes the model as long as it produces a new bullet-point.
+
+        See base method for a description of the arguments and return value.
+        """
+
+        #  Ensure that the few-shot examples all use bullet-points.
+        if any(not isinstance(ex.nl, list) for ex in few_shot_examples):
+            raise ValueError("Few-shot examples cannot contain single-line descriptions "
+                             "when generating bullet-point descriptions.")
+
         generated_bullets: List[str] = []
 
         while True:
