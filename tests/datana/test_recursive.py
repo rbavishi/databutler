@@ -40,7 +40,6 @@ class NL2CodeTestsRecursive(unittest.TestCase):
         ]
         generator = nl2code.SimpleNatLangToCode()
         generated_code = generator.get_code(few_shot_examples, target_nl)
-        print(generated_code)
 
         # Run the generated code to see if it does the right thing
         ctx = {}
@@ -93,7 +92,6 @@ class NL2CodeTestsRecursive(unittest.TestCase):
         ]
         generator = nl2code.SimpleNatLangToCode()
         generated_code = generator.get_code(few_shot_examples, target_nl)
-        print(generated_code)
 
         # Run the generated code to see if it does the right thing
         ctx = {}
