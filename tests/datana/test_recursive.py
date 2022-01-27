@@ -13,7 +13,7 @@ class NL2CodeTestsRecursive(unittest.TestCase):
                 ],
                 code=(
                     "def f(n):\n"
-                    "    if n == 1:\n"
+                    "   if n == 1:\n"
                     "       return 1\n"
                     "   else:\n"
                     "       return n * f(n-1)"
@@ -26,7 +26,7 @@ class NL2CodeTestsRecursive(unittest.TestCase):
                 ],
                 code=(
                     "def f(n):\n"
-                    "    if n < 10:\n"
+                    "   if n < 10:\n"
                     "       return n\n"
                     "   else:\n"
                     "       return f(n // 10) + n % 10"
@@ -45,19 +45,8 @@ class NL2CodeTestsRecursive(unittest.TestCase):
         # Run the generated code to see if it does the right thing
         ctx = {}
         exec(generated_code, ctx)
-        self.assertEqual("0", ctx['f'](0))
-        self.assertEqual("1", ctx['f'](1))
-        self.assertEqual("3", ctx['f'](5))
-        self.assertEqual("35", ctx['f'](9))
-
-        # #  Try with output prefixes. Use specific variable names.
-        # output_prefix = "def func(x, y):\n"
-        # generated_code = generator.get_code(few_shot_examples, target_nl, output_prefix)
-
-        # #  Run the generated code to see if it does the right thing
-        # ctx = {}
-        # exec(generated_code, ctx)
-        # self.assertEqual("ab", ctx['func']("a", "b"))
-        # self.assertEqual("10", ctx['func']("1", "0"))
-
-NL2CodeTestsRecursive().test_1()
+        self.assertEqual(0, ctx['f'](0))
+        self.assertEqual(1, ctx['f'](1))
+        self.assertEqual(5, ctx['f'](5))
+        self.assertEqual(34, ctx['f'](9))
+        self.assertEqual(4181, ctx['f'](19))
