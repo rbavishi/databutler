@@ -1,6 +1,6 @@
 import unittest
 
-from databutler.datana.training import nl2code
+from databutler.datana.training import nl2code, few_shot
 from tests.datana.utils.utils import read_file
 
 
@@ -11,13 +11,13 @@ class NL2CodeTestsDataStructs(unittest.TestCase):
         """
         test_files_loc = 'tests/datana/test_files/datastructs_'
         few_shot_examples = [
-            nl2code.FewShotExample(
+            few_shot.FewShotExampleCodeAndNL(
                 nl=[
                     "Defines a class that implements the queue data structure"
                 ],
                 code= read_file(f'{test_files_loc}queue')
             ),
-            nl2code.FewShotExample(
+            few_shot.FewShotExampleCodeAndNL(
                 nl=[
                     "Defines a class that implements the priority queue data structure"
                 ],
@@ -51,22 +51,21 @@ class NL2CodeTestsDataStructs(unittest.TestCase):
         """
         test_files_loc = 'tests/datana/test_files/datastructs_'
         few_shot_examples = [
-            nl2code.FewShotExample(
+            few_shot.FewShotExampleCodeAndNL(
                 nl = ["Defines a class that implements the queue data structure"],
                 code = read_file(f'{test_files_loc}queue')
             ),
-            nl2code.FewShotExample(
+            few_shot.FewShotExampleCodeAndNL(
                 nl = ["Defines a class that implements the stack data structure"],
                 code = read_file(f'{test_files_loc}stack')
             ),
         ]
 
-        target_nl = ["Defines a class that implements a priority queue data structure that accepts a priority function"]
+        target_nl = ["Defines a class that implements a priority queue data structure that accepts a priority function",
+                    "making all the necessary imports"]
         generator = nl2code.SimpleNatLangToCode()
 
-        # TODO: Currently this prefix is necessary. Is there a way to make it not be so?
-        output_prefix = "import heapq\n"
-        generated_code = generator.get_code(few_shot_examples, target_nl, output_prefix)
+        generated_code = generator.get_code(few_shot_examples, target_nl)
 
         # Run the generated code to see if it does the right thing
         ctx = {}
