@@ -252,8 +252,10 @@ class NL2CodeTests(unittest.TestCase):
             ),
         ]
 
-        target_nl = ["Defines a class that implements a priority queue data structure that accepts a priority function",
-                    "making all the necessary imports"]
+        target_nl = [
+            "Defines a class that implements a priority queue data structure that accepts a priority function",
+            "making all the necessary imports"
+        ]
         generator = nl2code.SimpleNatLangToCode()
 
         generated_code = generator.get_code(few_shot_examples, target_nl)
