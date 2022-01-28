@@ -3,6 +3,8 @@ libcst~=0.3.13
 pandas
 numpy
 pytest
+jupyter_packaging
+jupyterlab==3.*
 nbconvert~=6.4.0
 IPython~=7.18.1
 loguru~=0.5.3
