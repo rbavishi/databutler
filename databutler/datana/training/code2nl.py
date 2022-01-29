@@ -12,7 +12,7 @@ from databutler.utils import langmodels
 class BaseCodeToNatLang(ABC):
     @abstractmethod
     def get_nl(self, few_shot_examples: List[few_shot.FewShotExampleCodeAndNL], target_code: Union[str, List[str]],
-               task_desc: Optional[List[str]] = [], num_results: int = 1) -> List[str]:
+               num_results: int = 1, task_desc: Optional[List[str]] = []) -> List[str]:
         """
         Generates natural language descriptions of code with language-models using the provided few-shot examples.
 
@@ -108,7 +108,7 @@ class SimpleCodeToNatLang(BaseCodeToNatLang):
         return "\n".join(prompt_strs)
 
     def get_nl(self, few_shot_examples: List[few_shot.FewShotExampleCodeAndNL], target_code: str,
-               task_desc: Optional[List[str]] = [], num_results: int = 1) -> List[str]:
+            num_results: int = 1, task_desc: Optional[List[str]] = []) -> List[str]:
         """
         Creates a simple prompt stringing examples together and uses it to generate the descriptions.
 

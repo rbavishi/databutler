@@ -2,6 +2,7 @@ from abc import ABC, abstractmethod
 from typing import List, Optional, Union
 
 import attrs
+from click import prompt
 
 from databutler.datana.training import few_shot
 from databutler.utils import langmodels
@@ -11,7 +12,7 @@ from databutler.utils import langmodels
 class BaseNatLangToCode(ABC):
     @abstractmethod
     def get_code(self, few_shot_examples: List[few_shot.FewShotExampleCodeAndNL], target_nl: Union[str, List[str]],
-                 output_prefix: Optional[str] = None) -> str:
+                output_prefix: Optional[str] = None, task_desc: Optional[List[str]] = []) -> str:
         """
         Generates code with language-models using the provided few-shot examples.
 
@@ -37,7 +38,7 @@ class SimpleNatLangToCode(BaseNatLangToCode):
     stop_token: str = "END"
 
     def _create_completion_prompt(self, few_shot_examples: List[few_shot.FewShotExampleCodeAndNL],
-                                  target_nl: Union[str, List[str]], output_prefix: Optional[str] = None) -> str:
+                                  target_nl: Union[str, List[str]], task_desc: List[str], output_prefix: Optional[str] = None) -> str:
         """
         Helper method to create the prompt. Strings the few-shot examples together, and adds the target description to
         the end of the prompt.
@@ -48,6 +49,8 @@ class SimpleNatLangToCode(BaseNatLangToCode):
         :return: A string corresponding to the prompt to use for OpenAI completion.
         """
         prompt_strs: List[str] = []
+
+        prompt_strs.extend(task_desc)
 
         #  First add in the few-shot examples.
         for ex in few_shot_examples:
@@ -79,13 +82,13 @@ class SimpleNatLangToCode(BaseNatLangToCode):
         return "\n".join(prompt_strs)
 
     def get_code(self, few_shot_examples: List[few_shot.FewShotExampleCodeAndNL], target_nl: Union[str, List[str]],
-                 output_prefix: Optional[str] = None) -> str:
+                output_prefix: Optional[str] = None, task_desc: Optional[List[str]] = []) -> str:
         """
         Creates a simple prompt stringing examples together and uses it to generate the code.
 
         See base method for a description of the arguments and return value.
         """
-        completion_prompt = self._create_completion_prompt(few_shot_examples, target_nl, output_prefix)
+        completion_prompt = self._create_completion_prompt(few_shot_examples, target_nl, task_desc, output_prefix)
 
         resp = langmodels.openai_completion(
             engine=self.engine,
