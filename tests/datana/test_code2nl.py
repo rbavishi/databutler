@@ -2,6 +2,7 @@ import itertools
 import unittest
 
 from databutler.datana.training import code2nl, few_shot, nl2code
+from databutler.datana.utils import vizutils
 
 
 class Code2NLTests(unittest.TestCase):
@@ -133,9 +134,6 @@ class Code2NLTests(unittest.TestCase):
         nl_generator = code2nl.SimpleCodeToNatLang()
         code_generator = nl2code.SimpleNatLangToCode()
 
-        nl_generator = code2nl.SimpleCodeToNatLang()
-        code_generator = nl2code.SimpleNatLangToCode()
-
         #  The generated NL should be something like "A function to create a histogram..."
         generated_nl = list(itertools.islice(nl_generator.get_nl_bullets(few_shot_examples, target_code), 2))
         self.assertIsInstance(generated_nl, list)
@@ -156,7 +154,7 @@ class Code2NLTests(unittest.TestCase):
         ctx = {}
         exec(regenerated_code, ctx)
         self.assertIn('f', ctx.keys())
-        generated_value, generated_bins, _= ctx['f'](df, 'input')
+        generated_value, generated_bins, _ = ctx['f'](df, 'input')
 
         # Compare the two
         # Checks if the values of the histogram bins are equal
@@ -179,8 +177,7 @@ class Code2NLTests(unittest.TestCase):
                 code = (
                     "import matplotlib.pyplot as plt\n"
                     "def f(df, x, y):\n"
-                    "   plt.plot(df[x], df[y])\n"
-                    # "   plt.show()"
+                    "   plt.plot(df[x], df[y])"
                 )
             ),
             few_shot.FewShotExampleCodeAndNL(
@@ -192,8 +189,7 @@ class Code2NLTests(unittest.TestCase):
                     "import matplotlib.pyplot as plt\n"
                     "def f(df, x, y, labels):\n"
                     "   plt.legend(loc='upper left')\n"
-                    "   plt.stackplot(df[x], df[y], labels=labels)\n"
-                    # "   plt.show()"
+                    "   plt.stackplot(df[x], df[y], labels=labels)"
                 )
             )
         ]
@@ -201,7 +197,7 @@ class Code2NLTests(unittest.TestCase):
         target_code = (
             "import matplotlib.pyplot as plt\n"
             "def f(df, col):\n"
-            "   plt.hist(df[col])\n"
+            "   plt.hist(df[col])"
         )
 
         nl_generator = code2nl.SimpleCodeToNatLang()
@@ -217,31 +213,11 @@ class Code2NLTests(unittest.TestCase):
         # Setup for inputs to the code
         df = {'input': [1, 2, 3, 4, 4, 5, 5, 5]}
 
-        import io
-        import matplotlib.pyplot as plt
-        target_buf, generated_buf = io.BytesIO(), io.BytesIO()
-
-        # Run the original code and save the plot
-        ctx = {}
-        exec(target_code, ctx)
-        self.assertIn('f', ctx.keys())
-        target_fig = ctx['f'](df, 'input')
-
-        plt.savefig(target_buf, format='png')
-
-        # Run the regenerated code and save the plot
-
-        ctx = {}
-        exec(regenerated_code, ctx)
-        self.assertIn('f', ctx.keys())
-        generated_fig = ctx['f'](df, 'input')
-
-        plt.savefig(generated_buf, format='png')
+        target_fig = vizutils.run_viz_code_matplotlib_mp(target_code, {'df': df, 'col': 'input'}, 'f')
+        generated_fig = vizutils.run_viz_code_matplotlib_mp(regenerated_code, {'df': df, 'col': 'input'}, 'f')
 
         # Compare the two
-        target_buf.seek(0)
-        generated_buf.seek(0)
-        self.assertTrue(target_buf.read() == generated_buf.read())
+        self.assertTrue(vizutils.serialize_fig(target_fig) == vizutils.serialize_fig(generated_fig))
 
 
 
