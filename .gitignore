@@ -108,3 +108,5 @@ pip-selfcheck.json
 .idea/mongoSettings.xml
 
 .idea/
+
+node_modules
