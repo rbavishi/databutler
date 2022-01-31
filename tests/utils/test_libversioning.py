@@ -33,6 +33,6 @@ class LibVersioningTests(unittest.TestCase):
         )
 
         multiprocess.run_func_in_process(_run_code, code, "pandas", "0.25.1")
-        self.assertRaises(AssertionError, multiprocess.run_func_in_process, _run_code, code, 'pandas', '1.3.5')
+        self.assertRaises(AttributeError, multiprocess.run_func_in_process, _run_code, code, 'pandas', '1.3.5')
 
 
