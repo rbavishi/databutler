@@ -20,6 +20,7 @@ class LibVersioningTests(unittest.TestCase):
         )
 
         multiprocess.run_func_in_process(_run_code, code, "pandas", "0.25.1")
+        self.assertRaises(AssertionError, multiprocess.run_func_in_process, _run_code, code, 'pandas', '1.3.5')
 
     def test_pandas_2(self):
         #  df.ftypes was removed in Pandas 1.* but was only deprecated in 0.25.0
@@ -32,5 +33,6 @@ class LibVersioningTests(unittest.TestCase):
         )
 
         multiprocess.run_func_in_process(_run_code, code, "pandas", "0.25.1")
+        self.assertRaises(AssertionError, multiprocess.run_func_in_process, _run_code, code, 'pandas', '1.3.5')
 
 
