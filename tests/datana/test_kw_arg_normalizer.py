@@ -5,8 +5,16 @@ from typing import List, Any, Dict
 from databutler.datana.generic.corpus.code import DatanaFunction
 from databutler.datana.generic.corpus.processing.keyword_normalization import KeywordArgNormalizer
 from databutler.datana.viz.corpus.code_processors import VizKeywordArgNormalizer
-from databutler.utils import code as codeutils
+from databutler.utils import code as codeutils, multiprocess
 from databutler.utils.libversioning import modified_lib_env
+
+
+def _seaborn_runner(func: DatanaFunction):
+    #  Need to keep this outer-level to be able to run with pebble.concurrent.
+    #  See https://github.com/noxdafox/pebble/issues/80
+    with modified_lib_env("seaborn", "0.11.0"):
+        normalizer = VizKeywordArgNormalizer()
+        return normalizer.run(func)
 
 
 class KwArgNormalizerTests(unittest.TestCase):
@@ -80,8 +88,6 @@ class KwArgNormalizerTests(unittest.TestCase):
             kw_args=None,
         )
 
-        with modified_lib_env("seaborn", "0.11.0"):
-            normalizer = VizKeywordArgNormalizer()
-            new_d_func = normalizer.run(datana_func)
-            self.assertEqual(codeutils.normalize_code(target_code),
-                             codeutils.normalize_code(new_d_func.code_str))
+        new_d_func = multiprocess.run_func_in_process(_seaborn_runner, datana_func)
+        self.assertEqual(codeutils.normalize_code(target_code),
+                         codeutils.normalize_code(new_d_func.code_str))
