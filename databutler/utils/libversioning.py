@@ -49,13 +49,12 @@ def _download_lib_version(lib_name: str, version: str) -> None:
 @contextmanager
 def modified_lib_env(lib_name: str, version: str):
     """
-    Temporarily modifies sys.path to allow a different library version to be picked up.
+    Modifies sys.path and sys.modules to allow a different library version to be picked up.
 
-    For best results, this should be run in a different process. Note that the process must be spawned, not forked.
+    NOTE: This is highly experimental and needs further testing.
+
+    This **should** be run in a different process. Note that the process must be spawned, not forked.
     Since fork is the default on Unix, it might fail on Unix systems if the spawn multiprocess context is not specified.
-
-    Mote that tests/runs etc. will probably fail with PyCharm. It seems to be modifying sys.path by itself or
-    influencing the import process somehow.
 
     For multiple versions, chain the contexts together, as shown below:
 
@@ -78,7 +77,21 @@ def modified_lib_env(lib_name: str, version: str):
     #  Modify sys.path temporarily
     orig_sys_path = list(sys.path)
     try:
-        sys.path = [_get_lib_version_path(lib_name, version)] + list(sys.path)
+        lib_path = _get_lib_version_path(lib_name, version)
+        sys.path = [lib_path] + list(sys.path)
+
+        #  Get currently active dependencies, and forcefully remove them.
+        active = []
+        for mod_name in sys.modules.keys():
+            #  Note that we need to remove submodules as well, otherwise things won't work.
+            key = mod_name.split('.')[0]
+            if os.path.exists(os.path.join(lib_path, key)) or \
+                    os.path.exists(os.path.join(lib_path, f"{key}.py")):
+                active.append(mod_name)
+
+        for i in active:
+            sys.modules.pop(i)
+
         yield
 
     finally:
