@@ -18,6 +18,7 @@ pip install databutler
 In the top-level project directory, run the following:
 ```shell
 pip install -r requirements-dev.txt
+pip install -e databutler_widgets
 pip install -e .
 ```
 

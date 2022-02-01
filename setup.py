@@ -1,9 +1,9 @@
-from setuptools import setup
+from setuptools import setup, find_packages
 
 setup(
     name='DataButler',
     version='0.0.0',
-    packages=['databutler'],
+    packages=find_packages(where='.'),
     url='https://github.com/rbavishi/DataButler',
     license='BSD-2-Clause',
     author='Rohan Bavishi',
