@@ -45,3 +45,15 @@ def get_optional_args(func: Optional[Callable] = None, sig: Optional[inspect.Sig
                 result.append(param.name)
 
     return result
+
+
+def get_fully_qualified_name(func: Optional[Callable]) -> Optional[str]:
+    if inspect.isroutine(func) and hasattr(func, "__qualname__"):
+        try:
+            mod = inspect.getmodule(func)
+            name = f"{mod.__name__}.{func.__qualname__}"
+            return name
+        except:
+            pass
+
+    return None
