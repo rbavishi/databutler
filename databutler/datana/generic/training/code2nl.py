@@ -11,7 +11,7 @@ from databutler.utils import langmodels
 class BaseCodeToNatLang(ABC):
     @abstractmethod
     def get_nl(self, few_shot_examples: List[few_shot.FewShotExampleCodeAndNL], target_code: Union[str, List[str]],
-               num_results: int = 1, task_desc: Union[Optional[List[str]], None] = []) -> List[str]:
+               num_results: int = 1, task_desc: Optional[List[str]] = []) -> List[str]:
         """
         Generates natural language descriptions of code with language-models using the provided few-shot examples.
 
@@ -27,7 +27,7 @@ class BaseCodeToNatLang(ABC):
         """
 
     def get_nl_bullets(self, few_shot_examples: List[few_shot.FewShotExampleCodeAndNL],
-                       target_code: str, task_desc: Union[Optional[List[str]], None] = []) -> Iterator[str]:
+                       target_code: str, task_desc: Optional[List[str]] = []) -> Iterator[str]:
         """
         Generates natural language description as a sequence of bullet points. This method should return an iterator.
         This helps the client consume as much as they need. However, the iterator will stop as soon as the model
@@ -107,7 +107,7 @@ class SimpleCodeToNatLang(BaseCodeToNatLang):
         return "\n".join(prompt_strs)
 
     def get_nl(self, few_shot_examples: List[few_shot.FewShotExampleCodeAndNL], target_code: str,
-            num_results: int = 1, task_desc: Union[Optional[List[str]], None] = []) -> List[str]:
+            num_results: int = 1, task_desc: Optional[List[str]] = []) -> List[str]:
         """
         Creates a simple prompt stringing examples together and uses it to generate the descriptions.
 
@@ -140,7 +140,7 @@ class SimpleCodeToNatLang(BaseCodeToNatLang):
         return descriptions
 
     def get_nl_bullets(self, few_shot_examples: List[few_shot.FewShotExampleCodeAndNL],
-                       target_code: str, task_desc: Union[Optional[List[str]], None] = []) -> Iterator[str]:
+                       target_code: str, task_desc: Optional[List[str]] = []) -> Iterator[str]:
         """
         Simply invokes the model as long as it produces a new bullet-point.
 

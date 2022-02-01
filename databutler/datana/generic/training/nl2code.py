@@ -11,7 +11,7 @@ from databutler.utils import langmodels
 class BaseNatLangToCode(ABC):
     @abstractmethod
     def get_code(self, few_shot_examples: List[few_shot.FewShotExampleCodeAndNL], target_nl: Union[str, List[str]],
-                output_prefix: Optional[str] = None, task_desc: Union[Optional[List[str]], None] = []) -> str:
+                output_prefix: Optional[str] = None, task_desc: Optional[List[str]] = []) -> str:
         """
         Generates code with language-models using the provided few-shot examples.
 
@@ -81,7 +81,7 @@ class SimpleNatLangToCode(BaseNatLangToCode):
         return "\n".join(prompt_strs)
 
     def get_code(self, few_shot_examples: List[few_shot.FewShotExampleCodeAndNL], target_nl: Union[str, List[str]],
-                output_prefix: Optional[str] = None, task_desc: Union[Optional[List[str]], None] = []) -> str:
+                output_prefix: Optional[str] = None, task_desc: Optional[List[str]] = []) -> str:
         """
         Creates a simple prompt stringing examples together and uses it to generate the code.
 
