@@ -16,6 +16,9 @@ from databutler.utils import inspection, code as codeutils
 
 @attrs.define(eq=False, repr=False)
 class _KeywordArgsFinder(CallDecoratorsGenerator):
+    """
+    Instrumentation generator for intercepting function calls and tracking positional and optional parameters.
+    """
     label_mappings: Dict[astlib.Call, List[str]] = attrs.Factory(dict)
     args_info_mappings: Dict[astlib.Call, Dict] = attrs.Factory(dict)
 
@@ -60,6 +63,9 @@ class _KeywordArgsFinder(CallDecoratorsGenerator):
 
 
 def _convert_pos_args_to_kw_args(code_ast: astlib.AstNode, finder: _KeywordArgsFinder) -> Dict:
+    """
+    Keyword-normalizes the provided code using the dynamic information obtained by the finder.
+    """
     new_nodes = {}
     for old_node, labels in finder.label_mappings.items():
         old_args = list(old_node.args)
@@ -92,6 +98,11 @@ def _convert_pos_args_to_kw_args(code_ast: astlib.AstNode, finder: _KeywordArgsF
 
 @attrs.define(eq=False, repr=False)
 class KeywordArgNormalizer(DatanaFunctionProcessor, ABC):
+    """
+    A processor that keyword-normalizes code. Keyword-normalization is converting every positional argument into
+    a keyword argument. This implementation relies on using instrumentation to dynamically figure out the positional
+    argument names of the functions used, and then modifies the code accordingly.
+    """
     def _process(self, d_func: DatanaFunction) -> DatanaFunction:
         code = d_func.code_str
         #  Set up instrumentation.
@@ -140,14 +151,14 @@ class KeywordArgNormalizer(DatanaFunctionProcessor, ABC):
     def _run_function_code(self, func_code: str, func_name: str, pos_args: List[Any], kw_args: Dict[str, Any],
                            global_ctx: Dict[str, Any]) -> Any:
         """
+        Runs the provided function with the given args and global context.
+
+        Must be implemented by every class implementing FuncNameExtractor.
 
         Args:
-            func_code:
-            func_name:
-            pos_args:
-            kw_args:
-            global_ctx:
-
-        Returns:
-
+            func_code: A string corresponding to the function to be executed.
+            func_name: The name of the function as a string.
+            pos_args: A list of positional arguments to be provided to the function.
+            kw_args: A dictionary of keyword arguments to be provided to the function.
+            global_ctx: The global context in which to run the function.
         """

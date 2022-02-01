@@ -10,12 +10,15 @@ class DatanaFunctionProcessor(ABC):
     @abstractmethod
     def _process(self, d_func: DatanaFunction) -> DatanaFunction:
         """
+        An internal method that returns the new Datana function obtained after processing.
+
+        Must be implemented by all implementing classes.
 
         Args:
-            d_func:
+            d_func: A Datana function to be processed.
 
         Returns:
-
+            A Datana function corresponding to the processed version of the input.
         """
 
     @classmethod
@@ -26,6 +29,15 @@ class DatanaFunctionProcessor(ABC):
         """
 
     def run(self, d_func: DatanaFunction) -> DatanaFunction:
+        """
+        Returns the new Datana function after processing.
+
+        Args:
+            d_func: A Datana function to be processed.
+
+        Returns:
+            A Datana function corresponding to the processed version of the input.
+        """
         new_func = self._process(d_func)
 
         #  Validation check(s)

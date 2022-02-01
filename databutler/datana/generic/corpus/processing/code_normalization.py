@@ -7,7 +7,9 @@ from databutler.utils import code as codeutils
 
 class CodeNormalizer(DatanaFunctionProcessor):
     def _process(self, d_func: DatanaFunction) -> DatanaFunction:
-        #  Simply normalize the code and return the new function
+        """
+        Returns a new Datana function that contains the formatting-normalized code.
+        """
         new_d_func = d_func.copy()
         new_d_func.code_str = codeutils.normalize_code(d_func.code_str)
 

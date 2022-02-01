@@ -15,6 +15,9 @@ from databutler.utils import inspection, code as codeutils
 
 @attrs.define(eq=False, repr=False)
 class _FuncNameFinder(CallDecoratorsGenerator):
+    """
+    Instrumentation generator for intercepting function calls and extracting qualified names whenever possible.
+    """
     func_name_mappings: Dict[astlib.Call, str] = attrs.Factory(dict)
 
     def gen_decorators(self, ast_root: astlib.AstNode) -> Dict[astlib.BaseExpression, List[CallDecorator]]:
@@ -39,6 +42,15 @@ class _FuncNameFinder(CallDecoratorsGenerator):
 
 
 def _get_func_name_metadata(finder: _FuncNameFinder) -> Dict[str, str]:
+    """
+    Maps individual function calls (in text form) to the qualified function name.
+
+    Args:
+        finder: A FuncNameFinder instrumentation generator instance that has already been executed.
+
+    Returns:
+        A dictionary mapping function calls (in text form) to the qualified name of the corresponding function.
+    """
     func_name_mappings: Dict[str, str] = {}
     for node, name in finder.func_name_mappings.items():
         func_name_mappings[codeutils.normalize_code(astlib.to_code(node))] = name
@@ -48,6 +60,9 @@ def _get_func_name_metadata(finder: _FuncNameFinder) -> Dict[str, str]:
 
 @attrs.define(eq=False, repr=False)
 class FuncNameExtractor(DatanaFunctionProcessor, ABC):
+    """
+    A processor that adds metadata about the functions and their qualified names used in a Datana function
+    """
     def _process(self, d_func: DatanaFunction) -> DatanaFunction:
         code = d_func.code_str
         #  Set up instrumentation.
@@ -90,14 +105,14 @@ class FuncNameExtractor(DatanaFunctionProcessor, ABC):
     def _run_function_code(self, func_code: str, func_name: str, pos_args: List[Any], kw_args: Dict[str, Any],
                            global_ctx: Dict[str, Any]) -> Any:
         """
+        Runs the provided function with the given args and global context.
+
+        Must be implemented by every class implementing FuncNameExtractor.
 
         Args:
-            func_code:
-            func_name:
-            pos_args:
-            kw_args:
-            global_ctx:
-
-        Returns:
-
+            func_code: A string corresponding to the function to be executed.
+            func_name: The name of the function as a string.
+            pos_args: A list of positional arguments to be provided to the function.
+            kw_args: A dictionary of keyword arguments to be provided to the function.
+            global_ctx: The global context in which to run the function.
         """
