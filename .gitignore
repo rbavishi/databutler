@@ -109,8 +109,5 @@ pip-selfcheck.json
 
 .idea/
 
-<<<<<<< HEAD
 .vscode/
-=======
 node_modules
->>>>>>> 7e88f7e4464fcf580096b7957756178b421423dd
