@@ -2,7 +2,6 @@ from abc import ABC, abstractmethod
 from typing import List, Optional, Union
 
 import attrs
-from click import prompt
 
 from databutler.datana.training import few_shot
 from databutler.utils import langmodels
