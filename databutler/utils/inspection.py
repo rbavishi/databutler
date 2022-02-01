@@ -14,6 +14,24 @@ def _get_signature(func: Callable):
 
 
 def get_required_args(*, func: Optional[Callable] = None, sig: Optional[inspect.Signature] = None) -> List[str]:
+    """
+    Returns the required arguments, in their definition order, for the given function.
+
+    This may not always work for builtin functions, especially for older Python versions.
+
+    Args:
+        func: Optional; a callable representing the function to be analyzed. Defaults to None.
+            If not provided, `sig` must be provided.
+        sig: Optional; the signature of the function to be analyzed. Defaults to None.
+            The value of `func` is ignored if this argument is provided.
+
+    Returns:
+        A list of strings corresponding to the required arguments, in their definition order.
+
+    Raises:
+        ValueError: if the signature could not be obtained for the function.
+        TypeError: if the provided function is invalid.
+    """
     if func is None and sig is None:
         raise ValueError("One of func and sig must be supplied as a keyword arg")
 
@@ -31,6 +49,24 @@ def get_required_args(*, func: Optional[Callable] = None, sig: Optional[inspect.
 
 
 def get_optional_args(func: Optional[Callable] = None, sig: Optional[inspect.Signature] = None) -> List[str]:
+    """
+    Returns the optional keyword arguments, in their definition order, for the given function.
+
+    This may not always work for builtin functions, especially for older Python versions.
+
+    Args:
+        func: Optional; a callable representing the function to be analyzed. Defaults to None.
+            If not provided, `sig` must be provided.
+        sig: Optional; the signature of the function to be analyzed. Defaults to None.
+            The value of `func` is ignored if this argument is provided.
+
+    Returns:
+        A list of strings corresponding to the optional arguments, in their definition order.
+
+    Raises:
+        ValueError: if the signature could not be obtained for the function.
+        TypeError: if the provided function is invalid.
+    """
     if func is None and sig is None:
         raise ValueError("One of func and sig must be supplied as a keyword arg")
 
@@ -48,6 +84,17 @@ def get_optional_args(func: Optional[Callable] = None, sig: Optional[inspect.Sig
 
 
 def get_fully_qualified_name(func: Optional[Callable]) -> Optional[str]:
+    """
+    Returns the fully qualified name of a function, if applicable, and None otherwise.
+
+    Note that None will be returned for builtin functions, or any function that cannot be traced back to a module.
+
+    Args:
+        func: A callable representing the function to be analyzed.
+
+    Returns:
+        A string if a fully qualified name could be obtained, and None otherwise.
+    """
     if inspect.isroutine(func) and hasattr(func, "__qualname__"):
         try:
             mod = inspect.getmodule(func)
