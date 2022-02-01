@@ -1,7 +1,7 @@
 import itertools
 import unittest
 
-from databutler.datana.training import code2nl, few_shot, nl2code
+from databutler.datana.generic.training import code2nl, few_shot, nl2code
 
 
 class Code2NLTests(unittest.TestCase):
