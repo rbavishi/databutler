@@ -7,7 +7,7 @@ jupyter_packaging
 jupyterlab==3.*
 nbconvert~=6.4.0
 IPython~=7.18.1
-loguru~=0.5.3
+loguru
 intervaltree~=3.1.0
 sortedcontainers~=2.2.2
 matplotlib~=3.2.1
