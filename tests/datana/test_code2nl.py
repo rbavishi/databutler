@@ -136,7 +136,7 @@ class Code2NLTests(unittest.TestCase):
         self.assertEqual(5 & 20, ctx['f'](5, 20))
 
     # task description test for get_code function
-    def test_get_code(self):
+    def test_get_code_td(self):
         few_shot_examples = [
             few_shot.FewShotExampleCodeAndNL(
                 nl="A function to add two numbers",
@@ -178,7 +178,7 @@ class Code2NLTests(unittest.TestCase):
         self.assertEqual(5 & 20, ctx['f'](5, 20))
 
     # task description optional field test for get nl bullets function
-    def test_get_nl_bullets(self):
+    def test_get_nl_bullets_td(self):
         few_shot_examples = [
             few_shot.FewShotExampleCodeAndNL(
                 nl=[
@@ -271,3 +271,34 @@ class Code2NLTests(unittest.TestCase):
         self.assertIn('f', ctx.keys())
         self.assertEqual(5 & 10, ctx['f'](10, 5))
         self.assertEqual(5 & 20, ctx['f'](5, 20))
+
+    #  Tests that the passed in task description is actually added to the model prompt string
+    def test_prompt_addition_td(self):
+        few_shot_examples = [
+            few_shot.FewShotExampleCodeAndNL(
+                nl="A function to add two numbers",
+                code=(
+                    "def f(a, b):\n"
+                    "    return a + b"
+                )
+            ),
+            few_shot.FewShotExampleCodeAndNL(
+                nl="A function to multiply two numbers",
+                code=(
+                    "def f(a, b):\n"
+                    "    return a * b"
+                )
+            ),
+        ]
+        target_code = (
+            "def f(x, y):"
+            "    return x & y"
+        )
+        task_desc = [
+            "For every code block, we carefully monitor dependencies",
+            "We attempt to generate descriptions of blocks of codes as follows"
+        ]
+        nl_generator = code2nl.SimpleCodeToNatLang()
+        generated_prompt = nl_generator._create_completion_prompt(few_shot_examples, target_code, task_desc)
+        for desc in task_desc:
+            self.assertIn(desc, generated_prompt)
