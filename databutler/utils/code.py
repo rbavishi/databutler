@@ -1,6 +1,7 @@
 import ast
 
 import astunparse
+import black
 
 
 def normalize_code(code: str) -> str:
@@ -13,4 +14,5 @@ def normalize_code(code: str) -> str:
     Returns:
         (str): The normalized code.
     """
-    return astunparse.unparse(ast.parse(code)).strip()
+    mode = black.FileMode()
+    return black.format_str(astunparse.unparse(ast.parse(code)).strip(), mode=mode)
