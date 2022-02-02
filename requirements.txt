@@ -1,5 +1,5 @@
 pytest
 nbconvert
 attrs~=21.4.0
-loguru~=0.5.3
-IPython~=7.18.1
+loguru
+IPython

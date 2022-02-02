@@ -6,7 +6,7 @@ pytest
 jupyter_packaging
 jupyterlab==3.*
 nbconvert~=6.4.0
-IPython~=7.18.1
+IPython
 loguru
 intervaltree~=3.1.0
 sortedcontainers~=2.2.2
