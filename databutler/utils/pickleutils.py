@@ -9,13 +9,13 @@ from databutler.utils import lazyobjs
 
 def smart_dump(obj: object, pickle_path: str) -> None:
     """
+    Dump object to the specified path using pickle.
+
+    This is just like pickle.dump, but does the opening and closing for you.
 
     Args:
-        obj:
-        pickle_path:
-
-    Returns:
-
+        obj: Object to dump.
+        pickle_path: A string corresponding to the path of the pickle file.
     """
     with open(pickle_path, "wb") as f:
         pickle.dump(obj, file=f)
@@ -23,23 +23,40 @@ def smart_dump(obj: object, pickle_path: str) -> None:
 
 def smart_load(pickle_path: str) -> Any:
     """
+    Loads object from the specified path using pickle.
+
+    This is just like pickle.load, but does the opening and closing for you.
 
     Args:
-        pickle_path:
+        pickle_path: A string corresponding to the path of the pickle file.
 
     Returns:
-
+        The loaded object.
     """
     with open(pickle_path, "rb") as f:
         return pickle.load(f)
 
 
 class _Unloaded:
-    pass
+    """
+    Dummy object to represent an unloaded cache entry.
+    """
 
 
 @attrs.define(eq=False, repr=False)
 class PickledCollectionWriter:
+    """
+    An append-only pickle based obj writer. This is useful to store multiple objects in a single picked file in a way
+    that accessing them does not require loading all the preceding objects.
+
+    Use the `.append` method to add objects. It is recommended to use this with a context manager to manage
+    opening and closing as follows:
+
+    ```
+    with pickledutils.PickledCollectionWriter(path) as writer:
+        writer.append(10)
+    ```
+    """
     path: str
     overwrite_existing: bool = True
 
@@ -111,6 +128,19 @@ class PickledCollectionWriter:
 
 @attrs.define(eq=False, repr=False)
 class PickledCollectionReader(Sequence):
+    """
+    An append-only pickle-based obj reader.
+
+    Use array-like indexing to fetch objects. The reader supports caching to avoid multiple pickle reads, but this
+    should be avoided for large files which are going to be read in entirety.
+
+    It is recommended to use this with a context manager to manage opening and closing as follows:
+
+    ```
+    with pickledutils.PickledCollectionReader(path) as reader:
+        print("First element:", reader[0])
+    ```
+    """
     path: str
     use_cache: bool = False
 
@@ -163,6 +193,9 @@ class PickledCollectionReader(Sequence):
 
 
 def delete_pickled_collection(path: str):
+    """
+    Utility function to delete all files associated with a PickledCollection{Writer, Reader}.
+    """
     if os.path.exists(path):
         os.unlink(path)
 
@@ -173,6 +206,10 @@ def delete_pickled_collection(path: str):
 
 @attrs.define(eq=False, repr=False)
 class PickledRef(lazyobjs.ObjRef):
+    """
+    An object ref that uses pickle to support lazy loading.
+    """
+
     #  Path to pickle file
     path: str
     #  If index is not None, this means the object belongs to a pickled collection (see PickledCollectionReader)
