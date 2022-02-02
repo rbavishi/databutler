@@ -15,4 +15,4 @@ def normalize_code(code: str) -> str:
         (str): The normalized code.
     """
     mode = black.FileMode()
-    return black.format_str(astunparse.unparse(ast.parse(code)).strip(), mode=mode)
+    return black.format_str(astunparse.unparse(ast.parse(code)).strip(), mode=mode).strip()
