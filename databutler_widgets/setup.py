@@ -48,7 +48,7 @@ npm_install = combine_commands(
     install_npm(HERE, build_cmd='build:prod'),
     ensure_targets(jstargets),
 )
-cmdclass['jsdeps'] = skip_if_exists(jstargets, npm_install)
+cmdclass['jsdeps'] = npm_install
 
 setup_args = dict(
     name=name,
