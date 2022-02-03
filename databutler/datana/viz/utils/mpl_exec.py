@@ -9,7 +9,7 @@ def run_viz_code_matplotlib(code: str,
                             func_name: str = 'visualization',
                             other_globals: Optional[Dict] = None,
                             disable_seaborn_randomization: bool = True,
-                            serializer: Callable[['plt.Figure'], Any] = None):
+                            serializer: Callable[['plt.Figure'], Any] = None) -> 'plt.Figure':
     #  Putting imports inside so we can delay the imports as long as possible.
     #  This is especially helpful when using libversioning to temporarily modify sys.path
     import matplotlib as mpl
