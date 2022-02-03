@@ -4,10 +4,18 @@ import attrs
 
 from databutler.datana.generic.corpus.code import DatanaFunction
 from databutler.datana.generic.corpus.processing.base_processor import DatanaFunctionProcessor
+from databutler.datana.generic.corpus.processing.code_normalization import CodeNormalizer
 from databutler.datana.generic.corpus.processing.func_name_extractor import FuncNameExtractor
 from databutler.datana.generic.corpus.processing.keyword_normalization import KeywordArgNormalizer
 from databutler.datana.generic.corpus.processing.var_optimization import VarNameOptimizer
 from databutler.datana.viz.utils import mpl_exec
+
+
+@attrs.define(eq=False, repr=False)
+class VizMplCodeNormalizer(CodeNormalizer):
+    @classmethod
+    def get_processor_name(cls) -> str:
+        return f"viz-mpl-{super().get_processor_name()}"
 
 
 @attrs.define(eq=False, repr=False)
