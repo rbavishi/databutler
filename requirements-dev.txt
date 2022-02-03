@@ -17,4 +17,5 @@ openai
 pebble
 astunparse
 black
+fire
 PyDrive2
