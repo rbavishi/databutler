@@ -108,6 +108,11 @@ class PickledCollectionWriter:
         self._file_obj.close()
 
     def append(self, obj):
+        """
+        Dumps the pickled obj to the target file.
+        Args:
+            obj: The object to dump.
+        """
         offset = self._file_obj.tell()
         pickle.dump(obj, self._file_obj)
         self._offset_map.append(offset)
