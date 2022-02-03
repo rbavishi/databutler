@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from typing import List
 
 import attrs
 
@@ -67,3 +68,26 @@ class DatanaFunctionProcessor(ABC):
         new_func.metadata[key] = processor_history
 
         return new_func
+
+
+@attrs.define(eq=False, repr=False)
+class DatanaFunctionProcessorChain:
+    #  The list of processors to use in the chain.
+    processors: List[DatanaFunctionProcessor]
+
+    def run(self, d_func: DatanaFunction) -> DatanaFunction:
+        """
+        Returns the new Datana function after applying all processors in the chain.
+
+        Args:
+            d_func: A Datana function to be processed.
+
+        Returns:
+            A Datana function corresponding to the processed version of the input after applying all the processors.
+        """
+
+        func = d_func
+        for p in self.processors:
+            func = p.run(func)
+
+        return func
