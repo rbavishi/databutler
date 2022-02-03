@@ -28,6 +28,10 @@ class DatanaFunctionProcessor(ABC):
         Returns the name of the processor as a string.
         """
 
+    @classmethod
+    def get_processor_metadata_key(cls) -> str:
+        return f"metadata-{cls.get_processor_name()}"
+
     def run(self, d_func: DatanaFunction) -> DatanaFunction:
         """
         Returns the new Datana function after processing.
@@ -43,6 +47,14 @@ class DatanaFunctionProcessor(ABC):
         #  Validation check(s)
         if new_func.uid != d_func.uid:
             raise AssertionError("Function UID not same after processing.")
+
+        orig_metadata_keys = set((d_func.metadata or {}).keys())
+        new_metadata_keys = set((new_func.metadata or {}).keys())
+        new_keys = new_metadata_keys - orig_metadata_keys
+        if len(new_keys) > 1 or (len(new_keys) == 1 and self.get_processor_metadata_key() not in new_keys):
+            raise AssertionError(
+                f"A processor can only add in a single metadata key - {self.get_processor_metadata_key()}"
+            )
 
         #  Maintain a history of processors applied.
         if new_func.metadata is None:

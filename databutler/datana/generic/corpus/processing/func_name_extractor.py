@@ -91,7 +91,7 @@ class FuncNameExtractor(DatanaFunctionProcessor, ABC):
         #  Assemble the result
         new_d_func = d_func.copy()
         new_d_func.metadata = new_d_func.metadata or {}
-        new_d_func.metadata[f"metadata-{self.get_processor_name()}"] = {
+        new_d_func.metadata[self.get_processor_metadata_key()] = {
             "func_name_mappings": func_name_mappings
         }
 

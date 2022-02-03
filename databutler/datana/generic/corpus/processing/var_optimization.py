@@ -320,7 +320,7 @@ class VarNameOptimizer(DatanaFunctionProcessor):
         new_d_func = d_func.copy()
         new_d_func.code_str = new_code
         new_d_func.metadata = new_d_func.metadata or {}
-        new_d_func.metadata[f"metadata-{self.get_processor_name()}"] = {
+        new_d_func.metadata[self.get_processor_metadata_key()] = {
             "old_code": d_func.code_str,
         }
 
