@@ -19,3 +19,4 @@ astunparse
 black
 fire
 PyDrive2
+tqdm
