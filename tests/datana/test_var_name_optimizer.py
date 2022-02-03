@@ -6,7 +6,7 @@ import pandas as pd
 
 from databutler.datana.generic.corpus.code import DatanaFunction
 from databutler.datana.generic.corpus.processing.var_optimization import VarNameOptimizer
-from databutler.datana.viz.corpus.code_processors import VizVarNameOptimizer
+from databutler.datana.viz.corpus.code_processors import VizMplVarNameOptimizer
 from databutler.utils import code as codeutils, multiprocess
 from databutler.utils.libversioning import modified_lib_env
 
@@ -15,7 +15,7 @@ def _seaborn_runner(func: DatanaFunction):
     #  Need to keep this outer-level to be able to run with pebble.concurrent.
     #  See https://github.com/noxdafox/pebble/issues/80
     with modified_lib_env("seaborn", "0.11.0"):
-        normalizer = VizVarNameOptimizer()
+        normalizer = VizMplVarNameOptimizer()
         return normalizer.run(func)
 
 
