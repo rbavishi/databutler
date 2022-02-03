@@ -2,7 +2,7 @@ import json
 import os
 import shutil
 import textwrap
-from typing import Optional
+from typing import Optional, List
 
 from pydrive2.auth import GoogleAuth
 from pydrive2.drive import GoogleDrive
@@ -163,3 +163,25 @@ def download_folder(folder_id: str, path_dir=".", _indent: int = 0):
         else:
             logger.info(f"{_indent * ' '}Downloading `{obj.metadata['title']}` to `{target_dir}` ...")
             obj.GetContentFile(os.path.join(target_dir, obj.metadata["title"]))
+
+
+def get_folder_contents(folder_id: str) -> List[str]:
+    result: List[str] = []
+
+    drive = _get_drive()
+
+    #  Get the name of the folder
+    name = _get_name(folder_id, drive)
+
+    #  Get a list of all the files
+    file_list = drive.ListFile({"q": f"'{folder_id}' in parents and trashed=False"}).GetList()
+
+    for obj in file_list:
+        if obj.metadata["mimeType"].endswith("folder"):
+            #  Recursively list directories.
+            for path in get_folder_contents(obj.metadata["id"]):
+                result.append(os.path.join(name, path))
+        else:
+            result.append(os.path.join(name, obj.metadata["title"]))
+
+    return result
