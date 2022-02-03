@@ -310,8 +310,8 @@ class VarNameOptimizer(DatanaFunctionProcessor):
         #  Once the instrumented code is run, the finder should have populated its
         #  internal data-structures for us to use.
         self._run_function_code(func_code=inst_code, func_name=d_func.func_name,
-                                pos_args=d_func.pos_args or [],
-                                kw_args=d_func.kw_args or {},
+                                pos_args=d_func.get_pos_args() or [],
+                                kw_args=d_func.get_kw_args() or {},
                                 global_ctx=global_ctx)
 
         new_code = _rename_variables(code_ast, tracker)

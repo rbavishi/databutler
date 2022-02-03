@@ -1,7 +1,9 @@
 import copy
-from typing import Optional, List, Any, Dict
+from typing import Optional, List, Any, Dict, Union
 
 import attrs
+
+from databutler.utils import lazyobjs
 
 
 @attrs.define(eq=False, repr=False)
@@ -23,8 +25,8 @@ class DatanaFunction:
     uid: str
 
     func_name: str
-    pos_args: Optional[List[Any]] = None
-    kw_args: Optional[Dict[str, Any]] = None
+    pos_args: Optional[Union[lazyobjs.LazyList, lazyobjs.ObjRef, List[Any]]] = None
+    kw_args: Optional[Union[lazyobjs.LazyDict, lazyobjs.ObjRef, Dict[str, Any]]] = None
 
     metadata: Optional[Dict] = None
 
@@ -39,3 +41,15 @@ class DatanaFunction:
             kw_args=self.kw_args.copy() if self.kw_args is not None else None,
             metadata=copy.deepcopy(self.metadata),  # Deepcopy metadata so it's safe for modification
         )
+
+    def get_pos_args(self) -> List[Any]:
+        if isinstance(self.pos_args, (lazyobjs.LazyList, lazyobjs.ObjRef)):
+            return self.pos_args.resolve()
+        else:
+            return self.pos_args
+
+    def get_kw_args(self) -> Dict[str, Any]:
+        if isinstance(self.kw_args, (lazyobjs.LazyDict, lazyobjs.ObjRef)):
+            return self.kw_args.resolve()
+        else:
+            return self.kw_args
