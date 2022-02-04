@@ -76,15 +76,16 @@ def run_tasks_in_parallel(func: Callable,
     """
 
     Args:
-        func:
-        tasks:
-        timeout_per_task:
-        max_tasks_per_worker:
-        num_workers:
+        func: The function to run. The function must accept a single argument.
+        tasks: A list of tasks i.e. arguments to func.
+        timeout_per_task: The timeout, in seconds, to use per task.
+        max_tasks_per_worker: Maximum number of tasks assigned to a single process / worker. None means infinite.
+            Use 1 to force a restart.
+        num_workers: Maximum number of parallel workers.
         use_spawn: The 'spawn' multiprocess context is used if True. 'fork' is used otherwise.
 
     Returns:
-
+        A list of TaskResult objects, one per task.
     """
 
     mode = 'spawn' if use_spawn else 'fork'
