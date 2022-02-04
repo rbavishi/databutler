@@ -121,11 +121,15 @@ def run_tasks_in_parallel(func: Callable,
                 task_results.append(TaskResult(
                     status=TaskRunStatus.TIMEOUT,
                 ))
+                timeouts += 1
+
             except ProcessExpired as error:
                 logger.warning(f"Process exited with code {error.exitcode}: {str(error)}")
                 task_results.append(TaskResult(
                     status=TaskRunStatus.PROCESS_EXPIRED,
                 ))
+                expirations += 1
+
             except Exception as error:
                 logger.exception(error)
                 exception_tb = traceback.format_exc()
@@ -134,12 +138,15 @@ def run_tasks_in_parallel(func: Callable,
                     status=TaskRunStatus.EXCEPTION,
                     exception_tb=exception_tb,
                 ))
+                exceptions += 1
 
             else:
                 task_results.append(TaskResult(
                     status=TaskRunStatus.SUCCESS,
                     result=result,
                 ))
+
+                succ += 1
 
             if pbar is not None:
                 pbar.update(1)
