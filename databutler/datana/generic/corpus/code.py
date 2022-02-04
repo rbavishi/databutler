@@ -35,13 +35,20 @@ class DatanaFunction:
             new_pos_args = self.pos_args
         else:
             # Only make shallow copies of the arguments
-            new_pos_args = list(self.pos_args) if self.pos_args is not None else None
+            if self.pos_args is None:
+                new_pos_args = self.pos_args
+            else:
+                # Only make shallow copies of the arguments
+                new_pos_args = list(self.pos_args)
 
         if isinstance(self.kw_args, (lazyobjs.LazyDict, lazyobjs.ObjRef)):
             new_kw_args = self.kw_args
         else:
-            # Only make shallow copies of the arguments
-            new_kw_args = self.kw_args.copy() if self.kw_args is not None else None,
+            if self.kw_args is None:
+                new_kw_args = self.kw_args
+            else:
+                # Only make shallow copies of the arguments
+                new_kw_args = self.kw_args.copy()
 
         return DatanaFunction(
             code_str=self.code_str,
