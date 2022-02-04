@@ -13,6 +13,39 @@ def _get_signature(func: Callable):
         return sig
 
 
+def get_positional_only_args(*, func: Optional[Callable] = None, sig: Optional[inspect.Signature] = None) -> List[str]:
+    """
+    Returns the positional-only arguments, if any, in their definition order for the given function.
+
+    This may not always work for builtin functions, especially for older Python versions.
+
+    Args:
+        func: Optional; a callable representing the function to be analyzed. Defaults to None.
+            If not provided, `sig` must be provided.
+        sig: Optional; the signature of the function to be analyzed. Defaults to None.
+            The value of `func` is ignored if this argument is provided.
+
+    Returns:
+        A list of strings corresponding to the required arguments, in their definition order.
+
+    Raises:
+        ValueError: if the signature could not be obtained for the function.
+        TypeError: if the provided function is invalid.
+    """
+    if func is None and sig is None:
+        raise ValueError("One of func and sig must be supplied as a keyword arg")
+
+    if sig is None:
+        sig = _get_signature(func)
+
+    result: List[str] = []
+    for param in sig.parameters.values():
+        if param.kind == inspect.Parameter.POSITIONAL_ONLY:
+            result.append(param.name)
+
+    return result
+
+
 def get_required_args(*, func: Optional[Callable] = None, sig: Optional[inspect.Signature] = None) -> List[str]:
     """
     Returns the required arguments, in their definition order, for the given function.
@@ -76,7 +109,7 @@ def get_optional_args(func: Optional[Callable] = None, sig: Optional[inspect.Sig
     result: List[str] = []
     for param in sig.parameters.values():
         #  We are looking for keyword arguments with a default value.
-        if param.kind == inspect.Parameter.POSITIONAL_OR_KEYWORD or param.kind == inspect.Parameter.POSITIONAL_ONLY:
+        if param.kind == inspect.Parameter.POSITIONAL_OR_KEYWORD:
             if param.default is not inspect.Parameter.empty:
                 result.append(param.name)
 

@@ -50,7 +50,22 @@ class _KeywordArgsFinder(CallDecoratorsGenerator):
                     #  There must be starred args. Skip these functions.
                     return
 
-                pos_kw_labels = [rev_mapping[i] for i in dummy_args]
+                #  We do not want to make positional-only args keyword args
+                positional_only_args = inspection.get_positional_only_args(sig=sig)
+                pos_kw_labels = [rev_mapping[i] if rev_mapping[i] not in positional_only_args else None
+                                 for i in dummy_args]
+
+                #  Everything before the last None also has to be None since we can't mix up positional arguments
+                #  with keywords arguments per Python syntax.
+                last_none_idx = -1
+                for idx, val in enumerate(pos_kw_labels):
+                    if val is None:
+                        last_none_idx = idx
+
+                if last_none_idx != -1:
+                    for idx in range(0, last_none_idx):
+                        pos_kw_labels[idx] = None
+
                 self.label_mappings[call] = pos_kw_labels
                 self.args_info_mappings[call] = {
                     "required_args": inspection.get_required_args(sig=sig),
@@ -75,8 +90,14 @@ def _convert_pos_args_to_kw_args(code_ast: astlib.AstNode, finder: _KeywordArgsF
             if arg.keyword is not None:
                 new_args.append(arg)
             else:
-                new_args.append(astlib.with_changes(arg,
-                                                    keyword=astlib.create_name_expr(labels[ctr])))
+                kw = labels[ctr]
+                if kw is not None:
+                    new_args.append(astlib.with_changes(arg,
+                                                        keyword=astlib.create_name_expr(labels[ctr])))
+                else:
+                    #  We cannot make this a keyword argument.
+                    new_args.append(arg)
+
                 ctr += 1
 
         new_node = astlib.with_changes(old_node, args=new_args)

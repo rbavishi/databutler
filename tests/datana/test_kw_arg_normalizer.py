@@ -61,6 +61,42 @@ class KwArgNormalizerTests(unittest.TestCase):
         self.assertEqual(codeutils.normalize_code(target_code),
                          codeutils.normalize_code(new_d_func.code_str))
 
+    def test_builtin_2(self):
+        orig_code = textwrap.dedent(
+            """
+            def func(n: int):
+                return abs(n) + len([1, 2])
+            """
+        )
+
+        #  No change as the args to these builtin functions are positional-only.
+        target_code = textwrap.dedent(
+            """
+            def func(n: int):
+                return abs(n) + len([1, 2])
+            """
+        )
+
+        datana_func = DatanaFunction(
+            code_str=orig_code,
+            uid="test",
+            func_name="func",
+            pos_args=[10],
+            kw_args=None,
+        )
+
+        class TestNormalizer(KeywordArgNormalizer):
+            def _run_function_code(self, func_code: str, func_name: str, pos_args: List[Any], kw_args: Dict[str, Any],
+                                   global_ctx: Dict[str, Any]) -> Any:
+                ctx = global_ctx.copy()
+                exec(func_code, ctx)
+                ctx[func_name](*pos_args, **kw_args)
+
+        normalizer = TestNormalizer()
+        new_d_func = normalizer.run(datana_func)
+        self.assertEqual(codeutils.normalize_code(target_code),
+                         codeutils.normalize_code(new_d_func.code_str))
+
     def test_seaborn_1(self):
         orig_code = textwrap.dedent(
             """
