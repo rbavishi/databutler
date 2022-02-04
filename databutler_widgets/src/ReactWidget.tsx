@@ -30,7 +30,8 @@ function getData(input: any) {
 
 function ReactWidget(props: WidgetProps) {
   const [input, setInput] = useModelState('value');
-  const [select, setSelect] = useState(false)
+  const [select, setSelect] = useState(false);
+  const [callbackDummy, setCallbackDummy] = useModelState('callback_dummy');
 
   const dropBar = getData(input).map((post) => (
     <div key={post.id}>
@@ -56,10 +57,10 @@ function ReactWidget(props: WidgetProps) {
       <input
         type="text"
         value={input}
-        placeholder="Enter your visualization"
+        placeholder="Hello"
         onChange={(e) => setInput(e.target.value)}
       />
-      <button onClick={(e) => setSelect(true)}>Select</button>
+      <button onClick={(e) => {setSelect(true); setCallbackDummy(0)}}>Select</button>
       </>
       }
       {!select && input && dropBar}

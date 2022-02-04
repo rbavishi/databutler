@@ -19,6 +19,7 @@ import '../css/widget.css';
 // Python state in widget.py
 const defaultModelProperties = {
   value: 'Hello World',
+  callback_dummy: -1,
 }
 
 export type WidgetModelState = typeof defaultModelProperties

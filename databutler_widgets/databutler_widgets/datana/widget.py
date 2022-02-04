@@ -7,9 +7,10 @@
 """
 TODO: Add module docstring
 """
+from typing import Callable
 
 from ipywidgets import DOMWidget
-from traitlets import Unicode
+from traitlets import Unicode, Int
 from .._frontend import module_name, module_version
 
 
@@ -26,3 +27,11 @@ class DatanaExampleWidget(DOMWidget):
     # Your widget state goes here. Make sure to update the corresponding
     # JavaScript widget state (defaultModelProperties) in widget.ts
     value = Unicode('Jupyter-Datana').tag(sync=True)
+    callback_dummy = Int(-1).tag(sync=True)
+
+    def callback_method(self, my_func: Callable):
+        def wrapped_callback(*args, **kwargs):
+            if self.callback_dummy != -1:
+                my_func()
+
+        self.observe(wrapped_callback, 'callback_dummy')
