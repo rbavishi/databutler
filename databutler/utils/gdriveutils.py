@@ -72,7 +72,7 @@ def _setup_credentials():
 
         gauth = GoogleAuth(settings_file=_get_settings_path())
         try:
-            gauth.LocalWebserverAuth()
+            gauth.CommandLineAuth()
         except:
             print("That did not work. Please try again.")
         else:
