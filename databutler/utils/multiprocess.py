@@ -107,6 +107,8 @@ def run_tasks_in_parallel(func: Callable,
         else:
             pbar = None
 
+        succ = timeouts = exceptions = expirations = 0
+
         while True:
             try:
                 result = next(iterator)
@@ -141,5 +143,6 @@ def run_tasks_in_parallel(func: Callable,
 
             if pbar is not None:
                 pbar.update(1)
+                pbar.set_postfix(succ=succ, timeouts=timeouts, exc=exceptions, p_exp=expirations)
 
         return task_results
