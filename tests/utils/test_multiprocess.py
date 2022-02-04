@@ -16,3 +16,11 @@ class MultiProcessTests(unittest.TestCase):
         task_results = multiprocess.run_tasks_in_parallel(_square_fn, tasks)
         self.assertTrue(all(tr.is_success() for tr in task_results))
         self.assertEqual([1, 4, 9, 16], [tr.result for tr in task_results])
+
+    def test_parallel_tasks_2(self):
+        tasks = [1, 2, 3, 4]
+        task_results = multiprocess.run_tasks_in_parallel(_square_fn, tasks,
+                                                          use_progress_bar=True,
+                                                          progress_bar_desc="Squaring Numbers")
+        self.assertTrue(all(tr.is_success() for tr in task_results))
+        self.assertEqual([1, 4, 9, 16], [tr.result for tr in task_results])

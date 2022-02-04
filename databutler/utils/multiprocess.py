@@ -4,6 +4,7 @@ from enum import Enum
 from typing import Callable, Optional, Dict, Any, List
 
 import attrs
+import tqdm
 from pebble import concurrent, ProcessPool, ProcessExpired
 
 from databutler.utils.logging import logger
@@ -69,19 +70,23 @@ class TaskResult:
 
 def run_tasks_in_parallel(func: Callable,
                           tasks: List[Any],
-                          timeout_per_task: Optional[int] = None,
-                          max_tasks_per_worker: Optional[int] = None,
                           num_workers: int = 2,
+                          timeout_per_task: Optional[int] = None,
+                          use_progress_bar: bool = False,
+                          progress_bar_desc: Optional[str] = None,
+                          max_tasks_per_worker: Optional[int] = None,
                           use_spawn: bool = True) -> List[TaskResult]:
     """
 
     Args:
         func: The function to run. The function must accept a single argument.
         tasks: A list of tasks i.e. arguments to func.
+        num_workers: Maximum number of parallel workers.
         timeout_per_task: The timeout, in seconds, to use per task.
+        use_progress_bar: Whether to use a progress bar. Defaults to False (no progress bar).
+        progress_bar_desc: An optional string to display in the progress bar. Defaults to None (no description).
         max_tasks_per_worker: Maximum number of tasks assigned to a single process / worker. None means infinite.
             Use 1 to force a restart.
-        num_workers: Maximum number of parallel workers.
         use_spawn: The 'spawn' multiprocess context is used if True. 'fork' is used otherwise.
 
     Returns:
@@ -97,6 +102,10 @@ def run_tasks_in_parallel(func: Callable,
         future = pool.map(func, tasks, timeout=timeout_per_task)
 
         iterator = future.result()
+        if use_progress_bar:
+            pbar = tqdm.tqdm(desc=progress_bar_desc, total= len(tasks))
+        else:
+            pbar = None
 
         while True:
             try:
@@ -129,5 +138,8 @@ def run_tasks_in_parallel(func: Callable,
                     status=TaskRunStatus.SUCCESS,
                     result=result,
                 ))
+
+            if pbar is not None:
+                pbar.update(1)
 
         return task_results
