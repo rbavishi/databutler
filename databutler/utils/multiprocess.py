@@ -1,7 +1,12 @@
 import multiprocessing as mp
-from typing import Callable, Optional
+import traceback
+from enum import Enum
+from typing import Callable, Optional, Dict, Any, List
 
-from pebble import concurrent
+import attrs
+from pebble import concurrent, ProcessPool, ProcessExpired
+
+from databutler.utils.logging import logger
 
 
 class FuncTimeoutError(TimeoutError):
@@ -33,3 +38,95 @@ def run_func_in_process(func: Callable, *args, _timeout: Optional[int] = None, _
 
     except TimeoutError:
         raise FuncTimeoutError
+
+
+class TaskRunStatus(Enum):
+    SUCCESS = 0
+    EXCEPTION = 1
+    TIMEOUT = 2
+    PROCESS_EXPIRED = 3
+
+
+@attrs.define(eq=False, repr=False)
+class TaskResult:
+    status: TaskRunStatus
+
+    result: Optional[Any] = None
+    exception_tb: Optional[str] = None
+
+    def is_success(self) -> bool:
+        return self.status == TaskRunStatus.SUCCESS
+
+    def is_timeout(self) -> bool:
+        return self.status == TaskRunStatus.TIMEOUT
+
+    def is_exception(self) -> bool:
+        return self.status == TaskRunStatus.EXCEPTION
+
+    def is_process_expired(self) -> bool:
+        return self.status == TaskRunStatus.PROCESS_EXPIRED
+
+
+def run_tasks_in_parallel(func: Callable,
+                          tasks: List[Any],
+                          timeout_per_task: Optional[int] = None,
+                          max_tasks_per_worker: Optional[int] = None,
+                          num_workers: int = 2,
+                          use_spawn: bool = True) -> List[TaskResult]:
+    """
+
+    Args:
+        func:
+        tasks:
+        timeout_per_task:
+        max_tasks_per_worker:
+        num_workers:
+        use_spawn: The 'spawn' multiprocess context is used if True. 'fork' is used otherwise.
+
+    Returns:
+
+    """
+
+    mode = 'spawn' if use_spawn else 'fork'
+    task_results: List[TaskResult] = []
+
+    with ProcessPool(max_workers=num_workers,
+                     max_tasks=0 if max_tasks_per_worker is None else max_tasks_per_worker,
+                     context=mp.get_context(mode)) as pool:
+        future = pool.map(func, tasks, timeout=timeout_per_task)
+
+        iterator = future.result()
+
+        while True:
+            try:
+                result = next(iterator)
+
+            except StopIteration:
+                break
+
+            except TimeoutError as error:
+                logger.warning(f"Process timed out after {error.args[1]} seconds")
+                task_results.append(TaskResult(
+                    status=TaskRunStatus.TIMEOUT,
+                ))
+            except ProcessExpired as error:
+                logger.warning(f"Process exited with code {error.exitcode}: {str(error)}")
+                task_results.append(TaskResult(
+                    status=TaskRunStatus.PROCESS_EXPIRED,
+                ))
+            except Exception as error:
+                logger.exception(error)
+                exception_tb = traceback.format_exc()
+
+                task_results.append(TaskResult(
+                    status=TaskRunStatus.EXCEPTION,
+                    exception_tb=exception_tb,
+                ))
+
+            else:
+                task_results.append(TaskResult(
+                    status=TaskRunStatus.SUCCESS,
+                    result=result,
+                ))
+
+        return task_results
