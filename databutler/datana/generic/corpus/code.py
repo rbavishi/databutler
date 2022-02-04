@@ -31,14 +31,24 @@ class DatanaFunction:
     metadata: Optional[Dict] = None
 
     def copy(self):
+        if isinstance(self.pos_args, (lazyobjs.LazyList, lazyobjs.ObjRef)):
+            new_pos_args = self.pos_args
+        else:
+            # Only make shallow copies of the arguments
+            new_pos_args = list(self.pos_args) if self.pos_args is not None else None
+
+        if isinstance(self.kw_args, (lazyobjs.LazyDict, lazyobjs.ObjRef)):
+            new_kw_args = self.kw_args
+        else:
+            # Only make shallow copies of the arguments
+            new_kw_args = self.kw_args.copy() if self.kw_args is not None else None,
+
         return DatanaFunction(
             code_str=self.code_str,
             uid=self.uid,
             func_name=self.func_name,
-            # Only make shallow copies of the arguments
-            pos_args=list(self.pos_args) if self.pos_args is not None else None,
-            # Only make shallow copies of the arguments
-            kw_args=self.kw_args.copy() if self.kw_args is not None else None,
+            pos_args=new_pos_args,
+            kw_args=new_kw_args,
             metadata=copy.deepcopy(self.metadata),  # Deepcopy metadata so it's safe for modification
         )
 
