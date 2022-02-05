@@ -18,8 +18,9 @@ import '../css/widget.css';
 // Your widget state goes here. Make sure to update the corresponding
 // Python state in widget.py
 const defaultModelProperties = {
-  value: 'Hello World',
-  callback_dummy: -1,
+  search_box_value: '',
+  search_selected: false,
+  search_options: []
 }
 
 export type WidgetModelState = typeof defaultModelProperties

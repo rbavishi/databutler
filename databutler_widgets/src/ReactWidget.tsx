@@ -5,35 +5,13 @@ import { useModelState, WidgetModelContext } from './hooks/widget-model';
 interface WidgetProps {
   model: WidgetModel;
 }
-function getData(input: any) {
-  return [{
-    "id": "1",
-    "title": "pie chart"
-  },
-  {
-      "id": "2",
-      "title": "bar chart"
-  },
-  {
-      "id": "3",
-      "title": "stacked chart"
-  },
-  {
-      "id": "4",
-      "title": "line chart"
-  },
-  {
-      "id": "5",
-      "title": "histogram"
-  }]
-}
 
 function ReactWidget(props: WidgetProps) {
-  const [input, setInput] = useModelState('value');
-  const [select, setSelect] = useState(false);
-  const [callbackDummy, setCallbackDummy] = useModelState('callback_dummy');
+  const [input, setInput] = useModelState('search_box_value');
+  const [searchOptions, setSearchOptions] = useModelState('search_options');
+  const [select, setSelect] = useModelState('search_selected');
 
-  const dropBar = getData(input).map((post) => (
+  const dropBar = searchOptions.map((post) => (
     <div key={post.id}>
       <p
         style={{padding: "10px", margin: "0"}}
@@ -57,10 +35,10 @@ function ReactWidget(props: WidgetProps) {
       <input
         type="text"
         value={input}
-        placeholder="Hello"
+        placeholder="Enter your visualization"
         onChange={(e) => setInput(e.target.value)}
       />
-      <button onClick={(e) => {setSelect(true); setCallbackDummy(0)}}>Select</button>
+      <button onClick={(e) => {setSelect(true);}}>Select</button>
       </>
       }
       {!select && input && dropBar}
