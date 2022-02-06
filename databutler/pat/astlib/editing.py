@@ -1,4 +1,4 @@
-from typing import Union, Dict, Set, Optional
+from typing import Union, Dict, Set, Optional, Collection
 import libcst as cst
 
 
@@ -17,6 +17,19 @@ class ChildReplacementTransformer(cst.CSTTransformer):
         if original_node in self.replacements:
             return self.replacements[original_node]
         return updated_node
+
+
+class NodeRemovalTransformer(cst.CSTTransformer):
+    def __init__(self, to_remove: Collection[cst.CSTNode]) -> None:
+        self._to_remove = set(to_remove)
+
+    def on_leave(self, original_node: cst.CSTNode, updated_node: cst.CSTNode
+                 ) -> Union[cst.CSTNode, cst.RemovalSentinel]:
+
+        if original_node in self._to_remove:
+            return cst.RemoveFromParent()
+        else:
+            return updated_node
 
 
 class StmtRemovalAndSimplificationTransformer(cst.CSTTransformer):
