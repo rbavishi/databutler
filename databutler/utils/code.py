@@ -24,8 +24,21 @@ def normalize_code(code: str) -> str:
     Returns:
         (str): The normalized code.
     """
+    return unparse_native_ast(ast.parse(code))
+
+
+def unparse_native_ast(code_ast: ast.AST) -> str:
+    """
+    Returns a formatting-normalized version of the provided Python AST by running through a code-generator.
+
+    Args:
+        code_ast: The Python AST to unparse.
+
+    Returns:
+        (str): A normalized code string.
+    """
     mode = black.FileMode()
-    return black.format_str(astunparse.unparse(ast.parse(code)).strip(), mode=mode).strip()
+    return black.format_str(astunparse.unparse(code_ast).strip(), mode=mode).strip()
 
 
 def optimize_code(code: str) -> str:
