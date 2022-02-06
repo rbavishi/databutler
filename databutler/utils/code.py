@@ -4,6 +4,8 @@ from typing import Any
 import astunparse
 import black
 
+from databutler.pat import astlib
+
 
 class _CodeOptimizer(ast.NodeTransformer):
     def visit_Assign(self, node: ast.Assign) -> Any:
@@ -39,6 +41,20 @@ def unparse_native_ast(code_ast: ast.AST) -> str:
     """
     mode = black.FileMode()
     return black.format_str(astunparse.unparse(code_ast).strip(), mode=mode).strip()
+
+
+def unparse_astlib_ast(code_ast: astlib.AstNode) -> str:
+    """
+    Returns a formatting-normalized version of the provided AstLib AstNode by running through a code-generator.
+
+    Args:
+        code_ast: The AST obtained via astlib to unparse.
+
+    Returns:
+        (str): A normalized code string.
+    """
+    mode = black.FileMode()
+    return black.format_str(astlib.to_code(code_ast).strip(), mode=mode).strip()
 
 
 def optimize_code(code: str) -> str:
