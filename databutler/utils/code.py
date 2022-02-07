@@ -53,8 +53,7 @@ def unparse_astlib_ast(code_ast: astlib.AstNode) -> str:
     Returns:
         (str): A normalized code string.
     """
-    mode = black.FileMode()
-    return black.format_str(astlib.to_code(code_ast).strip(), mode=mode).strip()
+    return normalize_code(astlib.to_code(code_ast))
 
 
 def optimize_code(code: str) -> str:
