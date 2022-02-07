@@ -53,7 +53,7 @@ def _get_func_name_metadata(finder: _FuncNameFinder) -> Dict[str, str]:
     """
     func_name_mappings: Dict[str, str] = {}
     for node, name in finder.func_name_mappings.items():
-        func_name_mappings[codeutils.normalize_code(astlib.to_code(node))] = name
+        func_name_mappings[codeutils.unparse_astlib_ast(node)] = name
 
     return func_name_mappings
 
@@ -92,7 +92,7 @@ class FuncNameExtractor(DatanaFunctionProcessor, ABC):
         new_d_func = d_func.copy()
         new_d_func.metadata = new_d_func.metadata or {}
         new_d_func.metadata[self.get_processor_metadata_key()] = {
-            "func_name_mappings": func_name_mappings
+            self.get_func_name_mappings_key(): func_name_mappings
         }
 
         return new_d_func
@@ -100,6 +100,10 @@ class FuncNameExtractor(DatanaFunctionProcessor, ABC):
     @classmethod
     def get_processor_name(cls) -> str:
         return "func-name-extractor"
+
+    @classmethod
+    def get_func_name_mappings_key(cls) -> str:
+        return "func_name_mappings"
 
     @abstractmethod
     def _run_function_code(self, func_code: str, func_name: str, pos_args: List[Any], kw_args: Dict[str, Any],
