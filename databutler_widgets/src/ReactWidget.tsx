@@ -48,8 +48,8 @@ function ReactWidget(props: WidgetProps) {
 }
 
 function Selection(input: any) {
-  const [highlightedGraph, setHighLightedGraph] = useModelState('highlighted_graph');
   const [graphs, setGraphs] = useModelState('graphs_generated')
+  const [highlightedGraph, setHighLightedGraph] = useModelState('highlighted_graph');
   const [modsList, setModsList] = useModelState('mods_list')
 
 
@@ -62,14 +62,15 @@ function Selection(input: any) {
 }
 
 function formatGraphs(graphList: any, setHighLightedGraph: any) {
-
-  let graphs = graphList.map((graph) => (
-    <ImageBox graph={graph} setHighLightedGraph={setHighLightedGraph} />
-  ))
+  let graphs = graphList.map((graph) =>
+    <>
+    <ImageBox graph={graph} setHighlightedGraph={setHighLightedGraph} />
+    </>
+  )
   return graphs
 }
 
-function ImageBox(graph: any, setHighlightedGraph: any) {
+function ImageBox({ graph, setHighlightedGraph } ) {
   return <img src={graph.addr}
               id={"image" + graph.id}
               style={{border: "1px solid black"}}
