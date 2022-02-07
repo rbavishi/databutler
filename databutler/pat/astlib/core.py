@@ -491,6 +491,10 @@ def is_stmt_container(node: AstNode) -> bool:
     return isinstance(node, (cst.IndentedBlock, cst.SimpleStatementSuite, NotebookCellBody))
 
 
+def is_keyword_arg(arg: Arg) -> bool:
+    return isinstance(arg, cst.Arg) and arg.keyword is not None and arg.star == ""
+
+
 def iter_children(node: AstNode) -> Iterator[AstNode]:
     for c in node.children:
         yield c
