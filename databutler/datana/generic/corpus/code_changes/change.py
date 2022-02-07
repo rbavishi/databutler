@@ -11,14 +11,10 @@ from databutler.utils import code as codeutils
 
 
 @attrs.define(eq=False, repr=False)
-class BaseCodeRemovalChange(ABC):
-    """
-    Base class for code changes based purely on removal of code.
-    """
-
+class BaseCodeChange(ABC):
     @classmethod
     @abstractmethod
-    def apply_changes(cls, code: str, changes: List['BaseCodeRemovalChange']) -> str:
+    def apply_changes(cls, code: str, changes: List['BaseCodeChange']) -> str:
         """
         Class method to apply the provided list of changes to the supplied code.
 
@@ -27,11 +23,18 @@ class BaseCodeRemovalChange(ABC):
 
         Args:
             code: A string corresponding to the code to apply changes to.
-            changes: A list of removal-based changes.
+            changes: A list of changes.
 
         Returns:
             A string corresponding to the changed code.
         """
+
+
+@attrs.define(eq=False, repr=False)
+class BaseCodeRemovalChange(BaseCodeChange, ABC):
+    """
+    Base class for code changes based purely on removal of code.
+    """
 
 
 @attrs.define(eq=True, hash=True)
