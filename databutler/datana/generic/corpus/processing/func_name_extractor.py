@@ -81,8 +81,8 @@ class FuncNameExtractor(DatanaFunctionProcessor, ABC):
         #  Once the instrumented code is run, the finder should have populated its
         #  internal data-structures for us to use.
         self._run_function_code(func_code=inst_code, func_name=d_func.func_name,
-                                pos_args=d_func.pos_args or [],
-                                kw_args=d_func.kw_args or {},
+                                pos_args=d_func.get_pos_args() or [],
+                                kw_args=d_func.get_kw_args() or {},
                                 global_ctx=global_ctx)
 
         #  Get the normalized code
@@ -91,7 +91,7 @@ class FuncNameExtractor(DatanaFunctionProcessor, ABC):
         #  Assemble the result
         new_d_func = d_func.copy()
         new_d_func.metadata = new_d_func.metadata or {}
-        new_d_func.metadata[f"metadata-{self.get_processor_name()}"] = {
+        new_d_func.metadata[self.get_processor_metadata_key()] = {
             "func_name_mappings": func_name_mappings
         }
 

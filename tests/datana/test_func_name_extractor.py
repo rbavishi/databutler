@@ -2,7 +2,7 @@ import textwrap
 import unittest
 
 from databutler.datana.generic.corpus.code import DatanaFunction
-from databutler.datana.viz.corpus.code_processors import VizFuncNameExtractor
+from databutler.datana.viz.corpus.code_processors import VizMplFuncNameExtractor
 from databutler.utils import multiprocess
 from databutler.utils.libversioning import modified_lib_env
 
@@ -11,7 +11,7 @@ def _seaborn_runner(func: DatanaFunction):
     #  Need to keep this outer-level to be able to run with pebble.concurrent.
     #  See https://github.com/noxdafox/pebble/issues/80
     with modified_lib_env("seaborn", "0.11.0"):
-        normalizer = VizFuncNameExtractor()
+        normalizer = VizMplFuncNameExtractor()
         return normalizer.run(func)
 
 
@@ -35,7 +35,7 @@ class FuncNameExtractorTests(unittest.TestCase):
         )
 
         new_d_func = multiprocess.run_func_in_process(_seaborn_runner, datana_func)
-        metadata_key = f"metadata-{VizFuncNameExtractor.get_processor_name()}"
+        metadata_key = f"metadata-{VizMplFuncNameExtractor.get_processor_name()}"
         func_name_mappings = new_d_func.metadata[metadata_key]['func_name_mappings']
 
         #  Just one function call to check

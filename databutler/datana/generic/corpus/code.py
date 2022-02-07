@@ -1,7 +1,9 @@
 import copy
-from typing import Optional, List, Any, Dict
+from typing import Optional, List, Any, Dict, Union
 
 import attrs
+
+from databutler.utils import lazyobjs
 
 
 @attrs.define(eq=False, repr=False)
@@ -23,19 +25,48 @@ class DatanaFunction:
     uid: str
 
     func_name: str
-    pos_args: Optional[List[Any]] = None
-    kw_args: Optional[Dict[str, Any]] = None
+    pos_args: Optional[Union[lazyobjs.LazyList, lazyobjs.ObjRef, List[Any]]] = None
+    kw_args: Optional[Union[lazyobjs.LazyDict, lazyobjs.ObjRef, Dict[str, Any]]] = None
 
     metadata: Optional[Dict] = None
 
     def copy(self):
+        if isinstance(self.pos_args, (lazyobjs.LazyList, lazyobjs.ObjRef)):
+            new_pos_args = self.pos_args
+        else:
+            # Only make shallow copies of the arguments
+            if self.pos_args is None:
+                new_pos_args = self.pos_args
+            else:
+                # Only make shallow copies of the arguments
+                new_pos_args = list(self.pos_args)
+
+        if isinstance(self.kw_args, (lazyobjs.LazyDict, lazyobjs.ObjRef)):
+            new_kw_args = self.kw_args
+        else:
+            if self.kw_args is None:
+                new_kw_args = self.kw_args
+            else:
+                # Only make shallow copies of the arguments
+                new_kw_args = self.kw_args.copy()
+
         return DatanaFunction(
             code_str=self.code_str,
             uid=self.uid,
             func_name=self.func_name,
-            # Only make shallow copies of the arguments
-            pos_args=list(self.pos_args) if self.pos_args is not None else None,
-            # Only make shallow copies of the arguments
-            kw_args=self.kw_args.copy() if self.kw_args is not None else None,
+            pos_args=new_pos_args,
+            kw_args=new_kw_args,
             metadata=copy.deepcopy(self.metadata),  # Deepcopy metadata so it's safe for modification
         )
+
+    def get_pos_args(self) -> List[Any]:
+        if isinstance(self.pos_args, (lazyobjs.LazyList, lazyobjs.ObjRef)):
+            return self.pos_args.resolve()
+        else:
+            return self.pos_args
+
+    def get_kw_args(self) -> Dict[str, Any]:
+        if isinstance(self.kw_args, (lazyobjs.LazyDict, lazyobjs.ObjRef)):
+            return self.kw_args.resolve()
+        else:
+            return self.kw_args

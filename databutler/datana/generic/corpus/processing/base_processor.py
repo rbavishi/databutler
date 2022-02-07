@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from typing import List
 
 import attrs
 
@@ -28,6 +29,10 @@ class DatanaFunctionProcessor(ABC):
         Returns the name of the processor as a string.
         """
 
+    @classmethod
+    def get_processor_metadata_key(cls) -> str:
+        return f"metadata-{cls.get_processor_name()}"
+
     def run(self, d_func: DatanaFunction) -> DatanaFunction:
         """
         Returns the new Datana function after processing.
@@ -44,6 +49,14 @@ class DatanaFunctionProcessor(ABC):
         if new_func.uid != d_func.uid:
             raise AssertionError("Function UID not same after processing.")
 
+        orig_metadata_keys = set((d_func.metadata or {}).keys())
+        new_metadata_keys = set((new_func.metadata or {}).keys())
+        new_keys = new_metadata_keys - orig_metadata_keys
+        if len(new_keys) > 1 or (len(new_keys) == 1 and self.get_processor_metadata_key() not in new_keys):
+            raise AssertionError(
+                f"A processor can only add in a single metadata key - {self.get_processor_metadata_key()}"
+            )
+
         #  Maintain a history of processors applied.
         if new_func.metadata is None:
             new_func.metadata = {}
@@ -55,3 +68,26 @@ class DatanaFunctionProcessor(ABC):
         new_func.metadata[key] = processor_history
 
         return new_func
+
+
+@attrs.define(eq=False, repr=False)
+class DatanaFunctionProcessorChain:
+    #  The list of processors to use in the chain.
+    processors: List[DatanaFunctionProcessor]
+
+    def run(self, d_func: DatanaFunction) -> DatanaFunction:
+        """
+        Returns the new Datana function after applying all processors in the chain.
+
+        Args:
+            d_func: A Datana function to be processed.
+
+        Returns:
+            A Datana function corresponding to the processed version of the input after applying all the processors.
+        """
+
+        func = d_func
+        for p in self.processors:
+            func = p.run(func)
+
+        return func

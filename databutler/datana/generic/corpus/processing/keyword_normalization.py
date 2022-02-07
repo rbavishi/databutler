@@ -50,7 +50,22 @@ class _KeywordArgsFinder(CallDecoratorsGenerator):
                     #  There must be starred args. Skip these functions.
                     return
 
-                pos_kw_labels = [rev_mapping[i] for i in dummy_args]
+                #  We do not want to make positional-only args keyword args
+                positional_only_args = inspection.get_positional_only_args(sig=sig)
+                pos_kw_labels = [rev_mapping[i] if rev_mapping[i] not in positional_only_args else None
+                                 for i in dummy_args]
+
+                #  Everything before the last None also has to be None since we can't mix up positional arguments
+                #  with keywords arguments per Python syntax.
+                last_none_idx = -1
+                for idx, val in enumerate(pos_kw_labels):
+                    if val is None:
+                        last_none_idx = idx
+
+                if last_none_idx != -1:
+                    for idx in range(0, last_none_idx):
+                        pos_kw_labels[idx] = None
+
                 self.label_mappings[call] = pos_kw_labels
                 self.args_info_mappings[call] = {
                     "required_args": inspection.get_required_args(sig=sig),
@@ -75,8 +90,14 @@ def _convert_pos_args_to_kw_args(code_ast: astlib.AstNode, finder: _KeywordArgsF
             if arg.keyword is not None:
                 new_args.append(arg)
             else:
-                new_args.append(astlib.with_changes(arg,
-                                                    keyword=astlib.create_name_expr(labels[ctr])))
+                kw = labels[ctr]
+                if kw is not None:
+                    new_args.append(astlib.with_changes(arg,
+                                                        keyword=astlib.create_name_expr(labels[ctr])))
+                else:
+                    #  We cannot make this a keyword argument.
+                    new_args.append(arg)
+
                 ctr += 1
 
         new_node = astlib.with_changes(old_node, args=new_args)
@@ -121,8 +142,8 @@ class KeywordArgNormalizer(DatanaFunctionProcessor, ABC):
         #  Once the instrumented code is run, the finder should have populated its
         #  internal data-structures for us to use.
         self._run_function_code(func_code=inst_code, func_name=d_func.func_name,
-                                pos_args=d_func.pos_args or [],
-                                kw_args=d_func.kw_args or {},
+                                pos_args=d_func.get_pos_args() or [],
+                                kw_args=d_func.get_kw_args() or {},
                                 global_ctx=global_ctx)
 
         #  Get the normalized code
@@ -136,7 +157,7 @@ class KeywordArgNormalizer(DatanaFunctionProcessor, ABC):
         new_d_func = d_func.copy()
         new_d_func.code_str = norm_code
         new_d_func.metadata = new_d_func.metadata or {}
-        new_d_func.metadata[f"metadata-{self.get_processor_name()}"] = {
+        new_d_func.metadata[self.get_processor_metadata_key()] = {
             "old_code": d_func.code_str,
             **norm_metadata
         }

@@ -14,7 +14,7 @@ def _get_lib_version_path(lib_name: str, version: str) -> str:
         lib_name (str): Name of the library.
         version (str): The version to use. This must be an exact version - wildcards are not supported as of now.
     """
-    path = os.path.join(path_utils.get_user_home_dir_path(), ".databutler", f"{lib_name}-{version}")
+    path = os.path.join(path_utils.get_user_home_dir_path(), ".databutler", "libversioning", f"{lib_name}-{version}")
     return path
 
 

@@ -1,7 +1,13 @@
 import multiprocessing as mp
-from typing import Callable, Optional
+import traceback
+from enum import Enum
+from typing import Callable, Optional, Dict, Any, List
 
-from pebble import concurrent
+import attrs
+import tqdm
+from pebble import concurrent, ProcessPool, ProcessExpired
+
+from databutler.utils.logging import logger
 
 
 class FuncTimeoutError(TimeoutError):
@@ -33,3 +39,117 @@ def run_func_in_process(func: Callable, *args, _timeout: Optional[int] = None, _
 
     except TimeoutError:
         raise FuncTimeoutError
+
+
+class TaskRunStatus(Enum):
+    SUCCESS = 0
+    EXCEPTION = 1
+    TIMEOUT = 2
+    PROCESS_EXPIRED = 3
+
+
+@attrs.define(eq=False, repr=False)
+class TaskResult:
+    status: TaskRunStatus
+
+    result: Optional[Any] = None
+    exception_tb: Optional[str] = None
+
+    def is_success(self) -> bool:
+        return self.status == TaskRunStatus.SUCCESS
+
+    def is_timeout(self) -> bool:
+        return self.status == TaskRunStatus.TIMEOUT
+
+    def is_exception(self) -> bool:
+        return self.status == TaskRunStatus.EXCEPTION
+
+    def is_process_expired(self) -> bool:
+        return self.status == TaskRunStatus.PROCESS_EXPIRED
+
+
+def run_tasks_in_parallel(func: Callable,
+                          tasks: List[Any],
+                          num_workers: int = 2,
+                          timeout_per_task: Optional[int] = None,
+                          use_progress_bar: bool = False,
+                          progress_bar_desc: Optional[str] = None,
+                          max_tasks_per_worker: Optional[int] = None,
+                          use_spawn: bool = True) -> List[TaskResult]:
+    """
+
+    Args:
+        func: The function to run. The function must accept a single argument.
+        tasks: A list of tasks i.e. arguments to func.
+        num_workers: Maximum number of parallel workers.
+        timeout_per_task: The timeout, in seconds, to use per task.
+        use_progress_bar: Whether to use a progress bar. Defaults to False (no progress bar).
+        progress_bar_desc: An optional string to display in the progress bar. Defaults to None (no description).
+        max_tasks_per_worker: Maximum number of tasks assigned to a single process / worker. None means infinite.
+            Use 1 to force a restart.
+        use_spawn: The 'spawn' multiprocess context is used if True. 'fork' is used otherwise.
+
+    Returns:
+        A list of TaskResult objects, one per task.
+    """
+
+    mode = 'spawn' if use_spawn else 'fork'
+    task_results: List[TaskResult] = []
+
+    with ProcessPool(max_workers=num_workers,
+                     max_tasks=0 if max_tasks_per_worker is None else max_tasks_per_worker,
+                     context=mp.get_context(mode)) as pool:
+        future = pool.map(func, tasks, timeout=timeout_per_task)
+
+        iterator = future.result()
+        if use_progress_bar:
+            pbar = tqdm.tqdm(desc=progress_bar_desc, total= len(tasks))
+        else:
+            pbar = None
+
+        succ = timeouts = exceptions = expirations = 0
+
+        while True:
+            try:
+                result = next(iterator)
+
+            except StopIteration:
+                break
+
+            except TimeoutError as error:
+                logger.warning(f"Process timed out after {error.args[1]} seconds")
+                task_results.append(TaskResult(
+                    status=TaskRunStatus.TIMEOUT,
+                ))
+                timeouts += 1
+
+            except ProcessExpired as error:
+                logger.warning(f"Process exited with code {error.exitcode}: {str(error)}")
+                task_results.append(TaskResult(
+                    status=TaskRunStatus.PROCESS_EXPIRED,
+                ))
+                expirations += 1
+
+            except Exception as error:
+                logger.exception(error)
+                exception_tb = traceback.format_exc()
+
+                task_results.append(TaskResult(
+                    status=TaskRunStatus.EXCEPTION,
+                    exception_tb=exception_tb,
+                ))
+                exceptions += 1
+
+            else:
+                task_results.append(TaskResult(
+                    status=TaskRunStatus.SUCCESS,
+                    result=result,
+                ))
+
+                succ += 1
+
+            if pbar is not None:
+                pbar.update(1)
+                pbar.set_postfix(succ=succ, timeouts=timeouts, exc=exceptions, p_exp=expirations)
+
+        return task_results
