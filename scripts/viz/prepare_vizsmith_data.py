@@ -237,10 +237,10 @@ class _CodeProcessing:
             processor_chain = DatanaFunctionProcessorChain(
                 processors=[
                     VizMplCodeNormalizer(),
+                    VizMplVarNameOptimizer(),
+                    VizMplKeywordArgNormalizer(),
                     VizMplAxesCounter(),
                     VizMplFuncNameExtractor(),
-                    VizMplKeywordArgNormalizer(),
-                    VizMplVarNameOptimizer(),
                 ]
             )
 
