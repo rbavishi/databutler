@@ -37,8 +37,8 @@ class DatanaExampleWidget(DOMWidget):
 
     def __init__(self):
         super().__init__()
-        self.callback_method(lambda: self.update_search_options(), 'search_box_value')
-        self.callback_method(lambda: self.update_graphs(), 'search_selected')
+        # self.callback_method(lambda: self.update_search_options(), 'search_box_value')
+        # self.callback_method(lambda: self.update_graphs(), 'search_selected')
         self.callback_method(lambda: self.update_mods(), 'highlighted_graph')
 
     def update_search_options(self):
