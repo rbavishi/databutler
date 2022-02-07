@@ -20,7 +20,10 @@ import '../css/widget.css';
 const defaultModelProperties = {
   search_box_value: '',
   search_selected: false,
-  search_options: []
+  search_options: [],
+  graphs_generated: [],
+  highlighted_graph: {},
+  mods_list: []
 }
 
 export type WidgetModelState = typeof defaultModelProperties
