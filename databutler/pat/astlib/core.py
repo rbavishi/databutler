@@ -18,7 +18,8 @@ from libcst import AnnAssign, Assert, Assign, Attribute, AugAssign, Await, BaseA
     Name, NamedExpr, Nonlocal, Pass, Raise, Return, Set, SetComp, SimpleString, Subscript, Try, Tuple, UnaryOperation, \
     While, With, Yield, Module, Arg, Param, Decorator
 
-from databutler.pat.astlib.editing import ChildReplacementTransformer, StmtRemovalAndSimplificationTransformer
+from databutler.pat.astlib.editing import ChildReplacementTransformer, StmtRemovalAndSimplificationTransformer, \
+    NodeRemovalTransformer
 from databutler.pat.astlib.notebooks import NotebookCell, NotebookCellBody, parse_ipynb
 
 AstNode = cst.CSTNode
@@ -464,6 +465,10 @@ def is_stmt_container(node: AstNode) -> bool:
     return isinstance(node, (cst.IndentedBlock, cst.SimpleStatementSuite, NotebookCellBody))
 
 
+def is_keyword_arg(arg: Arg) -> bool:
+    return isinstance(arg, cst.Arg) and arg.keyword is not None and arg.star == ""
+
+
 def iter_children(node: AstNode) -> Iterator[AstNode]:
     for c in node.children:
         yield c
@@ -604,3 +609,7 @@ def remove_simple_statements_and_simplify(node: AstNode,
         raise AssertionError("Exactly one of to_remove and to_retain has to be provided.")
 
     return node.visit(StmtRemovalAndSimplificationTransformer(to_remove=to_remove, to_retain=to_retain))
+
+
+def remove_nodes_from_ast(ast_: AstNode, to_remove: typing.Collection[AstNode]) -> AstNode:
+    return ast_.visit(NodeRemovalTransformer(to_remove))

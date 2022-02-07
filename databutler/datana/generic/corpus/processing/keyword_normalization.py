@@ -107,12 +107,12 @@ def _convert_pos_args_to_kw_args(code_ast: astlib.AstNode, finder: _KeywordArgsF
 
     for node, info in finder.args_info_mappings.items():
         node = new_nodes.get(node, node)
-        arg_info_dict[codeutils.normalize_code(astlib.to_code(node))] = info
+        arg_info_dict[codeutils.unparse_astlib_ast(node)] = info
 
     modified_ast = astlib.with_deep_replacements(code_ast, new_nodes)
 
     return {
-        "code": codeutils.normalize_code(astlib.to_code(modified_ast)),
+        "code": codeutils.unparse_astlib_ast(modified_ast),
         "arg_infos": arg_info_dict,
     }
 
@@ -150,7 +150,7 @@ class KeywordArgNormalizer(DatanaFunctionProcessor, ABC):
         res = _convert_pos_args_to_kw_args(code_ast, finder)
         norm_code = res['code']
         norm_metadata = {  # Additional metadata we would like to store in the result.
-            "arg_infos": res['arg_infos']
+            self.get_arg_infos_metadata_key(): res['arg_infos']
         }
 
         #  Assemble the result
@@ -158,7 +158,7 @@ class KeywordArgNormalizer(DatanaFunctionProcessor, ABC):
         new_d_func.code_str = norm_code
         new_d_func.metadata = new_d_func.metadata or {}
         new_d_func.metadata[self.get_processor_metadata_key()] = {
-            "old_code": d_func.code_str,
+            self.get_old_code_metadata_key(): d_func.code_str,
             **norm_metadata
         }
 
@@ -167,6 +167,14 @@ class KeywordArgNormalizer(DatanaFunctionProcessor, ABC):
     @classmethod
     def get_processor_name(cls) -> str:
         return "keyword-arg-normalizer"
+
+    @classmethod
+    def get_old_code_metadata_key(cls) -> str:
+        return "old_code"
+
+    @classmethod
+    def get_arg_infos_metadata_key(cls) -> str:
+        return "arg_infos"
 
     @abstractmethod
     def _run_function_code(self, func_code: str, func_name: str, pos_args: List[Any], kw_args: Dict[str, Any],
