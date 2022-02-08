@@ -17,6 +17,9 @@ from databutler.datana.viz.utils import mpl_exec
 
 mpl.use('Agg')
 
+LOADING_URL = ("https://www.pinclipart.com/picdir/middle/"
+               "543-5431019_nail-polish-hand-nail-transparent-background-loading-icon.png")
+
 
 class _AllColumns:
     pass
@@ -34,6 +37,7 @@ def _serialize_fig(fig, tight: bool = True):
 
 def _run_func_and_get_img_src_as_base64(code: str, func_name: str, pos_args: List[Any], kw_args: Dict[str, Any]) -> str:
     #  Currently assumes the functions run correctly
+    display.display(code)
     fig = mpl_exec.run_viz_code_matplotlib_mp(code, func_name=func_name, pos_args=pos_args, kw_args=kw_args)
     png_bytes = _serialize_fig(fig, tight=True)
     b64_val = base64.b64encode(png_bytes).decode('utf-8')
@@ -57,11 +61,16 @@ def _get_search_options(df: pd.DataFrame, columns: Union[List[str], Type[_AllCol
     return vanilla_desc_map
 
 
+def _get_uid_to_corpus_item_map() -> Dict[str, demo_corpus.CorpusItem]:
+    return {item.uid: item for item in demo_corpus.CORPUS}
+
+
 def synthesize(df: pd.DataFrame, columns: Union[List[str], Type[_AllColumns]] = _AllColumns):
     if columns is _AllColumns or len(columns) != 1:
         raise NotImplementedError("Only handling single columns for now")
 
     search_options = _get_search_options(df, columns)
+    uid_to_corpus_items: Dict[str, demo_corpus.CorpusItem] = _get_uid_to_corpus_item_map()
     widget = DatanaExampleWidget()
 
     #  Setup the search options
@@ -84,14 +93,42 @@ def synthesize(df: pd.DataFrame, columns: Union[List[str], Type[_AllColumns]] = 
             pos_args = []
             kw_args = {"df": df, "col0": columns[0]}
             img_src = _run_func_and_get_img_src_as_base64(code, item.func.func_name, pos_args, kw_args)
+            display.display([v[1] for v in item.change_dict.values()])
 
             graphs.append({
                 "id": item.uid,
                 "addr": img_src,
+                "variant_desc": [{
+                    "id": k,
+                    "desc": v[1]
+                } for k, v in item.change_dict.items()],
             })
 
         widget.graphs_generated = graphs
 
     widget.callback_method(_update_graphs, "search_selected")
+
+    def _update_highlighted_graph():
+        unchecked_change_ids: List[str] = list(map(str, widget.unchecked_mods_list))
+        cur_item = uid_to_corpus_items[widget.highlighted_graph["id"]]
+        new_code = cur_item.apply_changes(unchecked_change_ids)
+
+        pos_args = []
+        kw_args = {"df": df, "col0": columns[0]}
+        widget.highlighted_graph = {
+            "id": cur_item.uid,
+            "addr": LOADING_URL,
+            "variant_desc": widget.highlighted_graph['variant_desc']
+        }
+
+        img_src = _run_func_and_get_img_src_as_base64(new_code, cur_item.func.func_name, pos_args, kw_args)
+
+        widget.highlighted_graph = {
+            "id": cur_item.uid,
+            "addr": img_src,
+            "variant_desc": widget.highlighted_graph['variant_desc']
+        }
+
+    widget.callback_method(_update_highlighted_graph, "unchecked_mods_list")
 
     display.display(widget)

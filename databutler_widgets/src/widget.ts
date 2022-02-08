@@ -23,7 +23,7 @@ const defaultModelProperties = {
   search_options: [],
   graphs_generated: [],
   highlighted_graph: {},
-  mods_list: []
+  unchecked_mods_list: []
 }
 
 export type WidgetModelState = typeof defaultModelProperties

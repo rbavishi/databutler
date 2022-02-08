@@ -50,13 +50,11 @@ function ReactWidget(props: WidgetProps) {
 function Selection(input: any) {
   const [graphs, setGraphs] = useModelState('graphs_generated')
   const [highlightedGraph, setHighLightedGraph] = useModelState('highlighted_graph');
-  const [modsList, setModsList] = useModelState('mods_list')
-
 
   return (
     <>
     <div>{formatGraphs(graphs, setHighLightedGraph)}</div>
-    {highlightedGraph !== {} && <DisplayGraph graph={highlightedGraph} modsList={modsList}/>}
+    {JSON.stringify(highlightedGraph) !== '{}' && <DisplayGraph graph={highlightedGraph}/>}
     </>
   )
 }
@@ -70,6 +68,11 @@ function formatGraphs(graphList: any, setHighLightedGraph: any) {
   return graphs
 }
 
+const Console = prop => (
+  console[Object.keys(prop)[0]](...Object.values(prop))
+  ,null // ➜ React components must return something
+)
+
 function ImageBox({ graph, setHighlightedGraph } ) {
   return <img src={graph.addr}
               id={"image" + graph.id}
@@ -77,21 +80,37 @@ function ImageBox({ graph, setHighlightedGraph } ) {
               onClick={(e) => {setHighlightedGraph(graph)}}></img>
 }
 
-function DisplayGraph({ graph, modsList }) {
+function DisplayGraph({graph}) {
+  const [modsList, setModsList] = useModelState('unchecked_mods_list');
   return (
     <div style={{paddingTop: "30px", display: "flex", flexDirection: "row"}}>
       <img src={graph.addr}
                 style={{border: "1px solid black", width: "600px"}} />
       <div className="options">
-        {formatOptions(modsList)}
+        {formatOptions(graph, modsList, setModsList)}
       </div>
     </div>
   )
 }
 
-function formatOptions(lst: []) {
-  return lst.map((mod) => (
-    <div><input type="checkbox" id="topping" name="topping" value="Lorem Ipsum" />{mod}</div>
+function formatOptions(graph: any, lst: any, setModsList) {
+  return graph.variant_desc.map((mod: any) => (
+    <div><input type="checkbox" id="topping" name="topping" value="Lorem Ipsum" checked={!(lst.indexOf(mod.id) > -1)}
+                onChange={(e) => {
+                    if (!e.target.checked) {
+                        let lstCopy = [...lst];
+                        lstCopy.push(mod.id);
+                        setModsList(lstCopy);
+                    }
+                    else {
+                        let lstCopy = [... lst];
+                        if (lstCopy.indexOf(mod.id) > -1) {
+                            lstCopy = lstCopy.filter((elem) => elem !== mod.id);
+                            setModsList(lstCopy);
+                        }
+                    }
+                }
+                }/>{mod.desc}</div>
   ))
 }
 

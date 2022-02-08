@@ -33,47 +33,10 @@ class DatanaExampleWidget(DOMWidget):
     graphs_generated = List([]).tag(sync=True)
 
     highlighted_graph = Dict({}).tag(sync=True)
-    mods_list = List([]).tag(sync=True)
+    unchecked_mods_list = List([]).tag(sync=True)
 
     def __init__(self):
         super().__init__()
-        # self.callback_method(lambda: self.update_search_options(), 'search_box_value')
-        # self.callback_method(lambda: self.update_graphs(), 'search_selected')
-        self.callback_method(lambda: self.update_mods(), 'highlighted_graph')
-
-    def update_search_options(self):
-        # hard coded update -> change to trie structure later
-        # passing in self.search_box_value to demonstrate dynamic value generation
-        self.search_options = [
-            {'id': '1', 'title': 'pie chart'},
-            {'id': '2', 'title': 'bar chart'},
-            {'id': '3', 'title': 'histogram'},
-            {'id': '4', 'title': self.search_box_value},
-        ]
-
-    def update_graphs(self):
-        self.graphs_generated = [
-            {
-                'id': '1',
-                'addr': IMAGE_LINK
-            },
-            {
-                'id': '2',
-                'addr': IMAGE_LINK
-            },
-            {
-                'id': '3',
-                'addr': IMAGE_LINK
-            },
-        ]
-
-    def update_mods(self):
-        self.mods_list = [
-            "lorem ipsum 1",
-            "lorem ipsum 2",
-            "lorem ipsum 3",
-            "lorem ipsum 4"
-        ]
 
     def callback_method(self, callback_fn: Callable, callback_var: str):
         # the callback function never takes any arguments
