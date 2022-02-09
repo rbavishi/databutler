@@ -9,6 +9,7 @@ from typing import List, Union, Type, Dict, Any
 
 import pandas as pd
 import matplotlib as mpl
+import matplotlib.pyplot as plt
 from IPython import display
 
 from databutler_widgets.datana.widget import DatanaExampleWidget
@@ -40,6 +41,7 @@ def _run_func_and_get_img_src_as_base64(code: str, func_name: str, pos_args: Lis
     display.display(code)
     fig = mpl_exec.run_viz_code_matplotlib_mp(code, func_name=func_name, pos_args=pos_args, kw_args=kw_args)
     png_bytes = _serialize_fig(fig, tight=True)
+    plt.close(fig)
     b64_val = base64.b64encode(png_bytes).decode('utf-8')
     return f"data:image/png;base64,{b64_val}"
 
