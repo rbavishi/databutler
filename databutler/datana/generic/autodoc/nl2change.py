@@ -14,6 +14,7 @@ class NatLangToCodeChangeTask:
     few_shot_examples: List[few_shot.FewShotExampleCodeChangeAndNL]
     target_old_code: str
     target_nl: Union[str, List[str]]
+    target_blanked: Optional[str] = None
     task_description: Optional[str] = None
     output_prefix: Optional[str] = None
 
@@ -133,6 +134,12 @@ class NatLangToNewCode(BaseNatLangToCodeChange):
         return text
 
 
+class ModelFailedError(Exception):
+    """
+    An exception for when the model fails to do the right thing.
+    """
+
+
 @attrs.define(eq=False, repr=False)
 class NatLangToStmtBlanks(BaseNatLangToCodeChange):
     """
@@ -143,13 +150,15 @@ class NatLangToStmtBlanks(BaseNatLangToCodeChange):
     engine: str = 'code-davinci-001'
     max_tokens: int = 512
 
+    all_at_once: bool = True
     stop_token: str = "END"
-    blank_term: str = "BLANK_STATEMENT"
+    default_blank_word: str = "BLANK_STATEMENT"
     default_task_description: str = (
-        f"Replace the {blank_term} with Python code given the description of the change and the original code.\n"
+        f"Replace the blanks with Python code given the description of the change and the original code.\n"
     )
 
-    def _create_blanks_and_answers(self, old_code: str, new_code: str) -> Tuple[str, List[str]]:
+    @classmethod
+    def create_blanks_and_answers(cls, old_code: str, new_code: str, blank_word: str) -> Tuple[str, List[str]]:
         old_lines = old_code.split("\n")
         new_lines = new_code.split("\n")
 
@@ -174,17 +183,135 @@ class NatLangToStmtBlanks(BaseNatLangToCodeChange):
                 for line in new_lines[j1: j2]:
                     #  Get the leading whitespace and preserve it
                     leading = "".join(itertools.takewhile(str.isspace, line))
-                    new_lines_with_blanks.append(f"{leading}{self.blank_term}-{ctr}")
+                    new_lines_with_blanks.append(f"{leading}{blank_word}-{ctr}")
                     ctr += 1
                     answers.append(line.strip())
 
         return "\n".join(new_lines_with_blanks), answers
 
-    def _create_completion_prompt(self, task: NatLangToCodeChangeTask) -> str:
-        pass
+    def _create_completion_prompt(self, task: NatLangToCodeChangeTask, blank_word: str,
+                                  generated_blanks: Optional[List[str]] = None) -> str:
+        """
+        Helper method to create the prompt. Strings the few-shot examples together, and adds the target description to
+        the beginning of the prompt.
 
-    def get_changed_code(self, task: NatLangToCodeChangeTask) -> str:
-        pass
+        Args:
+            task: A nl-to-code-change task instance.
+
+        Returns:
+            A string corresponding to the prompt to use for OpenAI completion.
+        """
+        prompt_strs: List[str] = []
+
+        desc = self.default_task_description
+        if task.task_description is not None:
+            desc = task.task_description
+
+        prompt_strs.append(desc)
+
+        #  First add in the few-shot examples.
+        for ex in task.few_shot_examples:
+            #  First, the old code.
+            prompt_strs.append(f"\nOld Code:\n{ex.old_code}\n")
+
+            #  Next, the NL, or the description of the change.
+            if isinstance(ex.nl, list):
+                #  If NL is in the form of bullet points, format accordingly.
+                ex_nl_str = "\n".join(f"* {i}" for i in ex.nl)
+            else:
+                ex_nl_str = ex.nl
+
+            prompt_strs.append(f"Change Description:\n{ex_nl_str}\n")
+            ex_blanked_code, ex_answers = self.create_blanks_and_answers(ex.old_code, ex.new_code, blank_word)
+            prompt_strs.append(f"Blanked Code:\n{ex_blanked_code}\n")
+            #  Put in the answers one-by-one
+            prompt_strs.append(f"Answers:")
+            if self.all_at_once:
+                #  We will use the stop token at the end.
+                for ans_idx, ans in enumerate(ex_answers, 1):
+                    prompt_strs.append(f"{self.default_blank_word}-{ans_idx}: {ans}")
+
+                prompt_strs.append(self.stop_token)
+
+            else:
+                #  We use the stop-token to signal the end of each blank.
+                for ans_idx, ans in enumerate(ex_answers, 1):
+                    prompt_strs.append(f"{self.default_blank_word}-{ans_idx}: {ans} {self.stop_token}")
+
+            prompt_strs.append("\n----")
+
+        #  Now add in the target old code.
+        prompt_strs.append(f"\nOld Code:\n{task.target_old_code}\n")
+
+        #  Next, add in the target natural language i.e. the NL describing the change from the old code.
+        if isinstance(task.target_nl, list):
+            #  If NL is in the form of bullet points, format accordingly.
+            nl_str = "\n".join(f"* {i}" for i in task.target_nl)
+        else:
+            nl_str = task.target_nl
+
+        prompt_strs.append(f"Change Description:\n{nl_str}\n")
+        prompt_strs.append(f"Blanked Code:\n{task.target_blanked}\n")
+
+        prompt_strs.append(f"Answers:")
+        num_blanks = task.target_blanked.count(self.default_blank_word)
+        if (not self.all_at_once) and len(generated_blanks) < num_blanks:
+            for idx, ans in enumerate(generated_blanks, 1):
+                prompt_strs.append(f"{self.default_blank_word}-{idx}: {ans} {self.stop_token}")
+
+            prompt_strs.append(f"{self.default_blank_word}-{len(generated_blanks) + 1}:")
+
+        return "\n".join(prompt_strs)
+
+    def get_changed_code(self, task: NatLangToCodeChangeTask, blank_word: Optional[str] = None) -> str:
+        if blank_word is None:
+            blank_word = self.default_blank_word
+
+        if task.target_blanked is None:
+            raise ValueError(f"{self.__class__.__name__} requires `target_blank` to be supplied in the task.")
+
+        if self.all_at_once:
+            completion_prompt = self._create_completion_prompt(task, blank_word)
+
+            resp = langmodels.openai_completion(
+                engine=self.engine,
+                prompt=completion_prompt,
+                temperature=self.temperature,
+                num_completions=1,
+                max_tokens=self.max_tokens,
+                stop=[self.stop_token],
+                retry_wait_duration=60,
+                max_retries=5,
+                return_logprobs=False,
+            )
+
+            text = resp.completions[0].text
+
+            num_blanks = task.target_blanked.count(blank_word)
+
+            filled_blanks: List[str] = []
+            for line in text.split('\n'):
+                line = line.strip()
+                if line == "":
+                    continue
+
+                if ":" not in line:
+                    continue
+
+                code = ":".join(line.split(':')[1:])
+                filled_blanks.append(code)
+
+            if len(filled_blanks) != num_blanks:
+                raise ModelFailedError(f"Model did not fill in all the blanks successfully")
+
+            final_code = task.target_blanked
+            for idx, ans in enumerate(filled_blanks, 1):
+                final_code = final_code.replace(f"{blank_word}-{idx}", ans)
+
+            return final_code
+
+        else:
+            raise NotImplementedError
 
 
 @attrs.define(eq=False, repr=False)
