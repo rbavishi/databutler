@@ -58,7 +58,7 @@ class SimpleCodeToNatLang(BaseCodeToNatLang):
     def _create_completion_prompt(self, task: CodeToNatLangTask, generated_bullets: Optional[List[str]] = None) -> str:
         """
         Helper method to create the prompt. Strings the few-shot examples together, and adds the target description to
-        the end of the prompt.
+        the beginning of the prompt.
 
         :param task: A code-to-natural-language task.
         :param generated_bullets: An optional list of strings corresponding to the NL bullets already generated.

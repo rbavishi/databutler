@@ -49,7 +49,7 @@ class SimpleNatLangToCode(BaseNatLangToCode):
     def _create_completion_prompt(self, task: NatLangToCodeTask) -> str:
         """
         Helper method to create the prompt. Strings the few-shot examples together, and adds the target description to
-        the end of the prompt.
+        the beginning of the prompt.
 
         :param task: A nl-to-code task instance.
         :return: A string corresponding to the prompt to use for OpenAI completion.
