@@ -1,6 +1,6 @@
 import unittest
 
-from databutler.datana.generic.training import few_shot, nl2code
+from databutler.datana.generic.autodoc import few_shot, nl2code
 
 
 class NL2CodeTests(unittest.TestCase):

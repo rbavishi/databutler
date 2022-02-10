@@ -3,7 +3,7 @@ from typing import List, Optional, Union, Iterator
 
 import attrs
 
-from databutler.datana.generic.training import few_shot
+from databutler.datana.generic.autodoc import few_shot
 from databutler.utils import langmodels
 
 
