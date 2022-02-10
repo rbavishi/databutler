@@ -15,7 +15,8 @@ class NatLangToCodeTask:
     target_nl: Union[str, List[str]]
     #  An optional description of the task. LM performance generally goes up if a good description is provided.
     task_description: Optional[str] = None
-    #  A string corresponding to the prefix the generated code *must* start with.
+    #  A string corresponding to the prefix the generated code *must* start with. This can be utilized to constrain
+    #  and influence the output of the language model.
     output_prefix: Optional[str] = None
 
 
@@ -32,8 +33,8 @@ class BaseNatLangToCode(ABC):
         This must be implemented by all subclasses.
 
         :param task: A nl-to-code task instance.
-        :return: A string corresponding to the generated code. If the output_prefix is supplied, it is included
-                 in the output.
+        :return: A string corresponding to the generated code. If the output_prefix is supplied in the task,
+            it is included in the output.
         """
 
 
