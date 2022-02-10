@@ -24,7 +24,8 @@ class NL2CodeTests(unittest.TestCase):
 
         target_nl = "A function to subtract two numbers"
         generator = nl2code.SimpleNatLangToCode()
-        generated_code = generator.get_code(few_shot_examples, target_nl)
+        task = nl2code.NatLangToCodeTask(few_shot_examples=few_shot_examples, target_nl=target_nl)
+        generated_code = generator.get_code(task)
 
         #  Run the generated code to see if it does the right thing
         ctx = {}
@@ -35,7 +36,10 @@ class NL2CodeTests(unittest.TestCase):
 
         #  Try with output prefixes. Use specific variable names.
         output_prefix = "def func(x, y):\n"
-        generated_code = generator.get_code(few_shot_examples, target_nl, output_prefix)
+
+        task = nl2code.NatLangToCodeTask(few_shot_examples=few_shot_examples, target_nl=target_nl,
+                                         output_prefix=output_prefix)
+        generated_code = generator.get_code(task)
 
         #  Run the generated code to see if it does the right thing
         ctx = {}
@@ -73,7 +77,8 @@ class NL2CodeTests(unittest.TestCase):
             "Returns their concatenation"
         ]
         generator = nl2code.SimpleNatLangToCode()
-        generated_code = generator.get_code(few_shot_examples, target_nl)
+        task = nl2code.NatLangToCodeTask(few_shot_examples=few_shot_examples, target_nl=target_nl)
+        generated_code = generator.get_code(task)
 
         #  Run the generated code to see if it does the right thing
         ctx = {}
@@ -83,7 +88,9 @@ class NL2CodeTests(unittest.TestCase):
 
         #  Try with output prefixes. Use specific variable names.
         output_prefix = "def func(x, y):\n"
-        generated_code = generator.get_code(few_shot_examples, target_nl, output_prefix)
+        task = nl2code.NatLangToCodeTask(few_shot_examples=few_shot_examples, target_nl=target_nl,
+                                         output_prefix=output_prefix)
+        generated_code = generator.get_code(task)
 
         #  Run the generated code to see if it does the right thing
         ctx = {}
