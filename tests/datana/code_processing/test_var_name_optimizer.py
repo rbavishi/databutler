@@ -150,6 +150,48 @@ class VarNameOptimizerTests(unittest.TestCase):
         new_d_func = normalizer.run(datana_func)
         self.assertEqual(codeutils.normalize_code(target_code), codeutils.normalize_code(new_d_func.code_str))
 
+    def test_builtin_4(self):
+        orig_code = textwrap.dedent(
+            """
+            def func(n: int):
+                a = 10
+                b = "a"
+                c = [1, 2]
+                d = {"a": "b"}
+                e = {3, 4}
+                f = (9, 10)
+                
+                return [n, a, b, c, d, e, f]
+            """
+        )
+
+        #  Constant propagation should happen for all variables a to f.
+        target_code = textwrap.dedent(
+            """
+            def func(n: int):
+                return [n, 10, "a", [1, 2], {"a": "b"}, {3, 4}, (9, 10)]
+            """
+        )
+
+        datana_func = DatanaFunction(
+            code_str=orig_code,
+            uid="test",
+            func_name="func",
+            pos_args=[10],
+            kw_args=None,
+        )
+
+        class TestOptimizer(VarNameOptimizer):
+            def _run_function_code(self, func_code: str, func_name: str, pos_args: List[Any], kw_args: Dict[str, Any],
+                                   global_ctx: Dict[str, Any]) -> Any:
+                ctx = global_ctx.copy()
+                exec(func_code, ctx)
+                ctx[func_name](*pos_args, **kw_args)
+
+        normalizer = TestOptimizer()
+        new_d_func = normalizer.run(datana_func)
+        self.assertEqual(codeutils.normalize_code(target_code), codeutils.normalize_code(new_d_func.code_str))
+
     def test_seaborn_1(self):
         orig_code = textwrap.dedent(
             """

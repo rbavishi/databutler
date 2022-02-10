@@ -29,7 +29,8 @@ class _VarDef:
     dtype: str
     timestamp: int
     node: astlib.AstNode = attrs.field(repr=False)
-    is_var_eq_var: bool = False
+    enclosing_node: astlib.AstNode = attrs.field(repr=False)
+    metadata: Optional[Dict] = attrs.field(eq=False, hash=False)
 
 
 @attrs.define(eq=False, repr=False)
@@ -58,13 +59,25 @@ class _VarDefAndAccessTracker(StmtCallbacksGenerator, ExprWrappersGenerator):
     def _gen_def_callbacks_assignments(self, definition: astlib.Definition):
         name: str = definition.name
         # This is the only point of difference. We consider the whole assignment to be the owner of the event.
-        node: astlib.AstNode = definition.enclosing_node
+        enc_node: astlib.AstNode = definition.enclosing_node
 
-        if isinstance(node, astlib.Assign) and isinstance(node.value, astlib.Name) and len(node.targets) == 1:
-            #  The assignment is of the form `var1 = var2`. This allows us to perform additional optimizations.
-            is_var_eq_var = True
-        else:
-            is_var_eq_var = False
+        def_metadata = {}
+
+        if isinstance(enc_node, astlib.Assign):
+            if isinstance(enc_node.value, astlib.Name) and len(enc_node.targets) == 1:
+                #  The assignment is of the form `var1 = var2`. This allows us to perform additional optimizations.
+                def_metadata['is_var_eq_var'] = True
+            else:
+                def_metadata['is_var_eq_var'] = False
+
+            if astlib.is_constant(enc_node.value) and len(enc_node.targets) == 1:
+                def_metadata['is_constant'] = True
+                def_metadata['constant_val'] = astlib.get_constant_value(enc_node.value)
+                def_metadata['constant_val_ast'] = enc_node.value
+            else:
+                def_metadata['is_constant'] = False
+                def_metadata['constant_val'] = None
+                def_metadata['constant_val_ast'] = None
 
         scope_id: astlib.ScopeId = definition.scope_id
 
@@ -83,13 +96,14 @@ class _VarDefAndAccessTracker(StmtCallbacksGenerator, ExprWrappersGenerator):
                     dtype=dtype,
                     timestamp=self._time,
                     node=definition.node,
-                    is_var_eq_var=is_var_eq_var,
+                    enclosing_node=enc_node,
+                    metadata=def_metadata,
                 )
             )
 
         return {
-            node: [StmtCallback(callable=callback, name=self.gen_stmt_callback_id(),
-                                position='post', arg_str='globals(), locals()', mandatory=False)]
+            enc_node: [StmtCallback(callable=callback, name=self.gen_stmt_callback_id(),
+                                    position='post', arg_str='globals(), locals()', mandatory=False)]
         }
 
     def gen_expr_wrappers(self, ast_root: astlib.AstNode) -> Dict[astlib.BaseExpression, List[ExprWrapper]]:
@@ -191,7 +205,7 @@ def _get_live_var_ranges(tracker: _VarDefAndAccessTracker) -> List[_LiveVarRange
             last_defs[event.name, event.scope_id] = event
             range_key = (event.name, event.scope_id, event)
 
-            if event.is_var_eq_var:
+            if event.metadata['is_var_eq_var']:
                 #  We know for sure that the event recorded just before this would be the access event corresponding
                 #  to the RHS.
                 assert last_access_range is not None
@@ -272,6 +286,23 @@ def _rename_variables(code_ast: astlib.AstNode, tracker: _VarDefAndAccessTracker
     for reg, reg_ranges in reg_assignment_dict.items():
         new_name = reg_ranges[0].name
         for rnge in reg_ranges:
+            if rnge.def_event is not None and rnge.def_event.metadata['is_constant']:
+                constant_val = rnge.def_event.metadata['constant_val']
+                constant_val_ast = rnge.def_event.metadata['constant_val_ast']
+
+                if (not isinstance(constant_val, (list, tuple, set, dict))) or len(rnge.access_events) < 3:
+                    #  Remove the assignments.
+                    repl_map[rnge.def_event.enclosing_node] = None
+
+                    for merged_def in rnge.merged_def_events:
+                        repl_map[merged_def.enclosing_node] = None
+
+                    #  Replace the assignments by the constant value
+                    for access in rnge.access_events:
+                        repl_map[access.node] = constant_val_ast
+
+                    continue
+
             if rnge.def_event is not None:
                 repl_map[rnge.def_event.node] = astlib.create_name_expr(new_name)
 
@@ -292,6 +323,7 @@ class VarNameOptimizer(DatanaFunctionProcessor):
     """
     A processor that optimizes code by removing unnecessary variable names and reusing existing ones.
     """
+
     def _process(self, d_func: DatanaFunction) -> DatanaFunction:
         code = d_func.code_str
         #  Set up instrumentation.
