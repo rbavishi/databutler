@@ -447,9 +447,31 @@ def wrap_with_parentheses(expr: BaseExpression):
     return expr.with_changes(lpar=[cst.LeftParen()], rpar=[cst.RightParen()])
 
 
+def _try_eval(node: AstNode) -> typing.Tuple[bool, Optional[typing.Any]]:
+    try:
+        val = eval(to_code(node), {}, {})
+        return True, val
+    except:
+        return False, None
+
+
 def is_constant(node: AstNode):
-    return isinstance(node, (cst.BaseNumber, cst.BaseString)) or \
-           (isinstance(node, Name) and (node.value == 'True' or node.value == 'False'))
+    if isinstance(node, (cst.BaseNumber, cst.BaseString)) or \
+            (isinstance(node, Name) and (node.value == 'True' or node.value == 'False')):
+        return True
+
+    if isinstance(node, (cst.BaseList, cst.Tuple, cst.BaseDict, cst.BaseSet)):
+        is_const, _ = _try_eval(node)
+        return is_const
+
+    return False
+
+
+def get_constant_value(node: AstNode):
+    if not is_constant(node):
+        raise ValueError(f"Cannot evaluate node")
+
+    return _try_eval(node)[1]
 
 
 def is_expr(node: AstNode):
