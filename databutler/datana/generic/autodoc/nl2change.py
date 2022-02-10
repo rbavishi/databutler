@@ -27,8 +27,11 @@ class BaseNatLangToCodeChange(ABC):
 
         This must be implemented by all subclasses.
 
-        :param task: A nl-to-code-change task instance.
-        :return: A string corresponding to the generated code.
+        Args:
+            task: A nl-to-code-change task instance.
+
+        Returns:
+            A string corresponding to the generated code.
         """
 
 
@@ -50,8 +53,11 @@ class NatLangToNewCode(BaseNatLangToCodeChange):
         Helper method to create the prompt. Strings the few-shot examples together, and adds the target description to
         the beginning of the prompt.
 
-        :param task: A nl-to-code-change task instance.
-        :return: A string corresponding to the prompt to use for OpenAI completion.
+        Args:
+            task: A nl-to-code-change task instance.
+
+        Returns:
+            A string corresponding to the prompt to use for OpenAI completion.
         """
         prompt_strs: List[str] = []
 
