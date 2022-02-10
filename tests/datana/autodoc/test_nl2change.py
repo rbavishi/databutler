@@ -205,3 +205,54 @@ class NL2CodeChangeTests(unittest.TestCase):
         self.assertIn('f', ctx.keys())
         self.assertEqual(5, ctx['f'](10, 5))  # 10 - 5 = 5
         self.assertEqual(-15, ctx['f'](5, 20))  # 5 - 20 = -15
+
+    def test_stmt_blanks_4(self):
+        generator = nl2change.NatLangToStmtBlanks(all_at_once=False)
+
+        few_shot_examples = [
+            few_shot.FewShotExampleCodeChangeAndNL(
+                nl="Change the operator to multiply instead of add and print 'Hello World'",
+                old_code=(
+                    "def f(a, b):\n"
+                    "    return a + b"
+                ),
+                new_code=(
+                    "def f(a, b):\n"
+                    "    print('Hello World')\n"
+                    "    return a * b"
+                )
+            ),
+            few_shot.FewShotExampleCodeChangeAndNL(
+                nl="Change the operator to add instead of multiply",
+                old_code=(
+                    "def f(a, b):\n"
+                    "    return a * b"
+                ),
+                new_code=(
+                    "def f(a, b):\n"
+                    "    return a + b"
+                )
+            ),
+        ]
+
+        target_old_code = (
+            "def f(a, b):\n"
+            "    return a / b"
+        )
+        target_nl = "Change the operator to minus instead of divide and print 'Hello'"
+        target_blanked = (
+            f"def f(a, b):\n"
+            f"    {generator.default_blank_word}-1\n"
+            f"    {generator.default_blank_word}-2"
+        )
+
+        task = nl2change.NatLangToCodeChangeTask(few_shot_examples=few_shot_examples, target_old_code=target_old_code,
+                                                 target_nl=target_nl, target_blanked=target_blanked)
+        generated_code = generator.get_changed_code(task)
+
+        #  Run the generated code to see if it does the right thing
+        ctx = {}
+        exec(generated_code, ctx)
+        self.assertIn('f', ctx.keys())
+        self.assertEqual(5, ctx['f'](10, 5))  # 10 - 5 = 5
+        self.assertEqual(-15, ctx['f'](5, 20))  # 5 - 20 = -15

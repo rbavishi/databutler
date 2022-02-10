@@ -270,6 +270,8 @@ class NatLangToStmtBlanks(BaseNatLangToCodeChange):
         if task.target_blanked is None:
             raise ValueError(f"{self.__class__.__name__} requires `target_blank` to be supplied in the task.")
 
+        num_blanks = task.target_blanked.count(blank_word)
+
         if self.all_at_once:
             completion_prompt = self._create_completion_prompt(task, blank_word)
 
@@ -287,9 +289,7 @@ class NatLangToStmtBlanks(BaseNatLangToCodeChange):
 
             text = resp.completions[0].text
 
-            num_blanks = task.target_blanked.count(blank_word)
-
-            filled_blanks: List[str] = []
+            generated_blanks: List[str] = []
             for line in text.split('\n'):
                 line = line.strip()
                 if line == "":
@@ -299,19 +299,37 @@ class NatLangToStmtBlanks(BaseNatLangToCodeChange):
                     continue
 
                 code = ":".join(line.split(':')[1:])
-                filled_blanks.append(code)
+                generated_blanks.append(code)
 
-            if len(filled_blanks) != num_blanks:
+            if len(generated_blanks) != num_blanks:
                 raise ModelFailedError(f"Model did not fill in all the blanks successfully")
 
-            final_code = task.target_blanked
-            for idx, ans in enumerate(filled_blanks, 1):
-                final_code = final_code.replace(f"{blank_word}-{idx}", ans)
-
-            return final_code
-
         else:
-            raise NotImplementedError
+            generated_blanks: List[str] = []
+            for _ in range(num_blanks):
+                #  We ask for blanks one by one. This ensures that the model fills all the blanks, unlike the
+                #  all-at-once case. This does increase the number of calls to the model.
+                completion_prompt = self._create_completion_prompt(task, blank_word, generated_blanks=generated_blanks)
+
+                resp = langmodels.openai_completion(
+                    engine=self.engine,
+                    prompt=completion_prompt,
+                    temperature=self.temperature,
+                    num_completions=1,
+                    max_tokens=self.max_tokens,
+                    stop=[self.stop_token],  # Use new-line as the stop-token for single-line descriptions.
+                    retry_wait_duration=60,
+                    max_retries=5,
+                    return_logprobs=False,
+                )
+
+                generated_blanks.append(resp.completions[0].text.strip())
+
+        final_code = task.target_blanked
+        for idx, ans in enumerate(generated_blanks, 1):
+            final_code = final_code.replace(f"{blank_word}-{idx}", ans)
+
+        return final_code
 
 
 @attrs.define(eq=False, repr=False)
