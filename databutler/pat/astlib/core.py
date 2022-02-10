@@ -418,6 +418,10 @@ def with_deep_replacements(node: AstNode, replacements: typing.Dict[AstNode, Ast
     #  If a node does not have a child (direct or indirect) in replacements, it should not be
     #  replaced for no reason. Hence add an identity mapping to replacements.
     replacements = replacements.copy()
+
+    #  Replace Nones by empty sentinel
+    replacements = {k: (v if v is not None else cst.RemoveFromParent()) for k, v in replacements.items()}
+
     par_mapping = collections.defaultdict(list)
     all_nodes = set(walk(node))
     for n in all_nodes:
