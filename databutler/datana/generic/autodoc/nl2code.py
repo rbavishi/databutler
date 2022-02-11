@@ -3,15 +3,27 @@ from typing import List, Optional, Union
 
 import attrs
 
-from databutler.datana.generic.training import few_shot
+from databutler.datana.generic.autodoc import few_shot
 from databutler.utils import langmodels
+
+
+@attrs.define(eq=False)
+class NatLangToCodeTask:
+    #  Few-shot examples to use for LM completion.
+    few_shot_examples: List[few_shot.FewShotExampleCodeAndNL]
+    #  A string or a list of strings (bullet points) describing the code to generate.
+    target_nl: Union[str, List[str]]
+    #  An optional description of the task. LM performance generally goes up if a good description is provided.
+    task_description: Optional[str] = None
+    #  A string corresponding to the prefix the generated code *must* start with. This can be utilized to constrain
+    #  and influence the output of the language model.
+    output_prefix: Optional[str] = None
 
 
 @attrs.define(eq=False)
 class BaseNatLangToCode(ABC):
     @abstractmethod
-    def get_code(self, few_shot_examples: List[few_shot.FewShotExampleCodeAndNL], target_nl: Union[str, List[str]],
-                output_prefix: Optional[str] = None, task_desc: Optional[List[str]] = []) -> str:
+    def get_code(self, task: NatLangToCodeTask) -> str:
         """
         Generates code with language-models using the provided few-shot examples.
 
@@ -20,11 +32,9 @@ class BaseNatLangToCode(ABC):
 
         This must be implemented by all subclasses.
 
-        :param few_shot_examples: A list of few_shot.FewShotExampleCodeAndNL instances.
-        :param target_nl: A string or a list of strings (bullet points) describing the code to generate.
-        :param output_prefix: A string corresponding to the prefix the generated code *must* start with.
-        :return: A string corresponding to the generated code. If the output_prefix is supplied, it is included
-                 in the output.
+        :param task: A nl-to-code task instance.
+        :return: A string corresponding to the generated code. If the output_prefix is supplied in the task,
+            it is included in the output.
         """
 
 
@@ -36,23 +46,21 @@ class SimpleNatLangToCode(BaseNatLangToCode):
 
     stop_token: str = "END"
 
-    def _create_completion_prompt(self, few_shot_examples: List[few_shot.FewShotExampleCodeAndNL],
-                                  target_nl: Union[str, List[str]], task_desc: List[str], output_prefix: Optional[str] = None) -> str:
+    def _create_completion_prompt(self, task: NatLangToCodeTask) -> str:
         """
         Helper method to create the prompt. Strings the few-shot examples together, and adds the target description to
-        the end of the prompt.
+        the beginning of the prompt.
 
-        :param few_shot_examples: A list of few_shot.FewShotExampleCodeAndNL instances.
-        :param target_nl: A string or a list of strings (bullet points) describing the code to generate.
-        :param output_prefix: A string corresponding to the prefix the generated code *must* start with.
+        :param task: A nl-to-code task instance.
         :return: A string corresponding to the prompt to use for OpenAI completion.
         """
         prompt_strs: List[str] = []
 
-        prompt_strs.extend(task_desc)
+        if task.task_description is not None:
+            prompt_strs.append(task.task_description)
 
         #  First add in the few-shot examples.
-        for ex in few_shot_examples:
+        for ex in task.few_shot_examples:
             if isinstance(ex.nl, list):
                 #  If NL is in the form of bullet points, format accordingly.
                 ex_nl_str = "\n".join(f"* {i}" for i in ex.nl)
@@ -67,28 +75,27 @@ class SimpleNatLangToCode(BaseNatLangToCode):
             prompt_strs.append("----")
 
         #  Now add in the target natural language i.e. the NL to convert to code.
-        if isinstance(target_nl, list):
+        if isinstance(task.target_nl, list):
             #  If NL is in the form of bullet points, format accordingly.
-            nl_str = "\n".join(f"* {i}" for i in target_nl)
+            nl_str = "\n".join(f"* {i}" for i in task.target_nl)
         else:
-            nl_str = target_nl
+            nl_str = task.target_nl
 
         prompt_strs.append(f"Description:\n{nl_str}")
         prompt_strs.append(f"\nPython Code:")
-        if output_prefix is not None:
-            prompt_strs.append(output_prefix.rstrip())  # OpenAI lang. models do not work well with trailing whitespace.
+        if task.output_prefix is not None:
+            #  OpenAI lang. models do not work well with trailing whitespace.
+            prompt_strs.append(task.output_prefix.rstrip())
 
         return "\n".join(prompt_strs)
 
-    def get_code(self, few_shot_examples: List[few_shot.FewShotExampleCodeAndNL], target_nl: Union[str, List[str]],
-                output_prefix: Optional[str] = None, task_desc: Optional[List[str]] = []) -> str:
+    def get_code(self, task: NatLangToCodeTask) -> str:
         """
         Creates a simple prompt stringing examples together and uses it to generate the code.
 
         See base method for a description of the arguments and return value.
         """
-        task_description = task_desc if task_desc is not None else []
-        completion_prompt = self._create_completion_prompt(few_shot_examples, target_nl, task_description, output_prefix)
+        completion_prompt = self._create_completion_prompt(task)
 
         resp = langmodels.openai_completion(
             engine=self.engine,
@@ -103,9 +110,9 @@ class SimpleNatLangToCode(BaseNatLangToCode):
         )
 
         text = resp.completions[0].text
-        if output_prefix is not None:
+        if task.output_prefix is not None:
             #  We need to add the output prefix back.
             #  Note we remove trailing whitespace in the prompt generation, so need to do the same thing here.
-            text = f"{output_prefix.rstrip()}{text}"
+            text = f"{task.output_prefix.rstrip()}{text}"
 
         return text
