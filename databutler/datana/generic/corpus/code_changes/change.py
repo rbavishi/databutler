@@ -36,6 +36,12 @@ class BaseCodeRemovalChange(BaseCodeChange, ABC):
     Base class for code changes based purely on removal of code.
     """
 
+    #  The *logical* list of changes that should also be applied if this change is being applied.
+    #  As an example suppose the parent change is removal of a function call, while a child change can be
+    #  the removal of a single keyword argument, along with any statements solely involved in the computation
+    #  of the argument.
+    children: List['BaseCodeRemovalChange']
+
 
 @attrs.define(eq=True, hash=True)
 class SimpleAstNodeRef:
@@ -84,10 +90,7 @@ class SimpleAstRemovalChange(BaseCodeRemovalChange):
     #  Node-refs to remove as part of this change
     node_refs: List[SimpleAstNodeRef]
 
-    #  The *logical* list of changes that should also be applied if this change is being applied.
-    #  As an example suppose the parent change is removal of a function call, while a child change can be
-    #  the removal of a single keyword argument, along with any statements solely involved in the computation
-    #  of the argument.
+    #  The children should be of the same class.
     children: List['SimpleAstRemovalChange']
 
     @classmethod
@@ -177,10 +180,7 @@ class SimpleAstLibRemovalChange(BaseCodeRemovalChange):
     #  Node-refs to remove as part of this change
     node_refs: List[SimpleAstLibNodeRef]
 
-    #  The *logical* list of changes that should also be applied if this change is being applied.
-    #  As an example suppose the parent change is removal of a function call, while a child change can be
-    #  the removal of a single keyword argument, along with any statements solely involved in the computation
-    #  of the argument.
+    #  The children should be of the same class.
     children: List['SimpleAstLibRemovalChange']
 
     @classmethod
