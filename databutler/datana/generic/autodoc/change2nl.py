@@ -1,3 +1,4 @@
+import difflib
 from abc import ABC, abstractmethod
 from typing import List, Optional, Iterator
 
@@ -62,6 +63,12 @@ class FullCodeChangeToNatLang(BaseCodeChangeToNatLang):
         "Describe the difference between the old Python code and new Python code snippets below."
     )
 
+    def _get_diff_representation(self, old_code: str, new_code: str) -> List[str]:
+        prompt_strs: List[str] = [f"Old Code:\n{old_code}\n",
+                                  f"New Code:\n{new_code}\n"]
+
+        return prompt_strs
+
     def _create_completion_prompt(self, task: CodeChangeToNatLangTask,
                                   generated_bullets: Optional[List[str]] = None) -> str:
         """
@@ -87,8 +94,7 @@ class FullCodeChangeToNatLang(BaseCodeChangeToNatLang):
 
         for ex in task.few_shot_examples:
             #  Add the old and new code as is.
-            prompt_strs.append(f"Old Code:\n{ex.old_code}\n")
-            prompt_strs.append(f"New Code:\n{ex.new_code}\n")
+            prompt_strs.extend(self._get_diff_representation(ex.old_code, ex.new_code))
 
             if isinstance(ex.nl, list):
                 ex_nl_str = "\n".join(f"* {i}" for i in ex.nl)
@@ -109,8 +115,8 @@ class FullCodeChangeToNatLang(BaseCodeChangeToNatLang):
         if (not all(is_bullet)) and generated_bullets is not None:
             raise ValueError("Cannot supply generated bullets for single-line description prompts.")
 
-        prompt_strs.append(f"Old Code:\n{task.target_old_code}\n")
-        prompt_strs.append(f"New Code:\n{task.target_new_code}\n")
+        prompt_strs.extend(self._get_diff_representation(task.target_old_code,
+                                                         task.target_new_code))
 
         if all(is_bullet):
             #  In either case, end with a '*' so the model knows it is starting the next bullet point.
@@ -194,3 +200,49 @@ class FullCodeChangeToNatLang(BaseCodeChangeToNatLang):
 
             generated_bullets.append(new_bullet)
             yield new_bullet
+
+
+@attrs.define(eq=False)
+class DiffToNatLang(FullCodeChangeToNatLang):
+    """
+    A strategy where instead of providing the complete new code, we only provide the diff to the model.
+    Thus, this makes it easier for the model to look at what actually changed, so results should be better for
+    this strategy in general.
+    """
+    temperature: float = 0.0
+    engine: str = 'code-davinci-001'
+    max_tokens: int = 256
+
+    default_task_description: str = (
+        "Describe the given diff for the Python code snippets below."
+    )
+
+    def _get_simplified_diff(self, old_code: str, new_code: str) -> str:
+        """
+        Returns a simplified diff between the old code and the new code.
+
+        Can be overriden by sub-classes to tailor the diff format used in the prompt.
+
+        Args:
+            old_code: A string for the old code.
+            new_code: A string for the new code.
+
+        Returns:
+            A diff between old_code and new_code as a simplified unified diff.
+
+        """
+        #  We simplify a unified diff, by using no context and removing metadata about files etc.
+        #  The output only contains '-' and '+'es, something like below:
+        #  - c = call(var=a)
+        #  + c = call(var=a, another=arg)
+        diff_lines = list(difflib.unified_diff(old_code.split('\n'), new_code.split('\n'), n=0, lineterm=''))
+        return "\n".join(line for line in diff_lines
+                         if not (line.startswith("---") or line.startswith("+++") or line.startswith("@@")))
+
+    def _get_diff_representation(self, old_code: str, new_code: str) -> List[str]:
+        #  Return the diff instead of Old Code: and New Code: as done in FullCodeChangeToNatLang.
+        prompt_strs: List[str] = [f"Old Code:\n{old_code}\n", "Diff:"]
+        prompt_strs.extend(self._get_simplified_diff(old_code, new_code).split("\n"))
+        prompt_strs.append("")
+
+        return prompt_strs
