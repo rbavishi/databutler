@@ -10,6 +10,8 @@ function ReactWidget(props: WidgetProps) {
   const [input, setInput] = useModelState('search_box_value');
   const [searchOptions, _] = useModelState('search_options');
   const [select, setSelect] = useModelState('search_selected');
+  const [myLocal, setMyLocal] = useState(false);
+  const [displayDropBar, setDisplayDropBar] = useState(false);
 
   const dropBar = searchOptions.map((post) => (
     <div key={post.id}>
@@ -30,18 +32,19 @@ function ReactWidget(props: WidgetProps) {
   return (
     <div className="Widget">
     {
-      !select &&
       <>
       <input
         type="text"
         value={input}
         placeholder="Enter your visualization"
-        onChange={(e) => setInput(e.target.value)}
+        onChange={(e) => {setInput(e.target.value); setDisplayDropBar(true);}}
       />
-      <button onClick={(e) => {setSelect(true);}}>Select</button>
+      <button onClick={(e) => {
+          setSelect(false); setSelect(true); setDisplayDropBar(false);}
+      }>Select</button>
       </>
       }
-      {!select && input && dropBar}
+      {displayDropBar && input && dropBar}
       {select && <Selection input={input} />}
     </div>
   );

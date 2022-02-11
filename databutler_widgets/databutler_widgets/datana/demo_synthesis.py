@@ -85,6 +85,9 @@ def synthesize(df: pd.DataFrame, columns: Union[List[str], Type[_AllColumns]] = 
     widget.callback_method(_update_search_options, "search_box_value")
 
     def _update_graphs():
+        if not widget.search_selected:
+            return
+
         key = str(widget.search_box_value)
         options: List[demo_corpus.CorpusItem] = search_options[key]
 
