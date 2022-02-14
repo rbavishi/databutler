@@ -103,6 +103,7 @@ def synthesize(df: pd.DataFrame, columns: Union[List[str], Type[_AllColumns]] = 
             graphs.append({
                 "id": item.uid,
                 "addr": img_src,
+                "code": code,
                 "variant_desc": [{
                     "id": k,
                     "desc": v[1]
@@ -114,15 +115,21 @@ def synthesize(df: pd.DataFrame, columns: Union[List[str], Type[_AllColumns]] = 
     widget.callback_method(_update_graphs, "search_selected")
 
     def _update_highlighted_graph():
-        unchecked_change_ids: List[str] = list(map(str, widget.unchecked_mods_list))
+        change = widget.unchecked_mods_list
         cur_item = uid_to_corpus_items[widget.highlighted_graph["id"]]
-        new_code = cur_item.apply_changes(unchecked_change_ids)
+
+        if change.get("change", None) == "cur_options":
+            unchecked_change_ids: List[str] = list(map(str, widget.unchecked_mods_list["cur_options"]))
+            new_code = cur_item.apply_changes(unchecked_change_ids)
+        else:
+            new_code = change["cur_code"]
 
         pos_args = []
         kw_args = {"df": df, "col0": columns[0]}
         widget.highlighted_graph = {
             "id": cur_item.uid,
             "addr": LOADING_URL,
+            "code": "",
             "variant_desc": widget.highlighted_graph['variant_desc']
         }
 
@@ -131,6 +138,7 @@ def synthesize(df: pd.DataFrame, columns: Union[List[str], Type[_AllColumns]] = 
         widget.highlighted_graph = {
             "id": cur_item.uid,
             "addr": img_src,
+            "code": new_code,
             "variant_desc": widget.highlighted_graph['variant_desc']
         }
 

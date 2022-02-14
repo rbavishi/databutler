@@ -33,7 +33,7 @@ class DatanaExampleWidget(DOMWidget):
     graphs_generated = List([]).tag(sync=True)
 
     highlighted_graph = Dict({}).tag(sync=True)
-    unchecked_mods_list = List([]).tag(sync=True)
+    unchecked_mods_list = Dict({"cur_options": [], "cur_code": ""}).tag(sync=True)
 
     def __init__(self):
         super().__init__()
