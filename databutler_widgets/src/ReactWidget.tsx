@@ -100,10 +100,10 @@ function DisplayGraph({graph}) {
       <img src={graph.addr}
                 style={{border: "1px solid black", width: "40%"}} />
       <div>
-          <div className="options">
+          {graph.show_options && <div className="options">
               {formatOptions(graph, modsList.cur_options, localCode, setModsList)}
-          </div>
-          <Editor
+          </div>}
+          {graph.show_code && <Editor
               value={localCode}
               onValueChange={(code) => {setLocalCode(code); graph.code = code;}}
               highlight={(code) => highlight(code, languages.python)}
@@ -112,11 +112,11 @@ function DisplayGraph({graph}) {
                 fontFamily: '"Fira code", "Fira Mono", monospace',
                 fontSize: 12,
               }}
-          />
+          />}
 
-          <button onClick={(e) => {
+          {graph.show_code && <button onClick={(e) => {
               setModsList({"cur_options": [], "cur_code": localCode});}
-          }>Update Code</button>
+          }>Update Code</button>}
       </div>
     </div>
   )

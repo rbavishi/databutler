@@ -67,9 +67,13 @@ def _get_uid_to_corpus_item_map() -> Dict[str, demo_corpus.CorpusItem]:
     return {item.uid: item for item in demo_corpus.CORPUS}
 
 
-def synthesize(df: pd.DataFrame, columns: Union[List[str], Type[_AllColumns]] = _AllColumns):
+def synthesize(df: pd.DataFrame, columns: Union[List[str], Type[_AllColumns]] = _AllColumns,
+               variant_mode: str = "options+code"):
     if columns is _AllColumns or len(columns) != 1:
         raise NotImplementedError("Only handling single columns for now")
+
+    show_variant_options = variant_mode in {"options+code", "options"}
+    show_code = variant_mode in {"options+code", "code"}
 
     search_options = _get_search_options(df, columns)
     uid_to_corpus_items: Dict[str, demo_corpus.CorpusItem] = _get_uid_to_corpus_item_map()
@@ -104,6 +108,8 @@ def synthesize(df: pd.DataFrame, columns: Union[List[str], Type[_AllColumns]] = 
                 "id": item.uid,
                 "addr": img_src,
                 "code": code,
+                "show_options": show_variant_options,
+                "show_code": show_code,
                 "variant_desc": [{
                     "id": k,
                     "desc": v[1]
@@ -130,6 +136,8 @@ def synthesize(df: pd.DataFrame, columns: Union[List[str], Type[_AllColumns]] = 
             "id": cur_item.uid,
             "addr": LOADING_URL,
             "code": "",
+            "show_options": show_variant_options,
+            "show_code": show_code,
             "variant_desc": widget.highlighted_graph['variant_desc']
         }
 
@@ -139,6 +147,8 @@ def synthesize(df: pd.DataFrame, columns: Union[List[str], Type[_AllColumns]] = 
             "id": cur_item.uid,
             "addr": img_src,
             "code": new_code,
+            "show_options": show_variant_options,
+            "show_code": show_code,
             "variant_desc": widget.highlighted_graph['variant_desc']
         }
 
