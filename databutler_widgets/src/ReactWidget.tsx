@@ -84,7 +84,7 @@ const Console = prop => (
 function ImageBox({ graph, setHighlightedGraph } ) {
   return <img src={graph.addr}
               id={"image" + graph.id}
-              style={{border: "1px solid black"}}
+              style={{border: "1px solid black", width: "300px"}}
               onClick={(e) => {setHighlightedGraph(graph)}}></img>
 }
 
@@ -98,7 +98,7 @@ function DisplayGraph({graph}) {
   return (
     <div style={{paddingTop: "30px", display: "flex", flexDirection: "row"}}>
       <img src={graph.addr}
-                style={{border: "1px solid black", width: "40%"}} />
+                style={{border: "1px solid black", width: "20%", height: "auto"}} />
       <div>
           {graph.show_options && <div className="options">
               {formatOptions(graph, modsList.cur_options, localCode, setModsList)}

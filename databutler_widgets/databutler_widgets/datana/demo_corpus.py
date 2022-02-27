@@ -76,7 +76,7 @@ class PieChartCorpus:
         uid="pie-chart-1",
     )
 
-    VANILLA_DESC_1 = "Draw a pie-chart of [COL0]"
+    VANILLA_DESC_1 = "Plot counts of values in [COL0] as a pie-chart"
 
     CORPUS_ITEM_1 = CorpusItem(
         func=FUNC_1,
@@ -100,7 +100,7 @@ class PieChartCorpus:
         plt.style.use('fivethirtyeight')
         counts = df[col0].value_counts()
         plt.pie(counts, labels=counts.index, startangle=180)
-        plt.title("Pie-Chart")
+        plt.title(f"Pie-Chart of Counts of {col0}")
     """)
 
     CHANGE_1_2 = change.SimpleAstLibRemovalChange(
@@ -122,7 +122,7 @@ class PieChartCorpus:
         children=[],
     )
 
-    DESC_3_2 = "Add 'Pie-Chart' as the title"
+    DESC_3_2 = "Add 'Pie-Chart of Counts of Bedroom' as the title"
 
     CHANGE_4_2 = change.SimpleAstLibRemovalChange(
         node_refs=[change.SimpleAstLibNodeRef(node_type="Expr", index=0)],  # Corresponds to plt.style
@@ -139,7 +139,7 @@ class PieChartCorpus:
         uid="pie-chart-2",
     )
 
-    VANILLA_DESC_2 = "Draw a pie-chart of [COL0]"
+    VANILLA_DESC_2 = "Plot counts of values in [COL0] as a pie-chart"
 
     CORPUS_ITEM_2 = CorpusItem(
         func=FUNC_2,
@@ -202,7 +202,7 @@ class DistPlotCorpus:
         uid="dist-chart-1",
     )
 
-    VANILLA_DESC_1 = "Visualize [COL0] as a histogram"
+    VANILLA_DESC_1 = "Plot [COL0] as a histogram"
 
     CORPUS_ITEM_1 = CorpusItem(
         func=FUNC_1,
@@ -262,7 +262,7 @@ class DistPlotCorpus:
         uid="dist-chart-2",
     )
 
-    VANILLA_DESC_2 = "Visualize [COL0] as a histogram"
+    VANILLA_DESC_2 = "Plot [COL0] as a histogram"
 
     CORPUS_ITEM_2 = CorpusItem(
         func=FUNC_2,

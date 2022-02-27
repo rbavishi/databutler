@@ -57,6 +57,9 @@ def _get_search_options(df: pd.DataFrame, columns: Union[List[str], Type[_AllCol
         if "[COL0]" in item.vanilla_desc:
             vanilla_desc_map[item.vanilla_desc].append(item)
 
+    vanilla_desc_map["Plot a line-graph for [COL0]"] = []
+    vanilla_desc_map["Plot missing values in [COL0] using a heatmap"] = []
+
     #  Replace instances of [COL0] with the actual column name
     vanilla_desc_map = {k.replace("[COL0]", columns[0]): v for k, v in vanilla_desc_map.items()}
 
