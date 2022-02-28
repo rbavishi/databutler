@@ -1,13 +1,14 @@
 import json
 import logging
 import os
-from typing import Tuple, List, Set
+from typing import Tuple, List, Set, Dict
 
 import fire as fire
 import pandas as pd
 import tqdm
 
 import utils
+import nb_utils
 from databutler.utils import pickleutils
 from databutler.utils.logging import logger
 
@@ -70,6 +71,14 @@ def get_notebook_slugs() -> List[Tuple[_OwnerUsername, _KernelSlug]]:
     return list(result)
 
 
+def _get_notebook_data(owner_username: str, kernel_slug: str) -> Dict:
+    return {
+        "owner_slug": owner_username,
+        "kernel_slug": kernel_slug,
+        "data": nb_utils.get_notebook_data(owner_username, kernel_slug)
+    }
+
+
 def download_notebooks() -> None:
     """
     Downloads Kaggle notebooks using the slugs obtained from Meta-Kaggle analysis.
@@ -95,12 +104,7 @@ def download_notebooks() -> None:
         n_succ = n_fail = 0
         for owner_username, kernel_slug in pbar:
             try:
-                nb_data = {
-                    "owner_slug": owner_username,
-                    "kernel_slug": kernel_slug,
-                    "data": utils.get_notebook_data(owner_username, kernel_slug)
-                }
-
+                nb_data = _get_notebook_data(owner_username, kernel_slug)
                 writer[owner_username, kernel_slug] = nb_data
                 #  Flushing in order to be safe against interruptions.
                 writer.flush()
@@ -136,11 +140,7 @@ def download_notebook(owner_username: str, kernel_slug: str) -> None:
                 return
 
     try:
-        nb_data = {
-            "owner_slug": owner_username,
-            "kernel_slug": kernel_slug,
-            "data": utils.get_notebook_data(owner_username, kernel_slug)
-        }
+        nb_data = _get_notebook_data(owner_username, kernel_slug)
 
     except Exception as e:
         logging.exception(f"Failed to download notebook at {url}")
