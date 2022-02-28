@@ -101,13 +101,20 @@ class PickledCollectionWriter:
 
             self._offset_map = []
 
+    def flush(self):
+        """
+        Flush the contents to file and ensure the offset map is written to disk.
+        """
+        self._file_obj.flush()
+
+        with open(self.get_offset_map_path(self.path), "wb") as f:
+            pickle.dump(self._offset_map, file=f)
+
     def close(self):
         """
 
         """
-        with open(self.get_offset_map_path(self.path), "wb") as f:
-            pickle.dump(self._offset_map, file=f)
-
+        self.flush()
         self._file_obj.close()
 
     def append(self, obj):
@@ -270,13 +277,20 @@ class PickledMapWriter:
 
             self._keys_offset_map = {}
 
+    def flush(self):
+        """
+        Flush the contents to file and ensure the offset map is written to disk.
+        """
+        self._file_obj.flush()
+
+        with open(self.get_keys_offset_map_path(self.path), "wb") as f:
+            pickle.dump(self._keys_offset_map, file=f)
+
     def close(self):
         """
 
         """
-        with open(self.get_keys_offset_map_path(self.path), "wb") as f:
-            pickle.dump(self._keys_offset_map, file=f)
-
+        self.flush()
         self._file_obj.close()
 
     def __setitem__(self, key, value):
