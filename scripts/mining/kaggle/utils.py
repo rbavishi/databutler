@@ -28,6 +28,15 @@ def _get_kernel_info(slug: str) -> Dict:
 
 
 def get_notebook_slugs() -> List[Tuple[_OwnerSlug, _KernelSlug]]:
+    """
+    Returns notebook slugs i.e. (owner-username, kernel-slug) tuples using the Meta-Kaggle dataset at
+    https://www.kaggle.com/kaggle/meta-kaggle.
+
+    Returns:
+        (List[Tuple[_OwnerSlug, _KernelSlug]]): A list of tuples where the first element is the username of the
+            owner and the second element is the kernel slug. The notebook's URL can then be constructed as
+            https://www.kaggle.com/username/kernel-slug
+    """
     #  Fetch all the useful data from the Meta-Kaggle dataset.
     kernels_csv_path = os.path.join(_get_working_dir(), "Kernels.csv")
     users_csv_path = os.path.join(_get_working_dir(), "Users.csv")
@@ -93,8 +102,5 @@ def download_metadata():
                 pbar.set_postfix(succ=succ, fail=fail)
 
 
-
-
 if __name__ == "__main__":
     fire.Fire()
-
