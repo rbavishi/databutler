@@ -1,33 +1,19 @@
-import json
+import os
 import os
 import pickle
-import re
-from typing import Set, Tuple, Dict, List
+from typing import Tuple, List
 
 import fire as fire
 import pandas as pd
-import requests
 import tqdm
 
-from databutler.utils import paths
+from . import utils
 
-_OwnerSlug = str
+_OwnerUsername = str
 _KernelSlug = str
 
 
-def _get_working_dir() -> str:
-    return os.path.join(paths.get_user_home_dir_path(), ".databutler", "mining", "kaggle")
-
-
-def _get_kernel_info(slug: str) -> Dict:
-    text = requests.get(f"https://www.kaggle.com/{slug}").text
-    d = next(i for i in re.compile(r"Kaggle.State.push\(({.*})\)").findall(text) if "runInfo" in i)
-    d = json.loads(d)
-
-    return d
-
-
-def get_notebook_slugs() -> List[Tuple[_OwnerSlug, _KernelSlug]]:
+def get_notebook_slugs() -> List[Tuple[_OwnerUsername, _KernelSlug]]:
     """
     Returns notebook slugs i.e. (owner-username, kernel-slug) tuples using the Meta-Kaggle dataset at
     https://www.kaggle.com/kaggle/meta-kaggle.
@@ -38,9 +24,9 @@ def get_notebook_slugs() -> List[Tuple[_OwnerSlug, _KernelSlug]]:
             https://www.kaggle.com/username/kernel-slug
     """
     #  Fetch all the useful data from the Meta-Kaggle dataset.
-    kernels_csv_path = os.path.join(_get_working_dir(), "Kernels.csv")
-    users_csv_path = os.path.join(_get_working_dir(), "Users.csv")
-    kernel_versions_csv_path = os.path.join(_get_working_dir(), "KernelVersions.csv")
+    kernels_csv_path = os.path.join(utils.get_working_dir_for_mining(), "Kernels.csv")
+    users_csv_path = os.path.join(utils.get_working_dir_for_mining(), "Users.csv")
+    kernel_versions_csv_path = os.path.join(utils.get_working_dir_for_mining(), "KernelVersions.csv")
 
     for path in [kernels_csv_path, users_csv_path, kernel_versions_csv_path]:
         if not os.path.exists(path):
@@ -79,14 +65,14 @@ def get_notebook_slugs() -> List[Tuple[_OwnerSlug, _KernelSlug]]:
 
 
 def download_metadata():
-    slugs: List[Tuple[_OwnerSlug, _KernelSlug]] = list(get_notebook_slugs())
+    slugs: List[Tuple[_OwnerUsername, _KernelSlug]] = list(get_notebook_slugs())
 
-    with open(os.path.join(_get_working_dir(), "metadata.pkl"), "wb") as f:
+    with open(os.path.join(utils.get_working_dir_for_mining(), "metadata.pkl"), "wb") as f:
         succ = fail = 0
         with tqdm.tqdm(slugs) as pbar:
             for owner_slug, kernel_slug in pbar:
                 try:
-                    metadata = _get_kernel_info("/".join(slugs[0]))
+                    metadata = utils.get_notebook_data(owner_slug, kernel_slug)
 
                     pickle.dump({
                         "owner_slug": owner_slug,
