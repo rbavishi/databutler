@@ -1,16 +1,22 @@
+import json
+import logging
 import os
-import os
-import pickle
-from typing import Tuple, List
+from typing import Tuple, List, Set
 
 import fire as fire
 import pandas as pd
 import tqdm
 
-from . import utils
+import utils
+from databutler.utils import pickleutils
+from databutler.utils.logging import logger
 
 _OwnerUsername = str
 _KernelSlug = str
+
+
+def _get_download_path() -> str:
+    return os.path.join(utils.get_working_dir_for_mining(), "notebooks.pkl")
 
 
 def get_notebook_slugs() -> List[Tuple[_OwnerUsername, _KernelSlug]]:
@@ -64,28 +70,109 @@ def get_notebook_slugs() -> List[Tuple[_OwnerUsername, _KernelSlug]]:
     return list(result)
 
 
-def download_metadata():
-    slugs: List[Tuple[_OwnerUsername, _KernelSlug]] = list(get_notebook_slugs())
+def download_notebooks() -> None:
+    """
+    Downloads Kaggle notebooks using the slugs obtained from Meta-Kaggle analysis.
 
-    with open(os.path.join(utils.get_working_dir_for_mining(), "metadata.pkl"), "wb") as f:
-        succ = fail = 0
-        with tqdm.tqdm(slugs) as pbar:
-            for owner_slug, kernel_slug in pbar:
-                try:
-                    metadata = utils.get_notebook_data(owner_slug, kernel_slug)
+    NOTE: This is not multiprocess/multithread safe if used in conjunction with other storage updating functions.
+    """
+    slugs: List[Tuple[_OwnerUsername, _KernelSlug]] = list(get_notebook_slugs())[:10]
 
-                    pickle.dump({
-                        "owner_slug": owner_slug,
-                        "kernel_slug": kernel_slug,
-                        "metadata": metadata,
-                    }, file=f)
+    download_path = _get_download_path()
+    existing_keys: Set[Tuple[_OwnerUsername, _KernelSlug]] = set()
+    if os.path.exists(download_path):
+        with pickleutils.PickledMapReader(download_path) as reader:
+            existing_keys.update(reader.keys())
 
-                    f.flush()
+    todo: List[Tuple[_OwnerUsername, _KernelSlug]] = [i for i in slugs if i not in existing_keys]
 
-                except:
-                    fail += 1
+    logger.info(f"Found {len(slugs)} notebooks eligible for downloading.")
+    logger.info(f"Already downloaded {len(existing_keys)} notebooks. Downloading {len(todo)} notebooks")
 
-                pbar.set_postfix(succ=succ, fail=fail)
+    with pickleutils.PickledMapWriter(download_path, overwrite_existing=False) as writer, \
+            tqdm.tqdm(todo, desc="Downloading Notebooks", dynamic_ncols=True) as pbar:
+
+        n_succ = n_fail = 0
+        for owner_username, kernel_slug in pbar:
+            try:
+                nb_data = {
+                    "owner_slug": owner_username,
+                    "kernel_slug": kernel_slug,
+                    "data": utils.get_notebook_data(owner_username, kernel_slug)
+                }
+
+                writer[owner_username, kernel_slug] = nb_data
+                #  Flushing in order to be safe against interruptions.
+                writer.flush()
+
+                n_succ += 1
+
+            except KeyboardInterrupt:
+                break
+
+            except:
+                n_fail += 1
+
+            pbar.set_postfix(success=n_succ, fail=n_fail)
+
+
+def download_notebook(owner_username: str, kernel_slug: str) -> None:
+    """
+    A convenience method for downloading a single notebook, if it exists. This will however update the master cache
+    for notebooks.
+
+    NOTE: This is not multiprocess/multithread safe if used in conjunction with other storage updating functions.
+
+    Args:
+        owner_username: A string corresponding to the username of the owner.
+        kernel_slug: A string corresponding to the kernel slug.
+    """
+    download_path = _get_download_path()
+    url = f"https://kaggle.com/{owner_username}/{kernel_slug}"
+    if os.path.exists(download_path):
+        with pickleutils.PickledMapReader(download_path) as reader:
+            if (owner_username, kernel_slug) in reader:
+                print(f"Notebook at {url} already downloaded.")
+                return
+
+    try:
+        nb_data = {
+            "owner_slug": owner_username,
+            "kernel_slug": kernel_slug,
+            "data": utils.get_notebook_data(owner_username, kernel_slug)
+        }
+
+    except Exception as e:
+        logging.exception(f"Failed to download notebook at {url}")
+
+    else:
+        with pickleutils.PickledMapWriter(download_path, overwrite_existing=False) as writer:
+            writer[owner_username, kernel_slug] = nb_data
+
+        print(f"Successfully downloaded notebook at {url}.")
+
+
+def view_downloaded_notebook(owner_username: str, kernel_slug: str) -> None:
+    download_path = _get_download_path()
+    url = f"https://kaggle.com/{owner_username}/{kernel_slug}"
+
+    if not os.path.exists(download_path):
+        print(f"No notebooks downloaded so far.")
+        return
+
+    with pickleutils.PickledMapReader(download_path) as reader:
+        if (owner_username, kernel_slug) not in reader:
+            print(f"Notebook at {url} has not been downloaded yet. "
+                  f"Try running `python downloader.py download_notebook {owner_username} {kernel_slug}`.")
+
+            return
+
+        nb_data = reader[owner_username, kernel_slug]["data"]
+        print(json.dumps(nb_data, indent=2))
+
+
+def generate_report_for_downloaded_notebooks():
+    pass
 
 
 if __name__ == "__main__":
