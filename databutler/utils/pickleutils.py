@@ -371,8 +371,14 @@ class PickledMapReader(Mapping):
 
         return obj
 
+    def keys(self) -> Iterator[Hashable]:
+        yield from self._keys_offset_map.keys()
+
+    def __contains__(self, item):
+        return item in self._keys_offset_map
+
     def __iter__(self) -> Iterator:
-        yield from self._keys_offset_map
+        yield from self._keys_offset_map.keys()
 
     def __len__(self) -> int:
         return len(self._keys_offset_map)
