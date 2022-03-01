@@ -7,17 +7,14 @@ import fire as fire
 import pandas as pd
 import tqdm
 
-import utils
-import nb_utils
+from scripts.mining.kaggle import utils
+from scripts.mining.kaggle import nb_utils
 from databutler.utils import pickleutils
 from databutler.utils.logging import logger
+from scripts.mining.kaggle.nb_utils import get_local_nb_storage_path
 
 _OwnerUsername = str
 _KernelSlug = str
-
-
-def _get_download_path() -> str:
-    return os.path.join(utils.get_working_dir_for_mining(), "notebooks.pkl")
 
 
 def get_notebook_slugs() -> List[Tuple[_OwnerUsername, _KernelSlug]]:
@@ -75,7 +72,7 @@ def _get_notebook_data(owner_username: str, kernel_slug: str) -> Dict:
     return {
         "owner_slug": owner_username,
         "kernel_slug": kernel_slug,
-        "data": nb_utils.get_notebook_data(owner_username, kernel_slug)
+        "data": nb_utils.fetch_notebook_data(owner_username, kernel_slug)
     }
 
 
@@ -85,9 +82,9 @@ def download_notebooks() -> None:
 
     NOTE: This is not multiprocess/multithread safe if used in conjunction with other storage updating functions.
     """
-    slugs: List[Tuple[_OwnerUsername, _KernelSlug]] = list(get_notebook_slugs())[:10]
+    slugs: List[Tuple[_OwnerUsername, _KernelSlug]] = list(get_notebook_slugs())
 
-    download_path = _get_download_path()
+    download_path = get_local_nb_storage_path()
     existing_keys: Set[Tuple[_OwnerUsername, _KernelSlug]] = set()
     if os.path.exists(download_path):
         with pickleutils.PickledMapReader(download_path) as reader:
@@ -131,7 +128,7 @@ def download_notebook(owner_username: str, kernel_slug: str) -> None:
         owner_username: A string corresponding to the username of the owner.
         kernel_slug: A string corresponding to the kernel slug.
     """
-    download_path = _get_download_path()
+    download_path = get_local_nb_storage_path()
     url = f"https://kaggle.com/{owner_username}/{kernel_slug}"
     if os.path.exists(download_path):
         with pickleutils.PickledMapReader(download_path) as reader:
@@ -153,7 +150,7 @@ def download_notebook(owner_username: str, kernel_slug: str) -> None:
 
 
 def view_downloaded_notebook(owner_username: str, kernel_slug: str) -> None:
-    download_path = _get_download_path()
+    download_path = get_local_nb_storage_path()
     url = f"https://kaggle.com/{owner_username}/{kernel_slug}"
 
     if not os.path.exists(download_path):
@@ -171,8 +168,9 @@ def view_downloaded_notebook(owner_username: str, kernel_slug: str) -> None:
         print(json.dumps(nb_data, indent=2))
 
 
-def generate_report_for_downloaded_notebooks():
-    pass
+def is_notebook_included_in_meta_kaggle(owner_username: str, kernel_slug: str) -> bool:
+    slugs: List[Tuple[_OwnerUsername, _KernelSlug]] = list(get_notebook_slugs())
+    return (owner_username, kernel_slug) in slugs
 
 
 if __name__ == "__main__":
