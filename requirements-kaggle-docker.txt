@@ -1,0 +1,6 @@
+attrs~=21.4.0
+libcst~=0.3.13
+intervaltree~=3.1.0
+sortedcontainers~=2.2.2
+requests
+tqdm
