@@ -16,11 +16,17 @@ class NotebookSourceType(Enum):
 
 
 def get_local_nb_storage_path() -> str:
+    """
+    Returns the path where the notebooks will be stored. This corresponds to a single PickledMap file.
+    """
     return os.path.join(utils.get_working_dir_for_mining(), "notebooks.pkl")
 
 
 @caching.caching_function
 def get_local_storage_reader() -> pickleutils.PickledMapReader:
+    """
+    Returns a PickledMap reader for the local notebook storage.
+    """
     return pickleutils.PickledMapReader(get_local_nb_storage_path())
 
 
@@ -32,7 +38,7 @@ def fetch_notebook_data(username: str, kernel_slug: str) -> Dict:
 
     Args:
         username (str): A string for the username of the owner.
-        kernel_slug: A string for the slug of the kernel.
+        kernel_slug (str): A string for the slug of the kernel.
 
     Returns:
         (Dict): A dictionary containing the notebook data.
@@ -47,6 +53,19 @@ def fetch_notebook_data(username: str, kernel_slug: str) -> Dict:
 
 
 def retrieve_notebook_data(username: str, kernel_slug: str) -> Dict:
+    """
+    Returns all the metadata, including sources, for a notebook given the username of the owner and the kernel slug.
+
+    This is like `fetch_notebook_data` with the primary difference being that this routine consults the local notebook
+    storage first.
+
+    Args:
+        username (str): A string for the username of the owner.
+        kernel_slug (str): A string for the slug of the kernel.
+
+    Returns:
+        (Dict): A dictionary containing the notebook data.
+    """
     reader = get_local_storage_reader()
     if (username, kernel_slug) in reader:
         return reader[username, kernel_slug]["data"]
@@ -54,22 +73,50 @@ def retrieve_notebook_data(username: str, kernel_slug: str) -> Dict:
         return fetch_notebook_data(username, kernel_slug)
 
 
-def get_docker_image(username: str, kernel_slug: str) -> str:
+def get_docker_image_digest(username: str, kernel_slug: str) -> str:
     """
+    Retrieves the docker image digest for the latest run (as per Meta-Kaggle) of the given notebook.
 
     Args:
-        username:
-        kernel_slug:
+        username (str): A string for the username of the owner.
+        kernel_slug (str): A string for the slug of the kernel.
 
     Returns:
-
+        (str): A string corresponding to the digest.
     """
     nb_data = retrieve_notebook_data(username, kernel_slug)
-    docker_image_digest = nb_data["kernelRun"]["runInfo"]["dockerImageDigest"]
+    return nb_data["kernelRun"]["runInfo"]["dockerImageDigest"]
+
+
+def get_docker_image_url(username: str, kernel_slug: str) -> str:
+    """
+    Returns the full docker image URL (hosted on gcr.io) for the latest run (as per Meta-Kaggle) of the given notebook.
+
+    Args:
+        username (str): A string for the username of the owner.
+        kernel_slug (str): A string for the slug of the kernel.
+
+    Returns:
+        (str): A string corresponding to the URL.
+    """
+    docker_image_digest = get_docker_image_digest(username, kernel_slug)
     return f"gcr.io/kaggle-images/python@sha256:{docker_image_digest}"
 
 
 def get_source_type(username: str, kernel_slug: str) -> NotebookSourceType:
+    """
+    Maps the source type of the notebook to the internal NotebookSourceType.
+
+    Args:
+        username (str): A string for the username of the owner.
+        kernel_slug (str): A string for the slug of the kernel.
+
+    Raises:
+        ValueError: If the source type is not recognized.
+
+    Returns:
+        (NotebookSourceType): An enum member corresponding to the source type.
+    """
     nb_data = retrieve_notebook_data(username, kernel_slug)
     source_type = nb_data["kernelRun"]["sourceType"]
 
@@ -80,6 +127,17 @@ def get_source_type(username: str, kernel_slug: str) -> NotebookSourceType:
 
 
 def get_source(username: str, kernel_slug: str) -> str:
+    """
+    Returns the source of a notebook.
+
+    Args:
+        username (str): A string for the username of the owner.
+        kernel_slug (str): A string for the slug of the kernel.
+
+    Returns:
+        (str): A string corresponding to the source of the notebook.
+
+    """
     nb_data = retrieve_notebook_data(username, kernel_slug)
     source = nb_data["kernelRun"]["commit"]["source"]
 
