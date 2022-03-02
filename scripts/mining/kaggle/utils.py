@@ -10,4 +10,6 @@ def get_working_dir_for_mining() -> str:
     Returns:
         (str): A string corresponding to the path.
     """
-    return os.path.join(paths.get_user_home_dir_path(), ".databutler", "mining", "kaggle")
+    path = os.path.join(paths.get_user_home_dir_path(), ".databutler", "mining", "kaggle")
+    os.makedirs(path, exist_ok=True)
+    return path

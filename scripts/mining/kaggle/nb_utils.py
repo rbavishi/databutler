@@ -27,6 +27,12 @@ def get_local_storage_reader() -> pickleutils.PickledMapReader:
     """
     Returns a PickledMap reader for the local notebook storage.
     """
+    path = get_local_nb_storage_path()
+    if not os.path.exists(path):
+        #  Just create an empty map.
+        with pickleutils.PickledMapWriter(path):
+            pass
+
     return pickleutils.PickledMapReader(get_local_nb_storage_path())
 
 
