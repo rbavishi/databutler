@@ -186,6 +186,21 @@ class DockerShellClient:
                 'timeout': timeout
             }
 
+    def save_container_to_image(self, container_id: str, new_image_name: str):
+        """
+        Saves the running container into a new image.
+
+        Args:
+            container_id (str): A string corresponding to the container ID.
+                Note that this is different than the image ID.
+            new_image_name (str): A string corresponding to the new image name.
+        """
+        if container_id not in self._ids_to_containers:
+            raise KeyError(f"No container found with id {container_id}")
+
+        container = self._ids_to_containers[container_id]
+        container.commit(new_image_name)
+
     def write_file(self, container_id: str, filepath: str, contents: str):
         """
         Writes a file inside a container.
