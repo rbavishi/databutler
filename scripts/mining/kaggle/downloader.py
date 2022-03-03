@@ -173,5 +173,12 @@ def is_notebook_included_in_meta_kaggle(owner_username: str, kernel_slug: str) -
     return (owner_username, kernel_slug) in slugs
 
 
+def download_notebook_data_sources(owner_username: str, kernel_slug: str, force: bool = False, quiet: bool = True):
+    ds_list = nb_utils.get_data_sources(owner_username, kernel_slug)
+
+    for ds in ds_list:
+        nb_utils.download_data_source(ds, force=force, quiet=quiet)
+
+
 if __name__ == "__main__":
     fire.Fire()
