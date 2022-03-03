@@ -1,6 +1,7 @@
 import os
 import sys
 import time
+from contextlib import contextmanager
 from typing import Dict, Optional, Collection, List
 
 import attrs
@@ -8,7 +9,8 @@ import docker
 import docker.models.containers
 from docker.errors import ImageNotFound
 
-from .utils import _tarify_contents, _tarify_path
+from scripts.mining.kaggle.docker_tools.exceptions import ContainerStartError, CommandFailedError
+from scripts.mining.kaggle.docker_tools.utils import _tarify_contents, _tarify_path
 from databutler.utils.logging import logger
 
 
@@ -20,6 +22,9 @@ class DockerShellClient:
     """
     shell: str = '/bin/bash'
     timeout: Optional[int] = None
+
+    stdout_log_path: Optional[str] = None
+    stderr_log_path: Optional[str] = None
 
     _client: docker.DockerClient = attrs.field(init=False, default=None)
     _ids_to_containers: Dict[str, docker.models.containers.Container] = attrs.field(init=False, factory=dict)
@@ -43,6 +48,21 @@ class DockerShellClient:
         )
         self._ids_to_containers[container.id] = container
         return container.id
+
+    @contextmanager
+    def create_container_context(self, image: str, **kwargs) -> str:
+        try:
+            container_id = self.create_container(image, **kwargs)
+        except:
+            raise ContainerStartError(f"Could not start container with image {image}")
+
+        try:
+            yield container_id
+        finally:
+            try:
+                self.remove(container_id)
+            except:
+                pass
 
     def image_exists(self, image: str) -> bool:
         """
@@ -122,7 +142,8 @@ class DockerShellClient:
             logger.exception(e)
             return False
 
-    def exec(self, container_id: str, cmd: str, workdir: Optional[str] = None, timeout: Optional[int] = None):
+    def exec(self, container_id: str, cmd: str, workdir: Optional[str] = None, timeout: Optional[int] = None,
+             on_error: str = 'ignore'):
         """
         Runs the supplied command in a shell in the provided container.
 
@@ -134,6 +155,7 @@ class DockerShellClient:
             cmd (str): A string representing the command to run.
             workdir (Optional[str]): A string for the path of a directory in which to run the command. Optional.
             timeout (Optional[int]): An integer corresponding to the timeout, in seconds. Optional.
+            on_error (str): If 'raise', then non-zero exit-codes trigger an exception. Defaults to 'ignore'.
 
         Returns:
             A dictionary containing the exit_code, stdout and stderr, and elapsed_time if timeout not specified.
@@ -142,17 +164,29 @@ class DockerShellClient:
         if container_id not in self._ids_to_containers:
             raise KeyError(f"No container found with id {container_id}")
 
+        if self.stdout_log_path is not None and self.stderr_log_path is not None:
+            cmd = f"{self.shell} -c \"({cmd}) 1>>{self.stdout_log_path} 2>>{self.stderr_log_path}\""
+        elif self.stdout_log_path is not None:
+            cmd = f"{self.shell} -c \"({cmd}) 1>>{self.stdout_log_path}\""
+        elif self.stderr_log_path is not None:
+            cmd = f"{self.shell} -c \"({cmd}) 2>>{self.stderr_log_path}\""
+
         container = self._ids_to_containers[container_id]
         if timeout is None:
             start_time = time.time()
             exit_code, (stdout, stderr) = container.exec_run(cmd, demux=True, workdir=workdir)
             elapsed_time = time.time() - start_time
+
+            if on_error == 'raise' and exit_code != 0:
+                raise CommandFailedError(f"Command {cmd} failed with exit-code {exit_code}")
+
             return {
                 'exit_code': exit_code,
                 'stdout': stdout.decode() if stdout else stdout,
                 'stderr': stderr.decode() if stderr else stderr,
                 'elapsed_time': elapsed_time,
             }
+
         else:
             sleep_time: int = timeout // 10
             if sleep_time == 0:
@@ -179,6 +213,9 @@ class DockerShellClient:
                 elapsed_time = time.time() - start_time
 
             timeout = (exit_code is None and elapsed_time > timeout)
+
+            if on_error == 'raise' and exit_code is not None and exit_code != 0:
+                raise CommandFailedError(f"Command {cmd} failed with exit-code {exit_code}")
 
             return {
                 'exit_code': exit_code,
