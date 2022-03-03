@@ -48,6 +48,9 @@ class KaggleDataSource:
     #  Where it will be stored locally, if downloaded.
     local_storage_path: str
 
+    def is_locally_available(self) -> bool:
+        return os.path.exists(self.local_storage_path)
+
 
 @caching.caching_function
 def get_kaggle_api():
