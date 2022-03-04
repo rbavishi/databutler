@@ -58,7 +58,7 @@ def get_local_nb_data_storage_writer() -> pickleutils.PickledMapWriter:
     Returns a PickledMap writer for the local notebook storage.
     """
     path = get_local_nb_data_storage_path()
-    with pickleutils.PickledMapWriter(path) as writer:
+    with pickleutils.PickledMapWriter(path, overwrite_existing=False) as writer:
         yield writer
 
 
