@@ -301,6 +301,9 @@ class PickledMapWriter:
         pickle.dump(value, self._file_obj)
         self._keys_offset_map[key] = offset
 
+    def __contains__(self, item):
+        return item in self._keys_offset_map
+
     def __len__(self) -> int:
         return len(self._keys_offset_map)
 

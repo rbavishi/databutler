@@ -9,9 +9,10 @@ from typing import Optional, Dict, Set, Callable, List, Any, Tuple
 
 import git
 
-from scripts.mining.kaggle import nb_utils
 from scripts.mining.kaggle.docker_tools.client import DockerShellClient
-from scripts.mining.kaggle.execution.result import KaggleExecResult, KaggleExecStatus
+from scripts.mining.kaggle.execution.result import NotebookExecResult, NotebookExecStatus
+from scripts.mining.kaggle.notebooks.notebook import KaggleNotebook, KaggleNotebookSourceType
+from scripts.mining.kaggle.notebooks import utils as nb_utils
 
 _RUNNER_METADATA_KEY = "__databutler_mining_runner"
 
@@ -53,6 +54,9 @@ class BaseExecutor(ABC):
     KAGGLE_INPUT_DIR: str = "/kaggle/input"
     KAGGLE_WORKING_DIR: str = "/kaggle/working"
 
+    STDOUT_LOG_FILENAME: str = "stdout.log"
+    STDERR_LOG_FILENAME: str = "stderr.log"
+
     @classmethod
     def _get_databutler_project_root(cls) -> str:
         """
@@ -74,56 +78,53 @@ class BaseExecutor(ABC):
                                  stdout_log_path=stdout_path, stderr_log_path=stderr_path)
 
     @classmethod
-    def _download_image_if_not_available(cls, client: DockerShellClient, owner_username: str, kernel_slug: str):
+    def _download_image_if_not_available(cls, client: DockerShellClient, notebook: KaggleNotebook):
         """
         Checks if image is available and downloads if unavailable.
 
         Args:
             client: A DockerShellClient instance.
-            owner_username: A string corresponding to the username of the owner.
-            kernel_slug: A string for the slug of the kernel.
+            notebook: The notebook to be run.
         """
-        image = nb_utils.get_docker_image_url(owner_username, kernel_slug)
+        image = notebook.docker_image_url
 
         if not client.image_exists(image):
             client.pull_image(image, verbose=True)
 
     @classmethod
-    def _get_modified_image_name(cls, owner_username: str, kernel_slug: str):
+    def _get_modified_image_name(cls, notebook: KaggleNotebook):
         """
         Returns a new name to use for the docker image created by running setup commands on the original Kaggle
         docker image for a Kaggle notebook.
 
         Args:
-            owner_username: A string corresponding to the username of the owner.
-            kernel_slug: A string for the slug of the kernel.
+            notebook: The notebook to be run.
 
         Returns:
             (str): A string corresponding to the new image name.
 
         """
-        image_digest = nb_utils.get_docker_image_digest(owner_username, kernel_slug)
+        image_digest = notebook.docker_image_digest
         new_image_name = f"databutler-{image_digest}"
 
         return new_image_name
 
     @classmethod
-    def _setup_image(cls, client: DockerShellClient, owner_username: str, kernel_slug: str):
+    def _setup_image(cls, client: DockerShellClient, notebook: KaggleNotebook):
         """
         Checks if setup commands have been run, and if not, creates a new image by creating a container, running setup,
         and then saving it.
 
         Args:
             client: A DockerShellClient instance.
-            owner_username: A string corresponding to the username of the owner.
-            kernel_slug: A string for the slug of the kernel.
+            notebook: The notebook to be run.
         """
-        new_image_name = cls._get_modified_image_name(owner_username, kernel_slug)
+        new_image_name = cls._get_modified_image_name(notebook)
 
         if not client.image_exists(new_image_name):
             #  Run the setup commands and save the image.
             client = cls._get_docker_client()
-            image = nb_utils.get_docker_image_url(owner_username, kernel_slug)
+            image = notebook.docker_image_url
 
             container_id = client.create_container(image)
 
@@ -203,12 +204,18 @@ class BaseExecutor(ABC):
         client.exec(container_id, cmd=f"pip install -e .", workdir=cls.KAGGLE_WORKING_DIR, on_error='raise')
 
     @classmethod
+    def get_stdout_log_path(cls, output_dir_path: str) -> str:
+        return os.path.join(output_dir_path, cls.STDOUT_LOG_FILENAME)
+
+    @classmethod
+    def get_stderr_log_path(cls, output_dir_path: str) -> str:
+        return os.path.join(output_dir_path, cls.STDERR_LOG_FILENAME)
+
+    @classmethod
     def run_notebook(cls,
-                     owner_username: str,
-                     kernel_slug: str,
-                     data_sources: List[nb_utils.KaggleDataSource],
+                     notebook: KaggleNotebook,
                      output_dir_path: str,
-                     timeout: Optional[int] = None) -> KaggleExecResult:
+                     timeout: Optional[int] = None) -> NotebookExecResult:
 
         """
         Runs a kaggle notebook with all the runners belonging to the executor class.
@@ -217,9 +224,7 @@ class BaseExecutor(ABC):
         and runs the kaggle notebook.
 
         Args:
-            owner_username: A string corresponding to the username of the owner.
-            kernel_slug: A string for the slug of the kernel.
-            data_sources: A list of data-sources for the notebook.
+            notebook (KaggleNotebook): The notebook to run.
             output_dir_path: A string corresponding to a path on the host filesystem where all the output resulting
                 from the execution of the Kaggle notebook or the corresponding analyses should be stored.
             timeout: Time-out to use for every runner, in seconds. Optional.
@@ -230,55 +235,46 @@ class BaseExecutor(ABC):
         """
         try:
             return cls._run_notebook_internal(
-                owner_username=owner_username,
-                kernel_slug=kernel_slug,
-                data_sources=data_sources,
+                notebook=notebook,
                 output_dir_path=output_dir_path,
                 timeout=timeout
             )
 
         except Exception as e:
             tb_msg = traceback.format_exc()
-            return KaggleExecResult(
-                status=KaggleExecStatus.ERROR,
+            return NotebookExecResult(
+                status=NotebookExecStatus.ERROR,
                 msg=tb_msg,
             )
 
     @classmethod
     def _run_notebook_internal(cls,
-                               owner_username: str,
-                               kernel_slug: str,
-                               data_sources: List[nb_utils.KaggleDataSource],
+                               notebook: KaggleNotebook,
                                output_dir_path: str,
-                               timeout: Optional[int] = None) -> KaggleExecResult:
+                               timeout: Optional[int] = None) -> NotebookExecResult:
         #  Make sure the output dir exists on the host filesystem.
         os.makedirs(output_dir_path, exist_ok=True)
         #  Its counterpart on the container.
         container_output_path = "/host_output"
 
         #  Ensure the data_sources are locally available.
-        for ds in data_sources:
-            if not ds.is_locally_available():
-                nb_utils.download_data_source(ds, force=False, quiet=True)
+        for ds in notebook.data_sources:
+            if not ds.is_downloaded():
+                ds.download(force=False, verbose=False)
 
-        client = cls._get_docker_client(stdout_path=f"{container_output_path}/stdout.log",
-                                        stderr_path=f"{container_output_path}/stderr.log")
+        client = cls._get_docker_client()
 
         #  Make sure the image is available before making a container.
-        cls._download_image_if_not_available(client, owner_username, kernel_slug)
+        cls._download_image_if_not_available(client, notebook)
         #  Ensure setup is complete
-        cls._setup_image(client, owner_username, kernel_slug)
-
-        #  Create a fresh client for good measure.
-        client = cls._get_docker_client(stdout_path=f"{container_output_path}/stdout.log",
-                                        stderr_path=f"{container_output_path}/stderr.log")
+        cls._setup_image(client, notebook)
 
         #  Initialize a container.
 
         #  First set up the volume mappings for the datasources and output dir.
         #  We create a separate directory for the datasources, and then symlink all files to the destination.
         #  This way, if the notebook makes changes to the destination, it won't mess with the host filesystem.
-        ro_ds_mappings = [f"/host_{idx}" for idx in range(len(data_sources))]
+        ro_ds_mappings = [f"/host_{idx}" for idx in range(len(notebook.data_sources))]
 
         volumes = {
             **{
@@ -286,7 +282,7 @@ class BaseExecutor(ABC):
                     "bind": vol,
                     "mode": "ro"
                 }
-                for ds, vol in zip(data_sources, ro_ds_mappings)
+                for ds, vol in zip(notebook.data_sources, ro_ds_mappings)
             },
             os.path.abspath(output_dir_path): {
                 "bind": container_output_path,
@@ -294,11 +290,22 @@ class BaseExecutor(ABC):
             }
         }
 
-        image = cls._get_modified_image_name(owner_username, kernel_slug)
+        image = cls._get_modified_image_name(notebook)
+
+        #  Create a fresh client with stdout and stderr logging set up.
+        client = cls._get_docker_client(stdout_path=f"{container_output_path}/stdout.log",
+                                        stderr_path=f"{container_output_path}/stderr.log")
+
+        #  Clear out the existing logs, if any, on the host filesystem
+        if os.path.exists(cls.get_stdout_log_path(output_dir_path)):
+            os.unlink(cls.get_stdout_log_path(output_dir_path))
+
+        if os.path.exists(cls.get_stderr_log_path(output_dir_path)):
+            os.unlink(cls.get_stderr_log_path(output_dir_path))
 
         with client.create_container_context(image, volumes=volumes) as container_id:
             #  Copy over the data-sources using symlinks
-            for ds, vol in zip(data_sources, ro_ds_mappings):
+            for ds, vol in zip(notebook.data_sources, ro_ds_mappings):
                 #  NOTE: `cp -as` only works on linux containers.
                 client.exec(container_id, cmd=f"cp -as {vol}/ {cls.KAGGLE_INPUT_DIR}/{ds.mount_slug}/")
 
@@ -306,12 +313,12 @@ class BaseExecutor(ABC):
             cls._copy_databutler_sources(client, container_id)
 
             #  Finally write the Kaggle notebook source to a file
-            source = nb_utils.get_source(owner_username, kernel_slug)
-            source_type = nb_utils.get_source_type(owner_username, kernel_slug)
+            source = notebook.source_code
+            source_type = notebook.source_type
 
-            if source_type == nb_utils.KaggleSourceType.IPYTHON_NOTEBOOK:
+            if source_type == KaggleNotebookSourceType.IPYTHON_NOTEBOOK:
                 script_name = "kaggle_script.ipynb"
-            elif source_type == nb_utils.KaggleSourceType.PYTHON_SOURCE_FILE:
+            elif source_type == KaggleNotebookSourceType.PYTHON_SOURCE_FILE:
                 script_name = "kaggle_script.py"
             else:
                 raise NotImplementedError(f"Cannot run source of type {source_type}")
@@ -329,19 +336,21 @@ class BaseExecutor(ABC):
                               timeout=timeout, on_error='ignore')
 
             if res.get('timeout', False):
-                return KaggleExecResult(
-                    status=KaggleExecStatus.TIMEOUT,
+                return NotebookExecResult(
+                    status=NotebookExecStatus.TIMEOUT,
                     msg="",
                 )
 
-        return KaggleExecResult(
-            status=KaggleExecStatus.SUCCESS,
+        return NotebookExecResult(
+            status=NotebookExecStatus.SUCCESS,
             msg="",
         )
 
     @classmethod
-    def _create_runner_script(cls, output_dir_path: str, script_path: str,
-                              script_src_type: nb_utils.KaggleSourceType) -> str:
+    def _create_runner_script(cls,
+                              output_dir_path: str,
+                              script_path: str,
+                              script_src_type: KaggleNotebookSourceType) -> str:
         """
         Returns the entrypoint code to run in the container. This script invokes the `runner_main` method for the
         target executor class.
@@ -351,8 +360,7 @@ class BaseExecutor(ABC):
                 from the execution of the Kaggle notebook or the corresponding analyses should be stored.
             script_path: A string corresponding to a path on the container filesystem where the contents of the
                 original Kaggle notebook are stored.
-            script_src_type: An enum member of KaggleSourceType representing the source type of the original Kaggle
-                notebook.
+            script_src_type: Source type of the original Kaggle notebook.
 
         Returns:
 `           (str): A string corresponding to code to run.
@@ -361,18 +369,19 @@ class BaseExecutor(ABC):
         cls_import_path = os.path.relpath(class_file, cls._get_databutler_project_root()).replace("/", ".")
         cls_import_path = ".".join(cls_import_path.split('.')[:-1])  # Remove the .py
 
-        nb_utils_file = os.path.dirname(inspect.getabsfile(nb_utils))  # This is already a module.
-        nb_utils_import_path = os.path.relpath(nb_utils_file, cls._get_databutler_project_root()).replace("/", ".")
+        src_type_file = inspect.getabsfile(KaggleNotebookSourceType)
+        src_type_import_path = os.path.relpath(src_type_file, cls._get_databutler_project_root()).replace("/", ".")
+        src_type_import_path = ".".join(src_type_import_path.split('.')[:-1])  # Remove the .py
 
         return textwrap.dedent(f"""
         from {cls_import_path} import {cls.__name__}
-        from {nb_utils_import_path} import nb_utils
+        from {src_type_import_path} import {KaggleNotebookSourceType.__name__}
         
         with open({script_path!r}, "r") as f_script:
             source = f_script.read()
             
         {cls.__name__}.runner_main(source=source, 
-                                   source_type=nb_utils.{str(script_src_type)}, 
+                                   source_type={str(script_src_type)}, 
                                    output_dir_path={output_dir_path!r})
         """)
 
@@ -390,7 +399,7 @@ class BaseExecutor(ABC):
         return runners
 
     @classmethod
-    def runner_main(cls, source: str, source_type: nb_utils.KaggleSourceType, output_dir_path: str):
+    def runner_main(cls, source: str, source_type: KaggleNotebookSourceType, output_dir_path: str):
         """
         Runs all the runners defined in the executor.
 
