@@ -1,2 +1,2 @@
-class NotebookFetchError(BaseException):
+class NotebookFetchError(Exception):
     pass
