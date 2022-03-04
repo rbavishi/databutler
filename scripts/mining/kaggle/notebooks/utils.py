@@ -1,6 +1,7 @@
 import json
 import os
 import re
+import traceback
 from contextlib import contextmanager
 from typing import Dict
 
@@ -9,6 +10,7 @@ import requests
 from databutler.utils import pickleutils, caching
 from scripts.mining.kaggle import utils
 from scripts.mining.kaggle.exceptions import NotebookFetchError
+from scripts.mining.kaggle.notebooks.scraping import convert_kaggle_html_to_ipynb
 
 
 @caching.caching_function
@@ -95,8 +97,38 @@ def fetch_notebook_data(owner: str, slug: str) -> Dict:
     d = json.loads(d)
 
     if "kernelBlob" not in d:
+        #  A recent Kaggle change removed this field from the source.
+        #  For notebooks, we can try to use a kaggleusercontent.com link to get the notebook html rendering,
+        #  and extract the script from that.
+        kernel_run = d.get("kernelRun", {})
+        source_type = kernel_run.get("sourceType", None)
+        output_url = kernel_run.get("renderedOutputUrl", None)
+        if source_type == "EDITOR_TYPE_NOTEBOOK" and "kaggleusercontent.com" in output_url:
+            #  Try scraping directly
+            try:
+                resp = requests.get(output_url)
+
+                if resp.status_code != 200:
+                    raise RuntimeError
+
+                text = resp.text
+                d["kernelBlob"] = {
+                    "source": json.dumps(convert_kaggle_html_to_ipynb(text))
+                }
+
+            except:
+                pass
+
+            else:
+                return d
+
+        #  Rely on the Kaggle API
         api = get_kaggle_api()
-        response = api.process_response(api.kernel_pull_with_http_info(owner, slug))
+        try:
+            response = api.process_response(api.kernel_pull_with_http_info(owner, slug))
+        except Exception as e:
+            raise NotebookFetchError(f"Failed to fetch kernel sources")
+
         d['kernelBlob'] = response['blob']
 
     return d

@@ -14,12 +14,12 @@ from scripts.mining.kaggle.utils import fire_command
 
 
 @fire_command(name='download_notebooks_using_meta_kaggle', collection=__file__)
-def download_notebooks_using_meta_kaggle():
+def download_notebooks_using_meta_kaggle(num_processes: int = 1):
     """
     Download all notebooks retrieved using the meta-kaggle dataset
     """
     meta_kaggle_notebooks: List[Tuple[str, str]] = get_notebooks_using_meta_kaggle()
-    download_notebooks(meta_kaggle_notebooks)
+    download_notebooks(meta_kaggle_notebooks, num_processes=num_processes)
 
 
 @fire_command(name='download_notebook', collection=__file__)

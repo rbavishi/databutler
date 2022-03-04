@@ -5,6 +5,7 @@ import fire as fire
 import pandas as pd
 import tqdm
 
+from databutler.utils import multiprocess
 from databutler.utils.logging import logger
 from scripts.mining.kaggle import nb_utils
 from scripts.mining.kaggle import utils
@@ -65,7 +66,12 @@ def get_notebooks_using_meta_kaggle() -> List[Tuple[_Owner, _Slug]]:
     return list(result)
 
 
-def download_notebooks(notebooks: List[Tuple[_Owner, _Slug]]) -> None:
+def _mp_helper_fetch_notebook_data(arg):
+    owner, slug = arg
+    return owner, slug, nb_utils.fetch_notebook_data(owner, slug)
+
+
+def download_notebooks(notebooks: List[Tuple[_Owner, _Slug]], num_processes: int = 1) -> None:
     """
     Downloads all provided notebooks as tuples of owner and slugs.
 
@@ -80,26 +86,53 @@ def download_notebooks(notebooks: List[Tuple[_Owner, _Slug]]) -> None:
 
     logger.info(f"Already downloaded {len(existing_keys)} notebooks. Downloading {len(todo)} notebooks")
 
-    with nb_utils.get_local_nb_data_storage_writer() as writer, \
-            tqdm.tqdm(todo, desc="Downloading Notebooks", dynamic_ncols=True) as pbar:
+    with nb_utils.get_local_nb_data_storage_writer() as writer:
+        if num_processes == 1:
+            with tqdm.tqdm(todo, desc="Downloading Notebooks", dynamic_ncols=True) as pbar:
+                n_succ = n_fail = 0
+                for owner, slug in pbar:
+                    try:
+                        nb_data = nb_utils.fetch_notebook_data(owner, slug)
+                        writer[owner, slug] = nb_data
+                        #  Flushing in order to be safe against interruptions.
+                        writer.flush()
 
-        n_succ = n_fail = 0
-        for owner, slug in pbar:
-            try:
-                nb_data = nb_utils.fetch_notebook_data(owner, slug)
-                writer[owner, slug] = nb_data
-                #  Flushing in order to be safe against interruptions.
-                writer.flush()
+                        n_succ += 1
 
-                n_succ += 1
+                    except KeyboardInterrupt:
+                        break
 
-            except KeyboardInterrupt:
-                break
+                    except Exception as e:
+                        logger.warning(f"Failed for {owner}/{slug}")
+                        logger.exception(e)
+                        n_fail += 1
 
-            except:
-                n_fail += 1
+                    pbar.set_postfix(success=n_succ, fail=n_fail)
 
-            pbar.set_postfix(success=n_succ, fail=n_fail)
+        else:
+            iterator = multiprocess.run_tasks_in_parallel_iter(_mp_helper_fetch_notebook_data,
+                                                               todo,
+                                                               use_progress_bar=True,
+                                                               use_spawn=True,
+                                                               num_workers=num_processes,
+                                                               progress_bar_desc="Downloading Notebooks",
+                                                               timeout_per_task=30)
+            for task_result in iterator:
+                if task_result.is_success():
+                    try:
+                        owner, slug, nb_data = task_result.result
+                        writer[owner, slug] = nb_data
+                        #  Flushing in order to be safe against interruptions.
+                        writer.flush()
+
+                    except KeyboardInterrupt:
+                        break
+
+                    except Exception as e:
+                        logger.exception(e)
+
+                elif task_result.is_exception():
+                    logger.exception(task_result.exception_tb)
 
 
 if __name__ == "__main__":
