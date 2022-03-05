@@ -4,3 +4,6 @@ intervaltree~=3.1.0
 sortedcontainers~=2.2.2
 requests
 tqdm
+markdownify
+bs4
+lxml
