@@ -181,6 +181,7 @@ class InstrumentationTests(unittest.TestCase):
             """
             Intercepts all integer values, and replaces them with a np.int64 equivalent.
             """
+
             def gen_expr_wrappers(self, ast_root: astlib.AstNode) -> Dict[astlib.BaseExpression, List[ExprWrapper]]:
                 wrappers: Dict[astlib.BaseExpression, List[ExprWrapper]] = collections.defaultdict(list)
 
@@ -406,3 +407,126 @@ class InstrumentationTests(unittest.TestCase):
         self.assertEqual('12', mydict['second'])
         self.assertEqual(0, mydict['third'])
         self.assertEqual('22', mydict['fourth'])
+
+    def test_mandatory_post_callbacks_simple_1(self):
+        counter: int = 0
+
+        class NonMandatory(StmtCallbacksGenerator):
+            def gen_stmt_callbacks_simple(self, ast_root: astlib.AstNode):
+                for n in self.iter_stmts(ast_root):
+                    yield n, StmtCallback(
+                        callable=self._callback,
+                        name=self.gen_stmt_callback_id(),
+                        position='post',
+                        mandatory=False,
+                    )
+
+            def _callback(self, d_globals, d_locals):
+                nonlocal counter
+                counter += 1
+
+        class Mandatory(StmtCallbacksGenerator):
+            def gen_stmt_callbacks_simple(self, ast_root: astlib.AstNode):
+                for n in self.iter_stmts(ast_root):
+                    yield n, StmtCallback(
+                        callable=self._callback,
+                        name=self.gen_stmt_callback_id(),
+                        position='post',
+                        mandatory=True,
+                    )
+
+            def _callback(self, d_globals, d_locals):
+                nonlocal counter
+                counter += 1
+
+        instrumentation_1 = Instrumentation(stmt_callback_gens=[NonMandatory()])
+        instrumentation_2 = Instrumentation(stmt_callback_gens=[Mandatory()])
+        instrumenter_1 = Instrumenter(instrumentation=instrumentation_1)
+        instrumenter_2 = Instrumenter(instrumentation=instrumentation_2)
+
+        def func():
+            c = 0
+            for i in [1, 2]:
+                c += i
+                if i > 0:
+                    break
+            print(c)
+
+        func_1 = instrumenter_1.process_func(func)[1]
+        func_2 = instrumenter_2.process_func(func)[1]
+        counter = 0
+        func_1()
+        ctr_1 = counter
+        counter = 0
+        func_2()
+        ctr_2 = counter
+
+        self.assertEqual(4, ctr_1)
+        self.assertEqual(6, ctr_2)  # Should be counting the if-statement and the break statement
+
+    def test_expr_callbacks_simple_1(self):
+        trace = []
+
+        @attr.s(cmp=False, repr=False)
+        class MyTraversal(ExprCallbacksGenerator):
+            _memory: Dict[astlib.BaseExpression, int] = attr.ib(init=False, factory=dict)
+
+            def gen_expr_callbacks_simple(self, ast_root: astlib.AstNode):
+                for expr in self.iter_valid_exprs(ast_root):
+                    for k, v in itertools.chain(self.gen_pre_callback(expr).items(),
+                                                self.gen_post_callback(expr).items()):
+                        for i in v:
+                            yield k, i
+
+            def gen_pre_callback(self, expr):
+                def cb(d_globals, d_locals):
+                    if expr not in self._memory:
+                        self._memory[expr] = len(self._memory)
+
+                    trace.append(self._memory[expr])
+
+                return {expr: [ExprCallback(callable=cb, name=self.gen_expr_callback_id(),
+                                            position='pre')]}
+
+            def gen_post_callback(self, expr):
+                def cb(d_globals, d_locals):
+                    trace.append(self._memory[expr])
+
+                return {expr: [ExprCallback(callable=cb, name=self.gen_expr_callback_id(),
+                                            position='post')]}
+
+        instrumentation = Instrumentation(expr_callback_gens=[MyTraversal()])
+        instrumenter = Instrumenter(instrumentation=instrumentation)
+
+        def func(a, b):
+            return (a + 1) + b
+
+        new_ast, instrumented_func = instrumenter.process_func(func)
+        res = instrumented_func(10, 20)
+        self.assertEqual(31, res)
+        self.assertEqual([0, 1, 2, 2, 3, 3, 1, 4, 4, 0], trace)
+
+    def test_wrappers_simple_1(self):
+        cnt = 0
+
+        @attr.s(cmp=False, repr=False)
+        class Dummy(ExprWrappersGenerator):
+            def gen_expr_wrappers_simple(self, ast_root: astlib.AstNode):
+                for n in self.iter_valid_exprs(ast_root):
+                    yield n, ExprWrapper(callable=self._dummy, name=self.gen_wrapper_id(),
+                                         arg_str='globals(), locals()')
+
+            def _dummy(self, value, d_globals, d_locals):
+                nonlocal cnt
+                cnt += d_locals['a']
+                return value
+
+        def func(a):
+            return a
+
+        instrumentation = Instrumentation.from_generators(Dummy())
+        instrumenter = Instrumenter(instrumentation=instrumentation)
+
+        _, func1 = instrumenter.process_func(func)
+        func1(10)
+        self.assertEqual(10, cnt)
