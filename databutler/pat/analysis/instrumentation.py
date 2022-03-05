@@ -84,7 +84,16 @@ class StmtCallbacksGenerator(BaseGenerator):
 
     def gen_stmt_callbacks(self, ast_root: astlib.AstNode) -> Dict[astlib.AstStatementT,
                                                                    List[StmtCallback]]:
-        return {}
+        callbacks = collections.defaultdict(list)
+        for stmt, callback in self.gen_stmt_callbacks_simple(ast_root):
+            callbacks[stmt].append(callback)
+
+        return callbacks
+
+    def gen_stmt_callbacks_simple(self, ast_root: astlib.AstNode
+                                  ) -> Iterator[Tuple[astlib.AstStatementT, StmtCallback]]:
+        return
+        yield
 
 
 @attr.s(cmp=False, repr=False)
@@ -137,7 +146,17 @@ class ExprCallbacksGenerator(BaseGenerator):
                     yield n
 
     def gen_expr_callbacks(self, ast_root: astlib.AstNode) -> Dict[astlib.BaseExpression, List[ExprCallback]]:
-        return {}
+
+        callbacks = collections.defaultdict(list)
+        for expr, callback in self.gen_expr_callbacks_simple(ast_root):
+            callbacks[expr].append(callback)
+
+        return callbacks
+
+    def gen_expr_callbacks_simple(self, ast_root: astlib.AstNode
+                                  ) -> Iterator[Tuple[astlib.BaseExpression, ExprCallback]]:
+        return
+        yield
 
 
 @attr.s(cmp=False, repr=False)
@@ -182,7 +201,15 @@ class ExprWrappersGenerator(BaseGenerator):
                     yield n
 
     def gen_expr_wrappers(self, ast_root: astlib.AstNode) -> Dict[astlib.BaseExpression, List[ExprWrapper]]:
-        return {}
+        wrappers = collections.defaultdict(list)
+        for expr, callback in self.gen_expr_wrappers_simple(ast_root):
+            wrappers[expr].append(callback)
+
+        return wrappers
+
+    def gen_expr_wrappers_simple(self, ast_root: astlib.AstNode) -> Iterator[Tuple[astlib.BaseExpression, ExprWrapper]]:
+        return
+        yield
 
 
 @attr.s(cmp=False, repr=False)
