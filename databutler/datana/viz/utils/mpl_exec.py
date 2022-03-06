@@ -73,14 +73,16 @@ def run_viz_code_matplotlib(code: str,
                 pass
 
 
-def run_viz_code_matplotlib_mp(code: str, args: Dict[str, Any],
+def run_viz_code_matplotlib_mp(code: str,
+                               pos_args: List[Any],
+                               kw_args: Dict[str, Any],
                                func_name: str = 'visualization',
                                other_globals: Optional[Dict] = None,
                                disable_seaborn_randomization: bool = True,
                                serializer: Callable[['plt.Figure'], Any] = None,
                                timeout: Optional[int] = None):
     func = concurrent.process(timeout=timeout)(run_viz_code_matplotlib)
-    future = func(code=code, args=args, func_name=func_name, other_globals=other_globals,
+    future = func(code=code, pos_args=pos_args, kw_args=kw_args, func_name=func_name, other_globals=other_globals,
                   disable_seaborn_randomization=disable_seaborn_randomization, serializer=serializer)
 
     try:
