@@ -316,7 +316,7 @@ def _rename_variables(code_ast: astlib.AstNode, tracker: _VarDefAndAccessTracker
     return codeutils.optimize_code(astlib.to_code(new_ast))
 
 
-def optimize_vars(code: str, args: List[Any], kwargs: Dict[str, Any]) -> str:
+def optimize_vars(code: str, args: List[Any], kw_args: Dict[str, Any]) -> str:
     #  Set up instrumentation.
     tracker = _VarDefAndAccessTracker()
     normalizer_instrumentation = Instrumentation.from_generators(tracker)
@@ -327,6 +327,9 @@ def optimize_vars(code: str, args: List[Any], kwargs: Dict[str, Any]) -> str:
     inst_ast, global_ctx = instrumenter.process(code_ast)
     inst_code = astlib.to_code(inst_ast)
 
-    #  Run the code
-    mpl_exec.run_viz_code_matplotlib(inst_code, pos_args=args, kw_args=kwargs, other_globals=global_ctx)
+    #  Run the code. This will run the variable name tracker.
+    mpl_exec.run_viz_code_matplotlib(inst_code, pos_args=args, kw_args=kw_args, other_globals=global_ctx,
+                                     func_name='viz')
+
+    #  Use the tracker to optimize variable usage.
     return _rename_variables(code_ast, tracker)

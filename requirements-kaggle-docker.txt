@@ -7,3 +7,5 @@ tqdm
 markdownify
 bs4
 lxml
+loguru
+pebble

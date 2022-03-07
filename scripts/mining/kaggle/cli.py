@@ -150,7 +150,7 @@ def run_notebook(owner: str, slug: str, executor_name: str, output_dir_path: str
         raise ValueError(f"Executor {executor_name} not found. Executor must be one of {get_available_executors()}")
 
     if executor_name == "mpl_seaborn_viz_miner":
-        from scripts.mining.kaggle.execution.mpl_seaborn_miner import MplSeabornVizMiner
+        from scripts.mining.kaggle.execution.mpl_seaborn_mining.miner import MplSeabornVizMiner
         executor = MplSeabornVizMiner
     else:
         assert False

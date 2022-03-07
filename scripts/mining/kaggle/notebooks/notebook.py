@@ -62,10 +62,6 @@ class KaggleNotebook:
         """
         GCR Url for the docker image the notebook was run on.
         """
-        orig_url = self._raw_data["kernelRun"]["runInfo"].get("dockerHubUrl", "")
-        if "@sha256:" in orig_url:
-            return orig_url
-
         #  We'll need to construct it ourselves using the image digest.
         if self.is_gpu_accelerated():
             return f"gcr.io/kaggle-gpu-images/python@sha256:{self.docker_image_digest}"

@@ -1,18 +1,19 @@
 import collections
 import inspect
+import json
 import os
 import pickle
 import textwrap
+import time
 import traceback
 from abc import ABC
-from typing import Optional, Dict, Set, Callable, List, Any, Tuple
+from typing import Optional, Dict, Set, Callable, List, Any
 
 import git
 
 from scripts.mining.kaggle.docker_tools.client import DockerShellClient
 from scripts.mining.kaggle.execution.result import NotebookExecResult, NotebookExecStatus
 from scripts.mining.kaggle.notebooks.notebook import KaggleNotebook, KaggleNotebookSourceType
-from scripts.mining.kaggle.notebooks import utils as nb_utils
 
 _RUNNER_METADATA_KEY = "__databutler_mining_runner"
 
@@ -56,6 +57,7 @@ class BaseExecutor(ABC):
 
     STDOUT_LOG_FILENAME: str = "stdout.log"
     STDERR_LOG_FILENAME: str = "stderr.log"
+    EXEC_DETAILS_LOG_FILENAME: str = "exec_details.json"
 
     @classmethod
     def _get_databutler_project_root(cls) -> str:
@@ -90,6 +92,9 @@ class BaseExecutor(ABC):
 
         if not client.image_exists(image):
             client.pull_image(image, verbose=True)
+
+        else:
+            print("Already downloaded", image)
 
     @classmethod
     def _get_modified_image_name(cls, notebook: KaggleNotebook):
@@ -205,11 +210,11 @@ class BaseExecutor(ABC):
 
     @classmethod
     def get_stdout_log_path(cls, output_dir_path: str) -> str:
-        return os.path.join(output_dir_path, cls.STDOUT_LOG_FILENAME)
+        return os.path.join(output_dir_path, f"{cls.__name__}.{cls.STDOUT_LOG_FILENAME}")
 
     @classmethod
     def get_stderr_log_path(cls, output_dir_path: str) -> str:
-        return os.path.join(output_dir_path, cls.STDERR_LOG_FILENAME)
+        return os.path.join(output_dir_path, f"{cls.__name__}.{cls.STDERR_LOG_FILENAME}")
 
     @classmethod
     def run_notebook(cls,
@@ -265,9 +270,14 @@ class BaseExecutor(ABC):
         client = cls._get_docker_client()
 
         #  Make sure the image is available before making a container.
+        s = time.time()
         cls._download_image_if_not_available(client, notebook)
+        image_download_time = time.time() - s
+
         #  Ensure setup is complete
+        s = time.time()
         cls._setup_image(client, notebook)
+        image_setup_time = time.time() - s
 
         #  Initialize a container.
 
@@ -293,8 +303,8 @@ class BaseExecutor(ABC):
         image = cls._get_modified_image_name(notebook)
 
         #  Create a fresh client with stdout and stderr logging set up.
-        client = cls._get_docker_client(stdout_path=f"{container_output_path}/stdout.log",
-                                        stderr_path=f"{container_output_path}/stderr.log")
+        client = cls._get_docker_client(stdout_path=cls.get_stdout_log_path(container_output_path),
+                                        stderr_path=cls.get_stderr_log_path(container_output_path))
 
         #  Clear out the existing logs, if any, on the host filesystem
         if os.path.exists(cls.get_stdout_log_path(output_dir_path)):
@@ -303,7 +313,11 @@ class BaseExecutor(ABC):
         if os.path.exists(cls.get_stderr_log_path(output_dir_path)):
             os.unlink(cls.get_stderr_log_path(output_dir_path))
 
+        s = time.time()
         with client.create_container_context(image, volumes=volumes) as container_id:
+            container_creation_time = time.time() - s
+
+            s = time.time()
             #  Copy over the data-sources using symlinks
             for ds, vol in zip(notebook.data_sources, ro_ds_mappings):
                 #  NOTE: `cp -as` only works on linux containers.
@@ -332,8 +346,22 @@ class BaseExecutor(ABC):
             client.write_file(container_id, filepath=f"{cls.KAGGLE_WORKING_DIR}/kaggle_runner.py",
                               contents=runner_script_src)
 
+            container_setup_time = time.time() - s
+
+            s = time.time()
             res = client.exec(container_id, cmd=f"python kaggle_runner.py", workdir=cls.KAGGLE_WORKING_DIR,
                               timeout=timeout, on_error='ignore')
+            execution_time = time.time() - s
+
+            with open(os.path.join(output_dir_path, cls.EXEC_DETAILS_LOG_FILENAME), "w") as f:
+                json.dump({
+                    "docker_image": image,
+                    "image_download_time": image_download_time,
+                    "image_setup_time": image_setup_time,
+                    "container_creation_time": container_creation_time,
+                    "container_setup_time": container_setup_time,
+                    "execution_time": execution_time,
+                }, fp=f, indent=2)
 
             if res.get('timeout', False):
                 return NotebookExecResult(
@@ -374,8 +402,15 @@ class BaseExecutor(ABC):
         src_type_import_path = ".".join(src_type_import_path.split('.')[:-1])  # Remove the .py
 
         return textwrap.dedent(f"""
+        import sys
         from {cls_import_path} import {cls.__name__}
         from {src_type_import_path} import {KaggleNotebookSourceType.__name__}
+        
+        from databutler.utils.logging import logger
+        
+        #  Setup the logger to output everything to stdout
+        logger.remove()
+        logger.add(sys.stdout, level="INFO")
         
         with open({script_path!r}, "r") as f_script:
             source = f_script.read()
