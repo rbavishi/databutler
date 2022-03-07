@@ -93,5 +93,4 @@ def run_viz_code_matplotlib_mp(code: str,
         return None
 
     except Exception as e:
-        print(e)
         return None
