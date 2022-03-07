@@ -126,6 +126,7 @@ def get_available_executors() -> List[str]:
     Get all the available executors that can be provided to `run_notebook` and `run_notebooks`.
     """
     return [
+        'simple_executor',
         'mpl_seaborn_viz_miner',
     ]
 
@@ -149,9 +150,14 @@ def run_notebook(owner: str, slug: str, executor_name: str, output_dir_path: str
     if executor_name not in get_available_executors():
         raise ValueError(f"Executor {executor_name} not found. Executor must be one of {get_available_executors()}")
 
-    if executor_name == "mpl_seaborn_viz_miner":
+    if executor_name == "simple_executor":
+        from scripts.mining.kaggle.execution.simple_executor import SimpleExecutor
+        executor = SimpleExecutor
+
+    elif executor_name == "mpl_seaborn_viz_miner":
         from scripts.mining.kaggle.execution.mpl_seaborn_mining.miner import MplSeabornVizMiner
         executor = MplSeabornVizMiner
+
     else:
         assert False
 
