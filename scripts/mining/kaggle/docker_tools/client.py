@@ -77,7 +77,7 @@ class DockerShellClient:
         except ImageNotFound:
             return False
         except:
-            return True
+            return False
 
     def get_images(self) -> List[Dict]:
         """
