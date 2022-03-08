@@ -14,10 +14,6 @@ class SimpleExecutor(BaseExecutor):
     @classmethod
     @register_runner(name="simple_executor")
     def simple_runner(cls, source: str, source_type: KaggleNotebookSourceType, output_dir_path: str):
-        #  TODO: @Arushi: Write the source out to a file, and execute it appropriately using the source type.
-        #        That is, determine if it is a notebook or a regular python file,
-        #        and use the appropriate shell commands.
-
         if source_type == KaggleNotebookSourceType.IPYTHON_NOTEBOOK:
             file_name = f'{output_dir_path}/source.ipynb'
             # writing the file to file_name
@@ -35,3 +31,6 @@ class SimpleExecutor(BaseExecutor):
             print(f'Source written to {file_name}')
             # executing file from terminal
             os.system(f'python3 {file_name}')
+
+        else:
+            raise NotImplementedError(f'Unknown source type {source_type}')
