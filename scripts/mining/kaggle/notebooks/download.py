@@ -7,7 +7,6 @@ import tqdm
 
 from databutler.utils import multiprocess, gdriveutils
 from databutler.utils.logging import logger
-from scripts.mining.kaggle import nb_utils
 from scripts.mining.kaggle import utils
 from scripts.mining.kaggle.notebooks import utils as nb_utils
 
