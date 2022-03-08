@@ -124,7 +124,7 @@ def download_file(file_id: str, path_dir=".") -> None:
     file_obj.GetContentFile(os.path.join(path_dir, name))
 
 
-def download_folder(folder_id: str, path_dir=".", _indent: int = 0):
+def download_folder(folder_id: str, path_dir=".", only_contents: bool = False, _indent: int = 0):
     """
     Downloads a folder recursively from Google Drive given the folder ID. The folder ID is the last segment of
     the URL of the folder.
@@ -133,7 +133,8 @@ def download_folder(folder_id: str, path_dir=".", _indent: int = 0):
         folder_id: A string representing the ID of the file to download.
         path_dir: Path to directory in which to store the file. Defaults to the current folder.
             The folder is created if it does not exist.
-
+        only_contents: If True, the top-level directory is not created, its contents are copied directly into
+            path_dir. Defaults to False.
         _indent: (Internal) Controls the indentation for the logger to represent folder structure.
     """
     drive = _get_drive()
@@ -146,20 +147,24 @@ def download_folder(folder_id: str, path_dir=".", _indent: int = 0):
 
     #  Make sure the directory exists
     os.makedirs(path_dir, exist_ok=True)
-    target_dir = os.path.join(path_dir, name)
+    if only_contents:
+        target_dir = os.path.join(path_dir)
+    else:
+        target_dir = os.path.join(path_dir, name)
+
     #  Delete the existing contents to avoid potential issues.
     if os.path.exists(target_dir):
         shutil.rmtree(target_dir)
 
     os.makedirs(target_dir, exist_ok=True)
 
-    logger.info(f"{_indent * ' '}Downloading `{name}` to `{path_dir}` ...")
+    logger.info(f"{_indent * ' '}Downloading `{name}` {'contents' if only_contents else ''} to `{path_dir}` ...")
     _indent += 2
 
     for obj in file_list:
         if obj.metadata["mimeType"].endswith("folder"):
             #  Recursively download directories.
-            download_folder(obj.metadata["id"], target_dir, _indent=_indent)
+            download_folder(obj.metadata["id"], target_dir, only_contents=False, _indent=_indent)
         else:
             logger.info(f"{_indent * ' '}Downloading `{obj.metadata['title']}` to `{target_dir}` ...")
             obj.GetContentFile(os.path.join(target_dir, obj.metadata["title"]))

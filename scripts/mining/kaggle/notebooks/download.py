@@ -5,7 +5,7 @@ import fire as fire
 import pandas as pd
 import tqdm
 
-from databutler.utils import multiprocess
+from databutler.utils import multiprocess, gdriveutils
 from databutler.utils.logging import logger
 from scripts.mining.kaggle import nb_utils
 from scripts.mining.kaggle import utils
@@ -69,6 +69,12 @@ def get_notebooks_using_meta_kaggle() -> List[Tuple[_Owner, _Slug]]:
 def _mp_helper_fetch_notebook_data(arg):
     owner, slug = arg
     return owner, slug, nb_utils.fetch_notebook_data(owner, slug)
+
+
+def download_notebooks_gdrive() -> None:
+    folder_id: str = "1xFcDRqY2QNLstn00-gxOa24Z64M788xQ"
+    gdriveutils.download_folder(folder_id, os.path.dirname(nb_utils.get_local_datasources_storage_path()),
+                                only_contents=True)
 
 
 def download_notebooks(notebooks: List[Tuple[_Owner, _Slug]], num_processes: int = 1) -> None:

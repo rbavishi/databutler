@@ -7,8 +7,9 @@ import fire
 from databutler.utils.logging import logger
 from scripts.mining.kaggle import utils
 from scripts.mining.kaggle.execution.result import NotebookExecStatus
-from scripts.mining.kaggle.notebooks.download import get_notebooks_using_meta_kaggle, download_notebooks
 from scripts.mining.kaggle.notebooks import utils as nb_utils
+from scripts.mining.kaggle.notebooks.download import get_notebooks_using_meta_kaggle, download_notebooks, \
+    download_notebooks_gdrive
 from scripts.mining.kaggle.notebooks.notebook import KaggleNotebook
 from scripts.mining.kaggle.utils import fire_command
 
@@ -20,6 +21,11 @@ def download_notebooks_using_meta_kaggle(num_processes: int = 1):
     """
     meta_kaggle_notebooks: List[Tuple[str, str]] = get_notebooks_using_meta_kaggle()
     download_notebooks(meta_kaggle_notebooks, num_processes=num_processes)
+
+
+@fire_command(name='download_notebooks_from_drive', collection=__file__)
+def download_notebooks_from_drive():
+    download_notebooks_gdrive()
 
 
 @fire_command(name='download_notebook', collection=__file__)
