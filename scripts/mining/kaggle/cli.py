@@ -1,8 +1,10 @@
 import json
 import os.path
-from typing import List, Tuple, Optional
+from typing import List, Tuple, Optional, Callable, Dict, Iterator
 
+import attrs
 import fire
+import tqdm
 
 from databutler.utils.logging import logger
 from scripts.mining.kaggle import utils
@@ -10,8 +12,93 @@ from scripts.mining.kaggle.execution.result import NotebookExecStatus
 from scripts.mining.kaggle.notebooks import utils as nb_utils
 from scripts.mining.kaggle.notebooks.download import get_notebooks_using_meta_kaggle, download_notebooks, \
     download_notebooks_gdrive
-from scripts.mining.kaggle.notebooks.notebook import KaggleNotebook
+from scripts.mining.kaggle.notebooks.notebook import KaggleNotebook, KaggleNotebookSourceType
 from scripts.mining.kaggle.utils import fire_command
+
+
+@fire_command(name='MetaKaggleNotebooks', collection=__file__)
+@attrs.define(eq=False, repr=False)
+class MetaKaggleNotebooks:
+    """
+    Make a selection of notebooks using the meta-kaggle dump by filtering across criteria.
+    """
+
+    _filters: List[Callable[[KaggleNotebook], bool]] = attrs.field(init=False, factory=list)
+
+    def set_filter(self, competition_only: bool = True, pure_competition_only: bool = None,
+                   competition: Optional[str] = None, successful_execution: Optional[bool] = True,
+                   author: Optional[str] = None, max_runtime: Optional[int] = None,
+                   is_gpu_accelerated: Optional[bool] = None, has_docker_image_available: Optional[bool] = None,
+                   is_notebook: Optional[bool] = None, libraries_used: Optional[List[str]] = None,
+                   libraries_not_used: Optional[List[str]] = None):
+        """
+
+        Args:
+            competition_only:
+            pure_competition_only:
+            competition:
+            successful_execution:
+            author:
+            max_runtime:
+            is_gpu_accelerated:
+            has_docker_image_available:
+            is_notebook:
+            libraries_used:
+            libraries_not_used:
+        """
+        self._filters.clear()
+
+        if competition_only:
+            self._filters.append(lambda nb: nb.associated_competition is not None)
+        if pure_competition_only:
+            self._filters.append(lambda nb: nb.is_pure_competition_notebook())
+        if competition is not None:
+            self._filters.append(lambda nb: nb.associated_competition == competition)
+        if successful_execution is not None:
+            self._filters.append(lambda nb: nb.was_execution_successful() == successful_execution)
+        if author is not None:
+            self._filters.append(lambda nb: nb.owner == author)
+        if max_runtime is not None:
+            self._filters.append(lambda nb: nb.runtime is not None and nb.runtime <= max_runtime)
+        if is_gpu_accelerated is not None:
+            self._filters.append(lambda nb: nb.is_gpu_accelerated() == is_gpu_accelerated)
+        if has_docker_image_available:
+            #  TODO: Need a way to check the registry
+            pass
+        if is_notebook is not None:
+            self._filters.append(lambda nb: nb.source_type == KaggleNotebookSourceType.IPYTHON_NOTEBOOK)
+        if libraries_used is not None:
+            set_libraries_used = set(libraries_used)
+            self._filters.append(lambda nb: set_libraries_used.issubset(nb.imported_packages))
+        if libraries_used is not None:
+            set_libraries_not_used = set(libraries_not_used)
+            self._filters.append(lambda nb: set_libraries_not_used.isdisjoint(nb.imported_packages))
+
+        #  Allow chaining of commands
+        return self
+
+    def _iter_selection(self) -> Iterator[KaggleNotebook]:
+        with nb_utils.get_local_nb_data_storage_reader() as reader:
+            for (owner, slug) in tqdm.tqdm(reader.keys(), total=len(reader)):
+                nb = KaggleNotebook.from_raw_data(owner, slug, reader[owner, slug])
+                if all(fn(nb) for fn in self._filters):
+                    yield nb
+
+    def generate_report(self) -> None:
+        total = 0
+        competitions = set()
+        for nb in self._iter_selection():
+            total += 1
+            competitions.add(nb.associated_competition)
+
+        print(f"Found {total} notebooks meeting criteria")
+        print(f"Found {len(competitions)} competitions in total.")
+
+    def dump_json(self, path: str):
+        pass
+
+    def load_json(self, path: str):
+        pass
 
 
 @fire_command(name='download_notebooks_using_meta_kaggle', collection=__file__)
@@ -57,6 +144,14 @@ def view_notebook(owner: str, slug: str):
     """
     nb_data = nb_utils.retrieve_notebook_data(owner, slug)
     print(json.dumps(nb_data, indent=2))
+    from scripts.mining.kaggle.notebooks.notebook import KaggleNotebook
+    nb = KaggleNotebook(owner, slug)
+    print(nb.associated_competition)
+    print(nb.is_gpu_accelerated())
+    print(nb.is_pure_competition_notebook())
+    print(nb.runtime)
+    print(nb.was_execution_successful())
+    print(nb.imported_packages)
 
 
 @fire_command(name='is_notebook_downloaded', collection=__file__)
@@ -133,6 +228,7 @@ def get_available_executors() -> List[str]:
     """
     return [
         'simple_executor',
+        'plotly_miner',
         'mpl_seaborn_viz_miner',
     ]
 
@@ -159,6 +255,10 @@ def run_notebook(owner: str, slug: str, executor_name: str, output_dir_path: str
     if executor_name == "simple_executor":
         from scripts.mining.kaggle.execution.simple_executor import SimpleExecutor
         executor = SimpleExecutor
+
+    elif executor_name == "plotly_miner":
+        from scripts.mining.kaggle.execution.plotly_mining.miner import PlotlyMiner
+        executor = PlotlyMiner
 
     elif executor_name == "mpl_seaborn_viz_miner":
         from scripts.mining.kaggle.execution.mpl_seaborn_mining.miner import MplSeabornVizMiner
