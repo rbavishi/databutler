@@ -17,6 +17,7 @@ def convert_kaggle_html_to_ipynb(html_src: str):
                 "source": code_input.text.strip(),
                 "metadata": {},
                 "outputs": [],
+                "execution_count": 0,
             })
 
         for md_input in cell_elem.find_all("div", attrs={"class": "rendered_html"}):
