@@ -1,9 +1,10 @@
 import os
 from enum import Enum
-from typing import List, Dict
+from typing import List, Dict, Optional, Set
 
 import attrs
 
+from databutler.pat import astlib
 from databutler.utils import caching
 from scripts.mining.kaggle.notebooks.datasources import KaggleDataSource, KaggleDataSourceType
 from scripts.mining.kaggle.notebooks import utils as nb_utils
@@ -21,6 +22,12 @@ class KaggleNotebookSourceType(Enum):
 class KaggleNotebook:
     owner: str
     slug: str
+
+    @classmethod
+    def from_raw_data(cls, owner: str, slug: str, raw_data: Dict) -> 'KaggleNotebook':
+        nb = KaggleNotebook(owner, slug)
+        nb._raw_data = raw_data
+        return nb
 
     @caching.cached_property
     def _raw_data(self) -> Dict:
@@ -77,7 +84,7 @@ class KaggleNotebook:
         result: List[KaggleDataSource] = []
         ds_root = nb_utils.get_local_datasources_storage_path()
 
-        for ds in nb_data["renderableDataSources"]:
+        for ds in nb_data.get("renderableDataSources", []):
             try:
                 url = ds["dataSourceUrl"]
                 mount_slug = ds["reference"]["mountSlug"]
@@ -116,4 +123,81 @@ class KaggleNotebook:
         return result
 
     def is_gpu_accelerated(self) -> bool:
+        """
+        Returns whether the notebook is a GPU notebook.
+        """
         return self._raw_data["kernelRun"].get("isGpuEnabled", False)
+
+    @caching.cached_property
+    def associated_competition(self) -> Optional[str]:
+        """
+        Get the competition slug the notebook is associated with. Is None if no competition is found.
+        """
+        #  The notebook data by itself does not contain a field for competitions.
+        #  Instead we are going to try to use the data-sources to determine if the notebook is associated with a
+        #  competition. We use the heuristic that if the notebook is using a competition's data, it is associated
+        #  with that competition.
+        found_competitions: List[str] = []
+        for ds in self.data_sources:
+            if ds.src_type == KaggleDataSourceType.COMPETITION:
+                if ds.url.startswith("/c/"):
+                    found_competitions.append(ds.url[len("/c/"):])
+
+        if len(found_competitions) != 1:
+            #  If no competitions found, or more than one competition's data-sources are being used, deem it
+            #  unassociated.
+            return None
+
+        return found_competitions[0]
+
+    def is_pure_competition_notebook(self) -> bool:
+        """
+        Checks if the notebook is associated with a competition, and does not use any data-sources apart from the
+        competition data-sources.
+        """
+        return self.associated_competition is not None and len(self.data_sources) == 1
+
+    def was_execution_successful(self) -> bool:
+        """
+        Checks if the notebook ran successfully on Kaggle
+        """
+        return self._raw_data["kernelRun"].get("runInfo", {}).get("succeeded", False)
+
+    @caching.cached_property
+    def runtime(self) -> Optional[float]:
+        """
+        Execution time in seconds, if available. None otherwise.
+        """
+        return self._raw_data["kernelRun"].get("runInfo", {}).get("runTimeSeconds", False)
+
+    @caching.cached_property
+    def imported_packages(self) -> List[str]:
+        """
+        All the external packages (non-relative) imported in the source.
+
+        NOTE: This is not guaranteed to be correct in all circumstances.
+        """
+
+        #  Parse the source as an AST.
+        if self.source_type == KaggleNotebookSourceType.IPYTHON_NOTEBOOK:
+            code_ast = astlib.parse(self.source_code, extension='.ipynb')
+        elif self.source_type == KaggleNotebookSourceType.PYTHON_SOURCE_FILE:
+            code_ast = astlib.parse(self.source_code)
+        else:
+            raise NotImplementedError(f"Could not recognize source of type {self.source_type}")
+
+        package_strs: Set[str] = set()
+        for node in astlib.walk(code_ast):
+            if isinstance(node, astlib.Import):
+                for alias in node.names:
+                    #  For every alias, get the top-level module name.
+                    name = alias.evaluated_name.split(".")[0]
+                    package_strs.add(name)
+
+            elif isinstance(node, astlib.ImportFrom) and node.module is not None and len(node.relative) == 0:
+                #  For non-relative imports, get the top-level module name.
+                name = astlib.to_code(node.module).split(".")[0]
+                package_strs.add(name)
+
+        return sorted(package_strs)
+
