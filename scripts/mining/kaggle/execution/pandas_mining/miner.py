@@ -1,44 +1,38 @@
 import collections
 import os
-import sys
-from typing import Set, Dict, List, Tuple, Iterator, Any
+from typing import Set, Dict, List, Tuple, Iterator, Deque
 
 import attrs
 import pandas as pd
 import yaml
-from matplotlib import pyplot as plt
 
-from databutler.datana.viz.utils import mpl_exec
 from databutler.pat import astlib
 from databutler.pat.analysis.clock import LogicalClock
 from databutler.pat.analysis.hierarchical_trace.builder import get_hierarchical_trace_instrumentation
-from databutler.pat.analysis.hierarchical_trace.core import HierarchicalTrace, ObjWriteEvent, TraceItem
-from databutler.pat.analysis.instrumentation import ExprCallbacksGenerator, ExprCallback, StmtCallbacksGenerator, \
-    StmtCallback, Instrumentation, Instrumenter, ExprWrappersGenerator, ExprWrapper
+from databutler.pat.analysis.hierarchical_trace.core import HierarchicalTrace, TraceItem
+from databutler.pat.analysis.instrumentation import Instrumentation, Instrumenter, ExprWrappersGenerator, ExprWrapper
 from databutler.utils import inspection
 from databutler.utils.logging import logger
 from scripts.mining.kaggle.execution.base import BaseExecutor, register_runner
 from scripts.mining.kaggle.execution.instrumentation_utils import IPythonMagicBlocker
-from scripts.mining.kaggle.execution.mpl_seaborn_mining.minimization import minimize_code
-from scripts.mining.kaggle.execution.mpl_seaborn_mining.var_optimization import optimize_vars
 from scripts.mining.kaggle.notebooks.notebook import KaggleNotebookSourceType
 
 
 @attrs.define(eq=False, repr=False)
-class FuncNameFinder(ExprWrappersGenerator):
+class FuncModNameFinder(ExprWrappersGenerator):
     _func_calls_to_name: Dict[astlib.Call, str] = attrs.field(init=False, factory=dict)
 
     def gen_expr_wrappers_simple(self, ast_root: astlib.AstNode) -> Iterator[Tuple[astlib.BaseExpression, ExprWrapper]]:
         for expr in self.iter_valid_exprs(ast_root):
             if isinstance(expr, astlib.Call):
                 yield expr.func, ExprWrapper(
-                    callable=self._gen_func_name_finding_wrapper(expr),
+                    callable=self._gen_func_mod_name_finding_wrapper(expr),
                     name=self.gen_wrapper_id(),
                 )
 
-    def _gen_func_name_finding_wrapper(self, call_expr: astlib.Call):
+    def _gen_func_mod_name_finding_wrapper(self, call_expr: astlib.Call):
         def wrapper(value):
-            qual_name = inspection.get_fully_qualified_name(value)
+            qual_name = inspection.get_qualified_module_name(value)
             if qual_name is not None:
                 self._func_calls_to_name[call_expr] = qual_name
 
@@ -155,14 +149,14 @@ class PandasMiner(BaseExecutor):
         #  Trace instrumentation does the heavy-lifting of recording reads/writes, var. defs and their uses.
         trace_instrumentation = get_hierarchical_trace_instrumentation(clock=clock)
         #  Ready up instrumentation to track function names (and identify which ones are pandas functions)
-        func_name_finder = FuncNameFinder()
+        func_mod_name_finder = FuncModNameFinder()
         #  Ready up the instrumentation for the df detectors.
         df_collector = ReadCsvDfCollector()
         col_collector = DfStrColumnsCollector()
         #  Need to avoid executing matplotlib magics as they can mess with the config.
         magic_blocker = IPythonMagicBlocker(to_block={'matplotlib'})
 
-        name_finding_instrumentation = Instrumentation.from_generators(func_name_finder)
+        name_finding_instrumentation = Instrumentation.from_generators(func_mod_name_finder)
         df_collector_instrumentation = Instrumentation.from_generators(df_collector)
         col_collector_instrumentation = Instrumentation.from_generators(col_collector)
         magic_blocker_instrumentation = Instrumentation.from_generators(magic_blocker)
@@ -195,17 +189,19 @@ class PandasMiner(BaseExecutor):
 
         #  Use the trace, matplotlib figure and df detectors to extract visualization code.
         cls._extract_pandas_code(code_ast, trace,
-                                 func_name_finder=func_name_finder,
+                                 func_mod_name_finder=func_mod_name_finder,
                                  df_collector=df_collector, col_collector=col_collector,
                                  output_dir_path=output_dir_path)
 
     @classmethod
     def _extract_pandas_code(cls, code_ast: astlib.AstNode,
                              trace: HierarchicalTrace,
-                             func_name_finder: FuncNameFinder,
+                             func_mod_name_finder: FuncModNameFinder,
                              df_collector: ReadCsvDfCollector,
                              col_collector: DfStrColumnsCollector,
                              output_dir_path: str):
+
+        func_mod_name_map: Dict[astlib.Call, str] = func_mod_name_finder.get_func_calls_to_names()
 
         #  We want to use the top-level statements of the notebook in the extracted code, so we compute and keep aside.
         body_stmts = set()
@@ -229,25 +225,100 @@ class PandasMiner(BaseExecutor):
                 fwd_slicing_items.append(item)
 
         fwd_slicing_leaves: Set[TraceItem] = set()
-        worklist = collections.deque(fwd_slicing_items)
+        worklist: Deque[TraceItem] = collections.deque(fwd_slicing_items)
+        seen: Set[TraceItem] = set()
+
+        logger.info("Finding Criteria for Backward Slicing using Forward Slicing")
 
         while len(worklist) > 0:
             item = worklist.popleft()
+            if item in seen:
+                continue
+
+            seen.add(item)
 
             found = False
             for dep in trace.get_forward_dependencies(item):
                 for dep_item in trace.get_affording_items(dep.dst):
                     if dep_item.ast_node in body_stmts:
+                        #  Confirm there are no non-pandas calls.
+                        if cls._has_non_pandas_calls(dep_item.ast_node, func_mod_name_map):
+                            continue
+
                         found = True
                         worklist.append(dep_item)
                         break
 
-            if not found:
+            if (not found) and item not in fwd_slicing_items:
                 fwd_slicing_leaves.add(item)
 
-        print(f"FOUND {len(fwd_slicing_leaves)} leaves")
-        for leaf in fwd_slicing_leaves:
-            print("FOUND", astlib.to_code(leaf.ast_node))
+        logger.info(f"Found {len(fwd_slicing_leaves)} leaves")
 
+        #  Perform backward slicing from these leaves.
+        logger.info("Starting Backward Slicing")
+        raw_slices: Set[str] = set()
+        for criterion in fwd_slicing_leaves:
+            pandas_slice: List[TraceItem] = cls._get_slice(trace, {criterion}, body_stmts)
+            body = [item.ast_node for item in sorted(pandas_slice, key=lambda x: x.start_time)]
+            new_body = astlib.prepare_body(body)
+            candidate = astlib.update_stmt_body(code_ast, new_body)
+            code = astlib.to_code(candidate)
 
+            logger.info(f"Extracted Raw Visualization Slice:\n{code}")
+            raw_slices.add(code)
+
+        logger.info(f"Found {len(raw_slices)} raw slices")
+
+        def str_presenter(dumper, data):
+            if len(data.splitlines()) > 1:  # check for multiline string
+                return dumper.represent_scalar('tag:yaml.org,2002:str', data, style='|')
+            return dumper.represent_scalar('tag:yaml.org,2002:str', data)
+
+        yaml.add_representer(str, str_presenter)
+
+        logger.info("Dumping slices")
+
+        mining_output_dir = os.path.join(output_dir_path, cls.__name__)
+        os.makedirs(mining_output_dir, exist_ok=True)
+
+        with open(os.path.join(mining_output_dir, "viz_functions.yaml"), "w") as f:
+            yaml.dump(sorted(raw_slices, key=len), f)
+
+        logger.info("Finished Extraction")
+
+    @classmethod
+    def _has_non_pandas_calls(cls, node: astlib.AstNode, func_mod_name_map: Dict[astlib.Call, str]) -> bool:
+        for n in astlib.walk(node):
+            if isinstance(n, astlib.Call) and n in func_mod_name_map:
+                qual_name = func_mod_name_map[n]
+                if not qual_name.startswith("pandas."):
+                    return True
+                # Also we don't consider the plotting functions to be part of core pandas.
+                elif qual_name.startswith("pandas.plotting"):
+                    return True
+                else:
+                    print(qual_name)
+
+        return False
+
+    @classmethod
+    def _get_slice(cls,
+                   trace: HierarchicalTrace,
+                   criteria: Set[TraceItem],
+                   body_stmts: Set[astlib.AstNode]) -> List[TraceItem]:
+        worklist = collections.deque(criteria)
+        queued: Set[TraceItem] = set(criteria)
+
+        while len(worklist) > 0:
+            item = worklist.popleft()
+            for d in trace.get_external_dependencies(item):
+                for i in trace.get_explicitly_resolving_items(d):
+                    #  We only want to use the statements specified in body_stmts
+                    if i.ast_node in body_stmts:
+                        if i not in queued:
+                            queued.add(i)
+                            worklist.append(i)
+                            break
+
+        return sorted(queued, key=lambda x: x.start_time)
 

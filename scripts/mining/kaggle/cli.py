@@ -228,6 +228,7 @@ def get_available_executors() -> List[str]:
     """
     return [
         'simple_executor',
+        'pandas_miner',
         'plotly_miner',
         'mpl_seaborn_viz_miner',
     ]
@@ -255,6 +256,10 @@ def run_notebook(owner: str, slug: str, executor_name: str, output_dir_path: str
     if executor_name == "simple_executor":
         from scripts.mining.kaggle.execution.simple_executor import SimpleExecutor
         executor = SimpleExecutor
+
+    elif executor_name == "pandas_miner":
+        from scripts.mining.kaggle.execution.pandas_mining.miner import PandasMiner
+        executor = PandasMiner
 
     elif executor_name == "plotly_miner":
         from scripts.mining.kaggle.execution.plotly_mining.miner import PlotlyMiner
