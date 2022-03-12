@@ -235,7 +235,9 @@ def get_available_executors() -> List[str]:
 
 
 @fire_command(name='run_notebook', collection=__file__)
-def run_notebook(owner: str, slug: str, executor_name: str, output_dir_path: str, timeout: Optional[int] = None):
+def run_notebook(owner: str, slug: str, executor_name: str, output_dir_path: str,
+                 docker_image_url: Optional[str] = None,
+                 timeout: Optional[int] = None):
     """
     Run a notebook with the given executor.
 
@@ -248,6 +250,8 @@ def run_notebook(owner: str, slug: str, executor_name: str, output_dir_path: str
             Use `cli.py get_available_executors` to get available executors.
         output_dir_path (str): Path to a directory on the local (host) filesystem where output, if any, of the
             executor will be saved.
+        docker_image_url (Optional[str]): If not None, the docker image corresponding to the URL is used instead
+            of the one associated with the notebook.
         timeout (Optional[int]): If not None, the timeout (in seconds) to use for the notebook. Defaults to None.
     """
     if executor_name not in get_available_executors():
@@ -273,7 +277,8 @@ def run_notebook(owner: str, slug: str, executor_name: str, output_dir_path: str
         assert False
 
     notebook = KaggleNotebook(owner, slug)
-    result = executor.run_notebook(notebook, output_dir_path=output_dir_path, timeout=timeout)
+    result = executor.run_notebook(notebook, output_dir_path=output_dir_path,
+                                   docker_image_url=docker_image_url, timeout=timeout)
 
     if result.status == NotebookExecStatus.SUCCESS:
         print("Notebook execution succeeded.")
