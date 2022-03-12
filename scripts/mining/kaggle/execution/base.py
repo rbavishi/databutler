@@ -373,6 +373,13 @@ class BaseExecutor(ABC):
                     msg="",
                 )
 
+            exit_code = res.get('exit_code', None)
+            if exit_code != 0:
+                return NotebookExecResult(
+                    status=NotebookExecStatus.ERROR,
+                    msg=f"Exit-Code: {exit_code}"
+                )
+
         return NotebookExecResult(
             status=NotebookExecStatus.SUCCESS,
             msg="",
