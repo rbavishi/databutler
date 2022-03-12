@@ -181,7 +181,15 @@ class PandasMiner(BaseExecutor):
         #  Run the instrumenter, and execute.
         new_ast, globs = instrumenter.process(code_ast)
         new_code = astlib.to_code(new_ast)
-        exec(new_code, globs, globs)
+        logger.info("Starting Execution Now.")
+        try:
+            exec(new_code, globs, globs)
+        except BaseException as e:
+            #  Even if it fails, we want to use whatever we get.
+            logger.warning("Execution failed.")
+            logger.exception(e)
+
+        logger.info("Finished Execution.")
 
         #  Since we added the tracing instrumentation, we will now we able to extract the trace of the program.
         #  This trace contains all the information we need to extract dependencies, and do things like slicing.
@@ -223,6 +231,8 @@ class PandasMiner(BaseExecutor):
         for item in trace.items:
             if item.ast_node in fwd_slicing_nodes:
                 fwd_slicing_items.append(item)
+
+        logger.info(f"Found {len(fwd_slicing_items)} fwd slicing items")
 
         fwd_slicing_leaves: Set[TraceItem] = set()
         worklist: Deque[TraceItem] = collections.deque(fwd_slicing_items)
@@ -281,7 +291,7 @@ class PandasMiner(BaseExecutor):
         mining_output_dir = os.path.join(output_dir_path, cls.__name__)
         os.makedirs(mining_output_dir, exist_ok=True)
 
-        with open(os.path.join(mining_output_dir, "viz_functions.yaml"), "w") as f:
+        with open(os.path.join(mining_output_dir, "pandas_functions.yaml"), "w") as f:
             yaml.dump(sorted(raw_slices, key=len), f)
 
         logger.info("Finished Extraction")
