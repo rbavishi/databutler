@@ -57,6 +57,29 @@ class KaggleNotebook:
         else:
             raise ValueError(f"Could not recognize source type {source_type}")
 
+    def get_astlib_ast(self) -> astlib.AstNode:
+        """
+        Parses the source code using the PAT astlib module.
+        """
+        if self.source_type == KaggleNotebookSourceType.IPYTHON_NOTEBOOK:
+            #  TODO: Handle magics
+            return astlib.parse(self.source_code, extension='.ipynb')
+        elif self.source_type == KaggleNotebookSourceType.PYTHON_SOURCE_FILE:
+            return astlib.parse(self.source_code)
+        else:
+            raise NotImplementedError(f"Could not recognize source of type {self.source_type}")
+
+    @caching.caching_method
+    def is_parseable(self) -> bool:
+        """
+        Checks if the source is parseable.
+        """
+        try:
+            _ = self.get_astlib_ast()
+            return True
+        except:
+            return False
+
     @property
     def docker_image_digest(self) -> str:
         """
@@ -179,12 +202,7 @@ class KaggleNotebook:
         """
 
         #  Parse the source as an AST.
-        if self.source_type == KaggleNotebookSourceType.IPYTHON_NOTEBOOK:
-            code_ast = astlib.parse(self.source_code, extension='.ipynb')
-        elif self.source_type == KaggleNotebookSourceType.PYTHON_SOURCE_FILE:
-            code_ast = astlib.parse(self.source_code)
-        else:
-            raise NotImplementedError(f"Could not recognize source of type {self.source_type}")
+        code_ast = self.get_astlib_ast()
 
         package_strs: Set[str] = set()
         for node in astlib.walk(code_ast):
