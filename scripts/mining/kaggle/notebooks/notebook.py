@@ -57,6 +57,7 @@ class KaggleNotebook:
         else:
             raise ValueError(f"Could not recognize source type {source_type}")
 
+    @caching.caching_method
     def get_astlib_ast(self) -> astlib.AstNode:
         """
         Parses the source code using the PAT astlib module.
