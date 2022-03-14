@@ -1,0 +1,16 @@
+/kaggle/input/titanic/gender_submission.csv
+/kaggle/input/titanic/test.csv
+/kaggle/input/titanic/train.csv
+2022-03-14 04:30:03.659 | INFO     | scripts.mining.kaggle.execution.plotly_mining.miner:_extract_viz_code:231 - Extracting Visualization Code
+2022-03-14 04:30:03.661 | INFO     | scripts.mining.kaggle.execution.plotly_mining.miner:_extract_viz_code:246 - Extracted Raw Visualization Slice:
+import pandas as pd
+train_data=pd.read_csv('/kaggle/input/titanic/train.csv', index_col='PassengerId')
+import plotly.express as px
+px.scatter(train_data, x="Age", y="Pclass")
+2022-03-14 04:30:03.665 | INFO     | scripts.mining.kaggle.execution.plotly_mining.miner:_extract_viz_code:276 - Extracted Visualization Function:
+def viz(_df):
+    import pandas as pd
+    train_data=_df
+    import plotly.express as px
+    px.scatter(train_data, x="Age", y="Pclass")
+2022-03-14 04:30:03.665 | INFO     | scripts.mining.kaggle.execution.plotly_mining.miner:_extract_viz_code:280 - Discarding function as it did not run correctly or within 5 seconds.
