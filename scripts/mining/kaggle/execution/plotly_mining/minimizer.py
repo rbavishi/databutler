@@ -48,10 +48,10 @@ def _get_viz_as_bytes(code: str, args: List[Any], kw_args: Dict[str, Any],
         fig = utils.run_viz_code_plotly_mp(code, pos_args=args, kw_args=kw_args, func_name='viz',
                                                   timeout=timeout)
         if fig is not None:
-            buf = io.BytesIO()
-            fig.write_image(buf)
+            buf = io.StringIO()
+            fig.write_json(buf)
             buf.seek(0)
-            plt.close(fig)
+            # plt.close(fig)
             return buf.read()
 
         return None

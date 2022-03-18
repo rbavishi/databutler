@@ -299,10 +299,10 @@ class PlotlyMiner(BaseExecutor):
 
             #  Remove unnecessary statements that do not affect the visualization.
             #  Currently, the minimization being employed is a simplified version of the one used in VizSmith.
-            # logger.info("Running Minimization")
+            logger.info("Running Minimization")
             minimized_code = minimize_code(code, [], df_args, timeout_per_run=_MAX_VIZ_FUNC_EXEC_TIME)
-            # logger.info(f"Finished Running Minimization:\n{minimized_code}")
-            # code = minimized_code
+            logger.info(f"Finished Running Minimization:\n{minimized_code}")
+            code = minimized_code
 
             #  We lift the hard-coded column references to column parameters.
             code_ast = astlib.parse(code)
