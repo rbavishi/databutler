@@ -23,6 +23,8 @@ from scripts.mining.kaggle.execution.mpl_seaborn_mining.minimization import mini
 from scripts.mining.kaggle.execution.mpl_seaborn_mining.var_optimization import optimize_vars
 from scripts.mining.kaggle.notebooks.notebook import KaggleNotebookSourceType
 
+from scripts.mining.kaggle.execution.plotly_mining import utils
+
 _MAX_VIZ_FUNC_EXEC_TIME = 5
 
 @attrs.define(eq=False, repr=False)
@@ -271,7 +273,15 @@ class PlotlyMiner(BaseExecutor):
             candidate = astlib.with_deep_replacements(candidate, replacements)
             func_def = astlib.parse_stmt(f"def viz({', '.join(i.value for i in replacements.values())}):\n    pass")
             func_def = astlib.update_stmt_body(func_def, candidate.body)
+
+            #  We change the last line to a return statement
+            replacement_key = list(astlib.iter_body_stmts(candidate))[-1]
+            replacement_value = astlib.create_return(replacement_key.value)
+            func_def = astlib.with_deep_replacements(func_def, {
+                replacement_key: replacement_value
+                })
             code = astlib.to_code(func_def)
+
 
             logger.info(f"Extracted Visualization Function:\n{code}")
 
@@ -289,10 +299,10 @@ class PlotlyMiner(BaseExecutor):
 
             #  Remove unnecessary statements that do not affect the visualization.
             #  Currently, the minimization being employed is a simplified version of the one used in VizSmith.
-            logger.info("Running Minimization")
-            minimized_code = minimize_code(code, [], df_args, timeout_per_run=_MAX_VIZ_FUNC_EXEC_TIME)
-            logger.info(f"Finished Running Minimization:\n{minimized_code}")
-            code = minimized_code
+            # logger.info("Running Minimization")
+            # minimized_code = minimize_code(code, [], df_args, timeout_per_run=_MAX_VIZ_FUNC_EXEC_TIME)
+            # logger.info(f"Finished Running Minimization:\n{minimized_code}")
+            # code = minimized_code
 
             #  We lift the hard-coded column references to column parameters.
             code_ast = astlib.parse(code)
@@ -342,8 +352,12 @@ class PlotlyMiner(BaseExecutor):
     def _check_execution(cls, code: str, pos_args: List[Any], kw_args: Dict[str, Any],
                          timeout: int = _MAX_VIZ_FUNC_EXEC_TIME) -> bool:
         try:
-            fig = mpl_exec.run_viz_code_matplotlib_mp(code, pos_args=pos_args, kw_args=kw_args,
-                                                      timeout=timeout, func_name='viz')
+            # TODO: Need to update to plotly_exec
+            # fig = mpl_exec.run_viz_code_matplotlib_mp(code, pos_args=pos_args, kw_args=kw_args,
+                                                    #   timeout=timeout, func_name='viz')
+            fig = utils.run_viz_code_plotly_mp(code, pos_args=pos_args, kw_args=kw_args,
+                                                        timeout=timeout, func_name='viz')
+            print(f'Figure: {fig}')
             return fig is not None
         except:
             return False
