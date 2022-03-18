@@ -19,7 +19,7 @@ from databutler.pat.analysis.instrumentation import ExprCallbacksGenerator, Expr
 from databutler.utils.logging import logger
 from scripts.mining.kaggle.execution.base import BaseExecutor, register_runner
 from scripts.mining.kaggle.execution.instrumentation_utils import IPythonMagicBlocker
-from scripts.mining.kaggle.execution.mpl_seaborn_mining.minimization import minimize_code
+from scripts.mining.kaggle.execution.plotly_mining.minimizer import minimize_code
 from scripts.mining.kaggle.execution.mpl_seaborn_mining.var_optimization import optimize_vars
 from scripts.mining.kaggle.notebooks.notebook import KaggleNotebookSourceType
 
@@ -300,7 +300,7 @@ class PlotlyMiner(BaseExecutor):
             #  Remove unnecessary statements that do not affect the visualization.
             #  Currently, the minimization being employed is a simplified version of the one used in VizSmith.
             # logger.info("Running Minimization")
-            # minimized_code = minimize_code(code, [], df_args, timeout_per_run=_MAX_VIZ_FUNC_EXEC_TIME)
+            minimized_code = minimize_code(code, [], df_args, timeout_per_run=_MAX_VIZ_FUNC_EXEC_TIME)
             # logger.info(f"Finished Running Minimization:\n{minimized_code}")
             # code = minimized_code
 
