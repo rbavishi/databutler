@@ -9,7 +9,7 @@ import yaml
 from databutler.pat import astlib
 from databutler.pat.analysis.clock import LogicalClock
 from databutler.pat.analysis.hierarchical_trace.builder import get_hierarchical_trace_instrumentation
-from databutler.pat.analysis.hierarchical_trace.core import HierarchicalTrace, TraceItem
+from databutler.pat.analysis.hierarchical_trace.core import HierarchicalTrace, TraceItem, ObjWriteEvent
 from databutler.pat.analysis.instrumentation import Instrumentation, Instrumenter, ExprWrappersGenerator, ExprWrapper
 from databutler.utils import inspection
 from databutler.utils.logging import logger
@@ -68,6 +68,82 @@ class ReadCsvDfCollector(ExprWrappersGenerator):
 
     def get_collected_dfs(self) -> Dict[astlib.Call, pd.DataFrame]:
         return self._collected_dfs.copy()
+
+
+@attrs.define(eq=False, repr=False)
+class DfObjIdCollector(ExprWrappersGenerator):
+    _df_obj_ids: Set[int] = attrs.field(init=False, factory=set)
+
+    def gen_expr_wrappers_simple(self, ast_root: astlib.AstNode) -> Iterator[Tuple[astlib.BaseExpression, ExprWrapper]]:
+        for expr in self.iter_valid_exprs(ast_root):
+            yield expr, ExprWrapper(
+                callable=self._collect_df_obj_ids,
+                name=self.gen_wrapper_id(),
+            )
+
+    def _collect_df_obj_ids(self, value):
+        if isinstance(value, pd.DataFrame):
+            self._df_obj_ids.add(id(value))
+
+        return value
+
+    def get_df_obj_ids(self) -> Set[int]:
+        return self._df_obj_ids.copy()
+
+
+@attrs.define(eq=False, repr=False)
+class DfExprCollector(ExprWrappersGenerator):
+    _exprs: Set[astlib.BaseExpression] = attrs.field(init=False, factory=set)
+
+    def gen_expr_wrappers_simple(self, ast_root: astlib.AstNode) -> Iterator[Tuple[astlib.BaseExpression, ExprWrapper]]:
+        for expr in self.iter_valid_exprs(ast_root):
+            yield expr, ExprWrapper(
+                callable=self._gen_collect_expr(expr),
+                name=self.gen_wrapper_id(),
+            )
+
+    def _gen_collect_expr(self, expr):
+        def wrapper(value):
+            if isinstance(value, pd.DataFrame):
+                self._exprs.add(expr)
+
+            return value
+
+        return wrapper
+
+    def get_df_exprs(self) -> Set[astlib.BaseExpression]:
+        return self._exprs.copy()
+
+
+@attrs.define(eq=False, repr=False)
+class NotebookPrintCollector(ExprWrappersGenerator):
+    _expr_stmts: Set[astlib.Expr] = attrs.field(init=False, factory=set)
+
+    def gen_expr_wrappers_simple(self, ast_root: astlib.AstNode) -> Iterator[Tuple[astlib.BaseExpression, ExprWrapper]]:
+        for node in astlib.walk(ast_root):
+            if isinstance(node, astlib.NotebookCell):
+                body_stmts = list(astlib.iter_body_stmts(node.body))
+                if len(body_stmts) == 0:
+                    continue
+
+                last_body_stmt = body_stmts[-1]
+                if isinstance(last_body_stmt, astlib.Expr):
+                    yield last_body_stmt.value, ExprWrapper(
+                        callable=self._gen_collector(last_body_stmt),
+                        name=self.gen_wrapper_id()
+                    )
+
+    def _gen_collector(self, expr_stmt: astlib.Expr):
+        def wrapper(value):
+            if value is not None:
+                self._expr_stmts.add(expr_stmt)
+
+            return value
+
+        return wrapper
+
+    def get_expr_stmts(self) -> Set[astlib.Expr]:
+        return self._expr_stmts.copy()
 
 
 @attrs.define(eq=False, repr=False)
@@ -153,6 +229,12 @@ class PandasMiner(BaseExecutor):
         #  Ready up the instrumentation for the df detectors.
         df_collector = ReadCsvDfCollector()
         col_collector = DfStrColumnsCollector()
+        #  Collect object ids of the dataframes
+        df_obj_id_collector = DfObjIdCollector()
+        #  Collect exprs that evaluate to dataframes
+        df_expr_collector = DfExprCollector()
+        #  Collect last stmts of notebook cells that evaluate to something that is printed
+        nb_print_expr_collector = NotebookPrintCollector()
         #  Need to avoid executing matplotlib magics as they can mess with the config.
         magic_blocker = IPythonMagicBlocker(to_block={'matplotlib'})
 
@@ -160,12 +242,18 @@ class PandasMiner(BaseExecutor):
         df_collector_instrumentation = Instrumentation.from_generators(df_collector)
         col_collector_instrumentation = Instrumentation.from_generators(col_collector)
         magic_blocker_instrumentation = Instrumentation.from_generators(magic_blocker)
+        df_obj_id_instrumentation = Instrumentation.from_generators(df_obj_id_collector)
+        df_expr_collector_instrumentation = Instrumentation.from_generators(df_expr_collector)
+        nb_print_expr_collector_instrumentation = Instrumentation.from_generators(nb_print_expr_collector)
 
         #  Merge all the instrumentation together.
         instrumentation = (trace_instrumentation |
                            name_finding_instrumentation |
                            df_collector_instrumentation |
                            col_collector_instrumentation |
+                           df_obj_id_instrumentation |
+                           df_expr_collector_instrumentation |
+                           nb_print_expr_collector_instrumentation |
                            magic_blocker_instrumentation)
 
         instrumenter = Instrumenter(instrumentation)
@@ -199,6 +287,9 @@ class PandasMiner(BaseExecutor):
         cls._extract_pandas_code(code_ast, trace,
                                  func_mod_name_finder=func_mod_name_finder,
                                  df_collector=df_collector, col_collector=col_collector,
+                                 df_obj_id_collector=df_obj_id_collector,
+                                 df_expr_collector=df_expr_collector,
+                                 nb_print_expr_collector=nb_print_expr_collector,
                                  output_dir_path=output_dir_path)
 
     @classmethod
@@ -207,9 +298,13 @@ class PandasMiner(BaseExecutor):
                              func_mod_name_finder: FuncModNameFinder,
                              df_collector: ReadCsvDfCollector,
                              col_collector: DfStrColumnsCollector,
+                             df_obj_id_collector: DfObjIdCollector,
+                             df_expr_collector: DfExprCollector,
+                             nb_print_expr_collector: NotebookPrintCollector,
                              output_dir_path: str):
 
         func_mod_name_map: Dict[astlib.Call, str] = func_mod_name_finder.get_func_calls_to_names()
+        found: List[str] = []
 
         #  We want to use the top-level statements of the notebook in the extracted code, so we compute and keep aside.
         body_stmts = set()
@@ -219,65 +314,72 @@ class PandasMiner(BaseExecutor):
             else:
                 body_stmts.add(s)
 
-        fwd_slicing_nodes: Set[astlib.AstNode] = set()
+        allowed_slicing_stmts = set(body_stmts)
+        for read_csv_expr, df in df_collector.get_collected_dfs().items():
+            for parent in astlib.iter_parents(read_csv_expr, context=code_ast):
+                if parent in body_stmts:
+                    allowed_slicing_stmts.discard(parent)
+                    break
+
+        df_obj_ids: Set[int] = df_obj_id_collector.get_df_obj_ids()
+        obj_id_to_writing_items: Dict[int, List[TraceItem]] = collections.defaultdict(list)
+        for e in trace.get_events():
+            if isinstance(e, ObjWriteEvent) and e.obj_id in df_obj_ids:
+                item = e.owner
+                if item.ast_node in body_stmts:
+                    obj_id_to_writing_items[e.obj_id].append(item)
+                else:
+                    for i in trace.iter_parents(item):
+                        if i.ast_node in body_stmts:
+                            obj_id_to_writing_items[e.obj_id].append(i)
+                            break
+
+        disallowed_dependencies: Set[astlib.AstNode] = set()
+        for v in obj_id_to_writing_items.values():
+            disallowed_dependencies.update(i.ast_node for i in v)
 
         for read_csv_expr, df in df_collector.get_collected_dfs().items():
             for parent in astlib.iter_parents(read_csv_expr, context=code_ast):
                 if parent in body_stmts:
-                    fwd_slicing_nodes.add(parent)
-                    break
+                    disallowed_dependencies.add(parent)
 
-        fwd_slicing_items: List[TraceItem] = []
+        criteria_items = set()
+        for df_writing_items in obj_id_to_writing_items.values():
+            criteria_items.update(df_writing_items)
+
+        df_exprs = df_expr_collector.get_df_exprs()
+        print_exprs = nb_print_expr_collector.get_expr_stmts()
         for item in trace.items:
-            if item.ast_node in fwd_slicing_nodes:
-                fwd_slicing_items.append(item)
+            if item.ast_node in print_exprs:
+                all_sub_nodes = set(astlib.walk(item.ast_node))
+                if not all_sub_nodes.isdisjoint(df_exprs):
+                    criteria_items.add(item)
 
-        logger.info(f"Found {len(fwd_slicing_items)} fwd slicing items")
+        for item in criteria_items:
+            criteria = {item}
 
-        fwd_slicing_leaves: Set[TraceItem] = set()
-        worklist: Deque[TraceItem] = collections.deque(fwd_slicing_items)
-        seen: Set[TraceItem] = set()
-
-        logger.info("Finding Criteria for Backward Slicing using Forward Slicing")
-
-        while len(worklist) > 0:
-            item = worklist.popleft()
-            if item in seen:
-                continue
-
-            seen.add(item)
-
-            found = False
-            for dep in trace.get_forward_dependencies(item):
-                for dep_item in trace.get_affording_items(dep.dst):
-                    if dep_item.ast_node in body_stmts:
-                        #  Confirm there are no non-pandas calls.
-                        if cls._has_non_pandas_calls(dep_item.ast_node, func_mod_name_map):
-                            continue
-
-                        found = True
-                        worklist.append(dep_item)
+            ignore_timestamps = {}
+            for obj_id, w_items in obj_id_to_writing_items.items():
+                for i in sorted(w_items, key=lambda x: -x.end_time):
+                    if i.end_time <= item.start_time:
+                        ignore_timestamps[obj_id] = i.end_time
                         break
 
-            if (not found) and item not in fwd_slicing_items:
-                fwd_slicing_leaves.add(item)
-
-        logger.info(f"Found {len(fwd_slicing_leaves)} leaves")
-
-        #  Perform backward slicing from these leaves.
-        logger.info("Starting Backward Slicing")
-        raw_slices: Set[str] = set()
-        for criterion in fwd_slicing_leaves:
-            pandas_slice: List[TraceItem] = cls._get_slice(trace, {criterion}, body_stmts)
-            body = [item.ast_node for item in sorted(pandas_slice, key=lambda x: x.start_time)]
-            new_body = astlib.prepare_body(body)
+            viz_slice: List[TraceItem] = cls._get_slice(trace, criteria, allowed_slicing_stmts,
+                                                        ignore_timestamps=ignore_timestamps)
+            viz_body = [item.ast_node for item in sorted(viz_slice, key=lambda x: x.start_time)]
+            new_body = astlib.prepare_body(viz_body)
             candidate = astlib.update_stmt_body(code_ast, new_body)
-            code = astlib.to_code(candidate)
+            print("-----")
+            print(astlib.to_code(candidate))
+            found.append(astlib.to_code(candidate))
+        print("-----")
 
-            logger.info(f"Extracted Raw Visualization Slice:\n{code}")
-            raw_slices.add(code)
+        logger.info(f"Found {len(found)} snippets")
+        logger.info("Dumping snippets")
 
-        logger.info(f"Found {len(raw_slices)} raw slices")
+        mining_output_dir = os.path.join(output_dir_path, cls.__name__)
+        os.makedirs(mining_output_dir, exist_ok=True)
 
         def str_presenter(dumper, data):
             if len(data.splitlines()) > 1:  # check for multiline string
@@ -286,13 +388,11 @@ class PandasMiner(BaseExecutor):
 
         yaml.add_representer(str, str_presenter)
 
-        logger.info("Dumping slices")
-
-        mining_output_dir = os.path.join(output_dir_path, cls.__name__)
-        os.makedirs(mining_output_dir, exist_ok=True)
-
+        yaml_output = [{
+            "code": c
+        } for c in found]
         with open(os.path.join(mining_output_dir, "pandas_functions.yaml"), "w") as f:
-            yaml.dump(sorted(raw_slices, key=len), f)
+            yaml.dump(sorted(yaml_output, key=lambda c: len(c['code'])), f)
 
         logger.info("Finished Extraction")
 
@@ -315,7 +415,25 @@ class PandasMiner(BaseExecutor):
     def _get_slice(cls,
                    trace: HierarchicalTrace,
                    criteria: Set[TraceItem],
-                   body_stmts: Set[astlib.AstNode]) -> List[TraceItem]:
+                   body_stmts: Set[astlib.AstNode],
+                   ignore_timestamps: Dict[int, int]) -> List[TraceItem]:
+        worklist = collections.deque(criteria)
+        queued: Set[TraceItem] = set(criteria)
+        disallowed: Set[TraceItem] = set()
+
+        while len(worklist) > 0:
+            item = worklist.popleft()
+            for d in trace.get_external_dependencies(item):
+                for i in trace.get_explicitly_resolving_items(d):
+                    #  We only want to use the statements specified in body_stmts
+                    if i.ast_node in body_stmts:
+                        if i not in queued:
+                            if d.dst.obj_id in ignore_timestamps and ignore_timestamps[d.dst.obj_id] >= i.end_time:
+                                disallowed.add(i)
+                            queued.add(i)
+                            worklist.append(i)
+                            break
+
         worklist = collections.deque(criteria)
         queued: Set[TraceItem] = set(criteria)
 
@@ -325,10 +443,9 @@ class PandasMiner(BaseExecutor):
                 for i in trace.get_explicitly_resolving_items(d):
                     #  We only want to use the statements specified in body_stmts
                     if i.ast_node in body_stmts:
-                        if i not in queued:
+                        if (i not in queued) and (i not in disallowed):
                             queued.add(i)
                             worklist.append(i)
                             break
 
         return sorted(queued, key=lambda x: x.start_time)
-
