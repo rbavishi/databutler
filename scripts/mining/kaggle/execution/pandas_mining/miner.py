@@ -9,7 +9,8 @@ import yaml
 from databutler.pat import astlib
 from databutler.pat.analysis.clock import LogicalClock
 from databutler.pat.analysis.hierarchical_trace.builder import get_hierarchical_trace_instrumentation
-from databutler.pat.analysis.hierarchical_trace.core import HierarchicalTrace, TraceItem, ObjWriteEvent
+from databutler.pat.analysis.hierarchical_trace.core import HierarchicalTrace, TraceItem, ObjWriteEvent, DefEvent, \
+    AccessEvent
 from databutler.pat.analysis.instrumentation import Instrumentation, Instrumenter, ExprWrappersGenerator, ExprWrapper
 from databutler.utils import inspection
 from databutler.utils.logging import logger
@@ -304,7 +305,7 @@ class PandasMiner(BaseExecutor):
                              output_dir_path: str):
 
         func_mod_name_map: Dict[astlib.Call, str] = func_mod_name_finder.get_func_calls_to_names()
-        found: List[str] = []
+        found: List[Dict] = []
 
         #  We want to use the top-level statements of the notebook in the extracted code, so we compute and keep aside.
         body_stmts = set()
@@ -345,7 +346,7 @@ class PandasMiner(BaseExecutor):
 
         criteria_items = set()
         for df_writing_items in obj_id_to_writing_items.values():
-            criteria_items.update(df_writing_items)
+            criteria_items.update((item, "DF_WRITE") for item in df_writing_items)
 
         df_exprs = df_expr_collector.get_df_exprs()
         print_exprs = nb_print_expr_collector.get_expr_stmts()
@@ -353,9 +354,32 @@ class PandasMiner(BaseExecutor):
             if item.ast_node in print_exprs:
                 all_sub_nodes = set(astlib.walk(item.ast_node))
                 if not all_sub_nodes.isdisjoint(df_exprs):
-                    criteria_items.add(item)
+                    criteria_items.add((item, "PRINT_EXPR"))
 
-        for item in criteria_items:
+        def_event_to_accesses = collections.defaultdict(list)
+        for event in trace.get_events():
+            if isinstance(event, AccessEvent) and event.def_event is not None:
+                def_event_to_accesses[event.def_event].append(event)
+
+        for item in trace.items:
+            if item.ast_node in allowed_slicing_stmts:
+                if isinstance(item.ast_node, astlib.Assign) and len(item.ast_node.targets) == 1:
+                    if item.ast_node.value in df_exprs:
+                        #  The variable must be used more than once
+                        def_event = None
+                        for event in trace.get_events(start_time=item.start_time, end_time=item.end_time):
+                            if isinstance(event, DefEvent):
+                                def_event = event
+                                break
+
+                        if def_event is not None and len(def_event_to_accesses[def_event]) > 1:
+                            obj_id_to_writing_items[def_event.obj_id].append(item)
+                            for c_item in trace.iter_children(item):
+                                if c_item.ast_node is item.ast_node.value:
+                                    criteria_items.add((c_item, "DF_ASSIGN"))
+                                    break
+
+        for item, snippet_type in criteria_items:
             criteria = {item}
 
             ignore_timestamps = {}
@@ -370,9 +394,26 @@ class PandasMiner(BaseExecutor):
             viz_body = [item.ast_node for item in sorted(viz_slice, key=lambda x: x.start_time)]
             new_body = astlib.prepare_body(viz_body)
             candidate = astlib.update_stmt_body(code_ast, new_body)
+
+            #  Gather the pandas functions used
+            pandas_functions_used: Set[str] = set()
+            for c_n in astlib.walk(candidate):
+                if isinstance(c_n, astlib.Call) and c_n in func_mod_name_map and \
+                        func_mod_name_map[c_n].startswith("pandas"):
+                    pandas_functions_used.add(func_mod_name_map[c_n] + '.' + astlib.to_code(c_n.func).split('.')[-1])
+
+            found.append({
+                "snippet_type": snippet_type,
+                "code": astlib.to_code(candidate),
+                "pandas_functions": list(pandas_functions_used),
+            })
+
             print("-----")
-            print(astlib.to_code(candidate))
-            found.append(astlib.to_code(candidate))
+            print(snippet_type)
+            print(found[-1]['code'])
+            print("-----")
+            print(found[-1]['pandas_functions'])
+
         print("-----")
 
         logger.info(f"Found {len(found)} snippets")
