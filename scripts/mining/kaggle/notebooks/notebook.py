@@ -90,8 +90,9 @@ class KaggleNotebook:
                 mount_slug = ds["reference"]["mountSlug"]
                 native_type = ds["reference"].get("sourceType", "")
 
+
                 #  Determine the type of data-source using certain heuristics.
-                if url.startswith("/c/") and len(url.split('/')) == 3:
+                if (url.startswith("/c/") or url.startswith('/competitions/')) and len(url.split('/')) == 3:
                     #  If it starts with "/c/", it is bound to be a competition data-source.
                     src_type = KaggleDataSourceType.COMPETITION
                     local_storage_path = os.path.join(ds_root, "c", url.split("/")[-1])
