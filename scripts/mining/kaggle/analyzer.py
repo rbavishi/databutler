@@ -17,6 +17,12 @@ from scripts.mining.kaggle.notebooks.download import get_notebooks_using_meta_ka
 from scripts.mining.kaggle.notebooks.notebook import KaggleNotebook, KaggleNotebookSourceType
 from scripts.mining.kaggle.utils import fire_command
 
+# The analyzer is a human-interpretable way to analyze the massive dataset that is MetaKaggle.
+# We provide the following features:
+# 1. saving links of files that have certain imports
+# 2. randomly opening links once these files have been saved
+# 3. providing statistics with relation to the entire metakaggle dataset
+# 4. providing statistics within the library subset
 
 @fire_command(name='get_nbs_importing_lib', collection=__file__)
 def get_nb_links_importing_library(library_name: str, file_out: str, iter_num: int = None) -> None:
@@ -47,27 +53,11 @@ def save_nb_if_library_imported(nb: KaggleNotebook, library_name: str, file: Tex
     Save the notebook link to the file if it uses the given library
     or any of its sub-libraries.
     """
-    # Load the source code of the notebook
-    try:
-        nb_source = json.loads(nb.source_code)
-    except Exception as e:
-        logger.error(f'Failed to load source code of {nb.owner}/{nb.slug}')
-        return
-
-    # Get the cells of the notebook
-    nb_cells = nb_source['cells']
-    if nb_cells is None:
-        logger.error(f'No cells in {nb.owner}/{nb.slug}, aborting library checker')
-        return
-
-    # Iterate through the cells to find any cell that imports the library
-    # Save the notebook link if it is found
-    try:
-        if_library_imported = any([library_name in cell['source'] for cell in nb_cells])
-        if if_library_imported:
-            file.write(f'https://kaggle.com/{nb.owner}/{nb.slug}\n')
-    except Exception as e:
-        logger.error(f'Iterating through cells in {nb.owner}/{nb.slug} failed')
+    # Treat the source code as one big string and look for an instance of library name.
+    # This is a heuristic — it might have some false positives, but will never have a false negative.
+    if library_name in nb.source_code:
+        # logger.info(f'Found notebook with library {nb.owner}/{nb.slug}')
+        file.write(f'https://kaggle.com/{nb.owner}/{nb.slug}\n')
 
 
 def iter_metakaggle_notebooks() -> Iterator[KaggleNotebook]:

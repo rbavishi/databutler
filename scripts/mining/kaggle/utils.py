@@ -4,6 +4,7 @@ import zipfile
 from typing import Callable, Dict
 
 from databutler.utils import paths
+import ast
 
 _FIRE_COMMANDS: Dict[str, Dict[str, Callable]] = collections.defaultdict(dict)
 
@@ -52,3 +53,32 @@ def fire_command(*, name: str = None, collection: str = None):
 
 def get_fire_commands_for_collection(collection: str) -> Dict[str, Callable]:
     return _FIRE_COMMANDS[collection]
+
+def is_library_used(code: str, qual_name: str):
+    """
+    Returns true if a piece of code `code` imports `qual_name`
+    """
+    c_ast = ast.parse(code)
+    print(ast.dump(c_ast))
+
+    vars_to_track = set()
+    for node in ast.walk(c_ast):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name == qual_name:
+                    if alias.asname is None:
+                        vars_to_track.add(alias.name)
+                    else:
+                        vars_to_track.add(alias.asname)
+
+        elif isinstance(node, ast.ImportFrom):
+            for alias in node.names:
+                full_name = node.module + "." + alias.name
+                if full_name == qual_name:
+                    vars_to_track.add(alias.asname or full_name)
+
+    for node in ast.walk(c_ast):
+        if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load) and node.id in vars_to_track:
+            return True
+
+    return False
