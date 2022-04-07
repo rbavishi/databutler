@@ -7,6 +7,7 @@ from typing import Sequence, Set, Dict, List, Tuple, Iterator, Any
 import attrs
 from libcst import AssignTarget
 import pandas as pd
+import yaml
 import plotly
 from matplotlib import pyplot as plt
 
@@ -374,6 +375,34 @@ class PlotlyMiner(BaseExecutor):
                 "col_args": col_args,
             })
 
+        mining_output_dir = os.path.join(output_dir_path, cls.__name__)
+        os.makedirs(mining_output_dir, exist_ok=True)
+
+        code_artifact = {
+            "viz_functions": viz_code,
+            "module_versions": cls._get_module_versions(),
+        }
+
+        #  Prettify multiline string output in YAML.
+        #  See https://stackoverflow.com/questions/8640959/how-can-i-control-what-scalar-form-pyyaml-uses-for-my-data
+
+        def str_presenter(dumper, data):
+            if len(data.splitlines()) > 1:  # check for multiline string
+                return dumper.represent_scalar('tag:yaml.org,2002:str', data, style='|')
+            return dumper.represent_scalar('tag:yaml.org,2002:str', data)
+
+        yaml.add_representer(str, str_presenter)
+
+        logger.info("Dumping viz functions")
+        with open(os.path.join(mining_output_dir, "viz_functions.yaml"), "w") as f:
+            yaml.dump(code_artifact, f)
+
+        logger.info("Dumping dataframes")
+        for obj_id, pkl_path in df_obj_id_to_pkl_paths.items():
+            df = df_obj_id_to_df[obj_id]
+            df.to_pickle(os.path.join(mining_output_dir, pkl_path))
+
+        logger.info("Finished Extraction")
 
     @classmethod
     def _get_slice(cls,
