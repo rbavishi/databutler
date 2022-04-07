@@ -1,8 +1,0 @@
-{
-  "docker_image": "databutler-4dfdfe2be20e8bf9da5eec9d10188e893eb2ab99f08e6aa854fcff0b6bb10823",
-  "image_download_time": 0.002597808837890625,
-  "image_setup_time": 0.0025382041931152344,
-  "container_creation_time": 0.28278064727783203,
-  "container_setup_time": 0.22568702697753906,
-  "execution_time": 3.7736117839813232
-}
