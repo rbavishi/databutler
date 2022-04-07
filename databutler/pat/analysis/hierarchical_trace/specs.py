@@ -380,3 +380,55 @@ else:
         logger.info("Failed to load specs for matplotlib.")
         logger.exception(e)
 
+
+# --------------
+#  Seaborn
+# --------------
+
+try:
+    import plotly
+except ModuleNotFoundError:
+    pass
+else:
+    try:
+        pythonutils.load_module_complete(plotly)
+
+        candidate_fig_creators = [plotly.graph_objs.Figure]
+
+        #  Cover plotly.express functions that create a figure object
+        for name in dir(plotly.express):
+            if not name.startswith("_"):
+                value = getattr(plotly.express, name)
+                if inspect.isroutine(value):
+                    candidate_fig_creators.append(value)
+
+        @read_write_spec(candidate_fig_creators)
+        def spec(binding: inspect.BoundArguments, ret_val: Any) -> List[Tuple[Any, str]]:
+            try:
+                if isinstance(ret_val, plotly.graph_objs.Figure):
+                    return [(ret_val, 'write')]
+            except:
+                pass
+
+            return []
+
+        #  Cover Figure methods that should update the figure
+        klass = plotly.graph_objs.Figure
+        fig_methods = {name: getattr(klass, name) for name in dir(klass)
+                       if (not name.startswith("_")) and inspect.isroutine(getattr(klass, name))}
+        fig_upd_methods = [func for name, func in fig_methods.items()
+                           if any(i in name for i in {'add_', 'update', 'append', 'set_'})]
+
+        @read_write_spec(fig_upd_methods)
+        def spec(binding: inspect.BoundArguments, ret_val: Any) -> List[Tuple[Any, str]]:
+            try:
+                self_ = binding.arguments['self']
+                return [(self_, 'read'), (self_, 'write')]
+            except:
+                pass
+
+            return []
+
+    except Exception as e:
+        logger.info("Failed to load specs for plotly")
+        logger.exception(e)
