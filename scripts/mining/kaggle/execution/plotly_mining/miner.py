@@ -1,11 +1,12 @@
+import ast
 import collections
 import os
 import sys
-from typing import Set, Dict, List, Tuple, Iterator, Any
+from typing import Sequence, Set, Dict, List, Tuple, Iterator, Any
 
 import attrs
+from libcst import AssignTarget
 import pandas as pd
-import yaml
 import plotly
 from matplotlib import pyplot as plt
 
@@ -48,6 +49,7 @@ class PlotlyFigureExprDetector(ExprWrappersGenerator):
     def gen_plotly_wrapper_expr(self, call_expr: astlib.Call):
         def wrapper(value):
             if isinstance(value, plotly.graph_objs.Figure):
+                # print(f'DEBUG: Found an expression:\n {astlib.to_code(call_expr)}')
                 self._found_exprs[call_expr] = value
             return value
         return wrapper
@@ -57,6 +59,39 @@ class PlotlyFigureExprDetector(ExprWrappersGenerator):
 
     def get_found_objects(self):
         return self._found_exprs.values()
+
+@attrs.define(eq=False, repr=False)
+class PlotlyFigureVariableNameDetector(ExprWrappersGenerator):
+    # mapping from object ids to variable names
+    _found_vars : Dict[int, Sequence[AssignTarget]] = attrs.field(init=False, factory=dict)
+
+    def gen_expr_wrappers_simple(self, ast_root: astlib.AstNode) -> Iterator[Tuple[astlib.BaseExpression, ExprWrapper]]:
+        for node in astlib.walk(ast_root):
+            if isinstance(node, astlib.Assign):
+                right_hand_expr = node.value
+                if isinstance(right_hand_expr, astlib.Call):
+                    yield right_hand_expr, ExprWrapper(
+                        callable=self.gen_plotly_wrapper_expr(node),
+                        name=self.gen_wrapper_id()
+                    )
+
+    def gen_plotly_wrapper_expr(self, stmt: astlib.Assign):
+        def wrapper(value):
+            if isinstance(value, plotly.graph_objs.Figure):
+                graph_obj_id = id(value)
+                self._found_vars[graph_obj_id] = stmt.targets
+            return value
+        return wrapper
+
+    def get_found_vars(self):
+        id_to_var_name: Dict[int, str] = {}
+        for graph_id, targets in self._found_vars.items():
+            if len(targets) == 1:
+                var_name = targets[0].target
+                if isinstance(var_name, astlib.Name):
+                    id_to_var_name[graph_id] = var_name.value
+        return id_to_var_name
+
 
 
 @attrs.define(eq=False, repr=False)
@@ -166,13 +201,17 @@ class PlotlyMiner(BaseExecutor):
         plotly_fig_detector = PlotlyFigureExprDetector()
         df_collector = ReadCsvDfCollector()
         col_collector = DfStrColumnsCollector()
+        var_detector = PlotlyFigureVariableNameDetector()
 
         plotly_instrumentation = Instrumentation.from_generators(plotly_fig_detector)
         df_collector_instrumentation = Instrumentation.from_generators(df_collector)
         col_collector_instrumentation = Instrumentation.from_generators(col_collector)
+        var_detection_instrumentation = Instrumentation.from_generators(var_detector)
 
         instrumentation = (trace_instrumentation | plotly_instrumentation |
-                            df_collector_instrumentation |col_collector_instrumentation)
+                            df_collector_instrumentation |col_collector_instrumentation |
+                            var_detection_instrumentation
+                            )
 
         instrumenter = Instrumenter(instrumentation)
 
@@ -196,15 +235,17 @@ class PlotlyMiner(BaseExecutor):
 
         #  Use the trace, matplotlib figure and df detectors to extract visualization code.
         cls._extract_viz_code(code_ast, trace, df_collector=df_collector, col_collector=col_collector,
-                              fig_detector=plotly_fig_detector, output_dir_path=output_dir_path)
+                              fig_detector=plotly_fig_detector, var_detector=var_detector ,output_dir_path=output_dir_path)
 
     @classmethod
     def _extract_viz_code(cls, code_ast: astlib.AstNode, trace: HierarchicalTrace,
                           df_collector: ReadCsvDfCollector,
                           col_collector: DfStrColumnsCollector,
                           fig_detector: PlotlyFigureExprDetector,
+                          var_detector: PlotlyFigureVariableNameDetector,
                           output_dir_path: str):
         plotly_exprs_to_figures = fig_detector.get_found_figures() #TODO: type
+        id_to_var_names = var_detector.get_found_vars()
 
         #  The hierarchical trace uses object-IDs to identify objects instead of directly storing them.
         #  So we create a map from figure object IDs to the figures themselves for convenience.
@@ -224,7 +265,9 @@ class PlotlyMiner(BaseExecutor):
         fig_to_slicing_criteria: Dict[int, Set[TraceItem]] = collections.defaultdict(set)
         for item in trace.items:
             if item.ast_node in plotly_exprs_to_figures:
-                fig_to_slicing_criteria[id(plotly_exprs_to_figures[item.ast_node])] = { item }
+                for parent in trace.iter_parents(item):
+                    if parent.ast_node in body_stmts:
+                        fig_to_slicing_criteria[id(plotly_exprs_to_figures[item.ast_node])].add(parent)
 
         #  For each non-empty figure, we'll perform slicing using the collected criteria,
         viz_code: List[Dict] = []
@@ -242,6 +285,17 @@ class PlotlyMiner(BaseExecutor):
             criteria = fig_to_slicing_criteria[obj_id]
             viz_slice: List[TraceItem] = cls._get_slice(trace, criteria, body_stmts)
             viz_body = [item.ast_node for item in sorted(viz_slice, key=lambda x: x.start_time)]
+
+            # FIXME: Instead, we add a last line that is "Return the figure object"
+            if obj_id in id_to_var_names:
+                var_name = id_to_var_names[obj_id]
+                return_stmt = astlib.create_return(astlib.Name(var_name))
+                viz_body.append(return_stmt)
+            else:
+                # print(id_to_var_names)
+                logger.info(f"No variable to return detected")
+                continue
+
             new_body = astlib.prepare_body(viz_body)
             candidate = astlib.update_stmt_body(code_ast, new_body)
 
@@ -273,14 +327,16 @@ class PlotlyMiner(BaseExecutor):
             candidate = astlib.with_deep_replacements(candidate, replacements)
             func_def = astlib.parse_stmt(f"def viz({', '.join(i.value for i in replacements.values())}):\n    pass")
             func_def = astlib.update_stmt_body(func_def, candidate.body)
-
-            #  We change the last line to a return statement
-            replacement_key = list(astlib.iter_body_stmts(candidate))[-1]
-            replacement_value = astlib.create_return(replacement_key.value)
-            func_def = astlib.with_deep_replacements(func_def, {
-                replacement_key: replacement_value
-                })
             code = astlib.to_code(func_def)
+
+
+
+            # fig_variables_name = list(astlib.iter_body_stmts(candidate))[-1]
+            # replacement_key = list(astlib.iter_body_stmts(candidate))[-1]
+            # replacement_value = astlib.create_return(fig_variables_name.value)
+            # func_def = astlib.with_deep_replacements(func_def, {
+            #     replacement_key: replacement_value
+            #     })
 
 
             logger.info(f"Extracted Visualization Function:\n{code}")
@@ -357,7 +413,7 @@ class PlotlyMiner(BaseExecutor):
                                                     #   timeout=timeout, func_name='viz')
             fig = utils.run_viz_code_plotly_mp(code, pos_args=pos_args, kw_args=kw_args,
                                                         timeout=timeout, func_name='viz')
-            print(f'Figure: {fig}')
+            # print(f'Figure: {fig}')
             return fig is not None
         except:
             return False
@@ -472,4 +528,3 @@ class PlotlyMiner(BaseExecutor):
                     result[k] = getattr(v, "__version__")
 
         return result
-
