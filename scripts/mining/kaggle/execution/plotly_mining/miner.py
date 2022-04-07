@@ -29,14 +29,14 @@ from scripts.mining.kaggle.execution.plotly_mining import utils
 _MAX_VIZ_FUNC_EXEC_TIME = 5
 
 @attrs.define(eq=False, repr=False)
-class PlotlyFigureExprDetector(ExprWrappersGenerator):
+class PlotlyFigureDetector(ExprWrappersGenerator):
     """
     Captures all the plotly objects observed during the execution of the program.
     When using plotly, whenever a statement returns a pltly Figure graph object, a
     visualization has been generated. We save these, by using expression callbacks that are
     called after every call expression in the AST is evaluated.
     """
-    _found_exprs: Dict[astlib.Call, plotly.graph_objs.Figure] = attrs.field(init=False, factory=dict)
+    _found_figures: Dict[int, plotly.graph_objs.Figure] = attrs.field(init=False, factory=dict)
 
     def gen_expr_wrappers_simple(self, ast_root: astlib.AstNode) -> Iterator[Tuple[astlib.BaseExpression, ExprWrapper]]:
         for expr in self.iter_valid_exprs(ast_root):
@@ -49,15 +49,16 @@ class PlotlyFigureExprDetector(ExprWrappersGenerator):
     def gen_plotly_wrapper_expr(self, call_expr: astlib.Call):
         def wrapper(value):
             if isinstance(value, plotly.graph_objs.Figure):
-                self._found_exprs[call_expr] = value
+                print(f'Figure detected: {id(value)}')
+                self._found_figures[id(value)] = value
             return value
         return wrapper
 
     def get_found_figures(self):
-        return self._found_exprs
+        return self._found_figures
 
     def get_found_objects(self):
-        return self._found_exprs.values()
+        return self._found_figures.values()
 
 @attrs.define(eq=False, repr=False)
 class PlotlyFigureVariableNameDetector(ExprWrappersGenerator):
@@ -199,7 +200,7 @@ class PlotlyMiner(BaseExecutor):
         #  Trace instrumentation does the heavy-lifting of recording reads/writes, var. defs and their uses.
         trace_instrumentation = get_hierarchical_trace_instrumentation(clock=clock)
         #  Ready up the instrumentation for the matplotlib and df detectors.
-        plotly_fig_detector = PlotlyFigureExprDetector()
+        plotly_fig_detector = PlotlyFigureDetector()
         df_collector = ReadCsvDfCollector()
         col_collector = DfStrColumnsCollector()
         var_detector = PlotlyFigureVariableNameDetector()
@@ -239,15 +240,15 @@ class PlotlyMiner(BaseExecutor):
     def _extract_viz_code(cls, code_ast: astlib.AstNode, trace: HierarchicalTrace,
                           df_collector: ReadCsvDfCollector,
                           col_collector: DfStrColumnsCollector,
-                          fig_detector: PlotlyFigureExprDetector,
+                          fig_detector: PlotlyFigureDetector,
                           var_detector: PlotlyFigureVariableNameDetector,
                           output_dir_path: str):
-        plotly_exprs_to_figures = fig_detector.get_found_figures()
+
         id_to_var_names = var_detector.get_found_vars()
 
         #  The hierarchical trace uses object-IDs to identify objects instead of directly storing them.
         #  So we create a map from figure object IDs to the figures themselves for convenience.
-        obj_id_to_fig: Dict[int, plt.Figure] = {id(o): o for o in plotly_exprs_to_figures.values()}
+        obj_id_to_fig: Dict[int, plt.Figure] = fig_detector.get_found_figures()
 
         #  We want to use the top-level statements of the notebook in the visualization, so we compute and keep aside.
         #  See _get_slice to get a sense of how these statements are being used.
@@ -261,11 +262,16 @@ class PlotlyMiner(BaseExecutor):
         #  For each figure, we collect the body statements (trace items actually) that directly write to the figure.
         #  This set of statements will constitute the slicing criterion.
         fig_to_slicing_criteria: Dict[int, Set[TraceItem]] = collections.defaultdict(set)
-        for item in trace.items:
-            if item.ast_node in plotly_exprs_to_figures:
-                for parent in trace.iter_parents(item):
-                    if parent.ast_node in body_stmts:
-                        fig_to_slicing_criteria[id(plotly_exprs_to_figures[item.ast_node])].add(parent)
+        for e in trace.get_events():
+            if isinstance(e, ObjWriteEvent) and e.obj_id in obj_id_to_fig:
+                item = e.owner
+                if item.ast_node in body_stmts:
+                    fig_to_slicing_criteria[e.obj_id].add(item)
+                else:
+                    for i in trace.iter_parents(item):
+                        if i.ast_node in body_stmts:
+                            fig_to_slicing_criteria[e.obj_id].add(i)
+                            break
 
         #  For each non-empty figure, we'll perform slicing using the collected criteria,
         viz_code: List[Dict] = []
