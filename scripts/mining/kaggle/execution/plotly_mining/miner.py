@@ -49,7 +49,6 @@ class PlotlyFigureExprDetector(ExprWrappersGenerator):
     def gen_plotly_wrapper_expr(self, call_expr: astlib.Call):
         def wrapper(value):
             if isinstance(value, plotly.graph_objs.Figure):
-                # print(f'DEBUG: Found an expression:\n {astlib.to_code(call_expr)}')
                 self._found_exprs[call_expr] = value
             return value
         return wrapper
@@ -62,6 +61,10 @@ class PlotlyFigureExprDetector(ExprWrappersGenerator):
 
 @attrs.define(eq=False, repr=False)
 class PlotlyFigureVariableNameDetector(ExprWrappersGenerator):
+    """
+    Captures all the variables mapping to plotly objects seen during the execution of
+    the program.
+    """
     # mapping from object ids to variable names
     _found_vars : Dict[int, Sequence[AssignTarget]] = attrs.field(init=False, factory=dict)
 
@@ -186,8 +189,6 @@ class DfColAttrAccessCollector(ExprWrappersGenerator):
     def get_df_col_attr_accesses(self) -> Dict[astlib.Attribute, str]:
         return self._collected_accesses.copy()
 
-#TODO: Notebook Execution Manager needed?
-
 @attrs.define(eq=False, repr=False)
 class PlotlyMiner(BaseExecutor):
     @classmethod
@@ -228,9 +229,6 @@ class PlotlyMiner(BaseExecutor):
         new_code = astlib.to_code(new_ast)
         exec(new_code, globs, globs)
 
-        # for call_expr, obj in plotly_fig_detector.get_found_figures():
-        #     print("Found Expr", astlib.to_code(call_expr))
-
         trace = trace_instrumentation.get_hierarchical_trace()
 
         #  Use the trace, matplotlib figure and df detectors to extract visualization code.
@@ -244,7 +242,7 @@ class PlotlyMiner(BaseExecutor):
                           fig_detector: PlotlyFigureExprDetector,
                           var_detector: PlotlyFigureVariableNameDetector,
                           output_dir_path: str):
-        plotly_exprs_to_figures = fig_detector.get_found_figures() #TODO: type
+        plotly_exprs_to_figures = fig_detector.get_found_figures()
         id_to_var_names = var_detector.get_found_vars()
 
         #  The hierarchical trace uses object-IDs to identify objects instead of directly storing them.
@@ -286,13 +284,12 @@ class PlotlyMiner(BaseExecutor):
             viz_slice: List[TraceItem] = cls._get_slice(trace, criteria, body_stmts)
             viz_body = [item.ast_node for item in sorted(viz_slice, key=lambda x: x.start_time)]
 
-            # FIXME: Instead, we add a last line that is "Return the figure object"
+            # We add a return at the end of the body, to return the figure object.
             if obj_id in id_to_var_names:
                 var_name = id_to_var_names[obj_id]
                 return_stmt = astlib.create_return(astlib.Name(var_name))
                 viz_body.append(return_stmt)
             else:
-                # print(id_to_var_names)
                 logger.info(f"No variable to return detected")
                 continue
 
@@ -328,16 +325,6 @@ class PlotlyMiner(BaseExecutor):
             func_def = astlib.parse_stmt(f"def viz({', '.join(i.value for i in replacements.values())}):\n    pass")
             func_def = astlib.update_stmt_body(func_def, candidate.body)
             code = astlib.to_code(func_def)
-
-
-
-            # fig_variables_name = list(astlib.iter_body_stmts(candidate))[-1]
-            # replacement_key = list(astlib.iter_body_stmts(candidate))[-1]
-            # replacement_value = astlib.create_return(fig_variables_name.value)
-            # func_def = astlib.with_deep_replacements(func_def, {
-            #     replacement_key: replacement_value
-            #     })
-
 
             logger.info(f"Extracted Visualization Function:\n{code}")
 
@@ -408,12 +395,8 @@ class PlotlyMiner(BaseExecutor):
     def _check_execution(cls, code: str, pos_args: List[Any], kw_args: Dict[str, Any],
                          timeout: int = _MAX_VIZ_FUNC_EXEC_TIME) -> bool:
         try:
-            # TODO: Need to update to plotly_exec
-            # fig = mpl_exec.run_viz_code_matplotlib_mp(code, pos_args=pos_args, kw_args=kw_args,
-                                                    #   timeout=timeout, func_name='viz')
             fig = utils.run_viz_code_plotly_mp(code, pos_args=pos_args, kw_args=kw_args,
                                                         timeout=timeout, func_name='viz')
-            # print(f'Figure: {fig}')
             return fig is not None
         except:
             return False
