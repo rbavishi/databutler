@@ -10,25 +10,7 @@ import openai
 
 from databutler.utils import paths
 
-
-@attrs.define(eq=False, repr=False)
-class _KeyManager:
-    """
-    An internal manager that cycles between OPENAI keys to enable a net-increase in rate=limits.
-    """
-    keys: List[str]
-    _cur_key_idx: int = attrs.field(init=False, default=0)
-
-    def set_next_key(self) -> None:
-        """
-        Cycles between available API keys. This method should be called before any request.
-        """
-        cur_key = self.keys[self._cur_key_idx]
-        self._cur_key_idx = (self._cur_key_idx + 1) % len(self.keys)
-        openai.api_key = cur_key
-
-
-_OPENAI_KEY_MGR: Optional[_KeyManager] = None
+_OPENAI_KEY_SET = False
 
 
 def _setup_openai_key() -> None:
@@ -37,48 +19,30 @@ def _setup_openai_key() -> None:
 
     :raises RuntimeError: if neither the path exists, nor the environment variable is supplied.
     """
-    global _OPENAI_KEY_MGR
+    global _OPENAI_KEY_SET
 
-    if _OPENAI_KEY_MGR is not None:
+    if _OPENAI_KEY_SET:
         return
 
     path_key = os.path.join(paths.get_user_home_dir_path(), ".databutler", "openai_key.txt")
     if os.path.exists(path_key):
         #  Great just load it from the file.
         with open(path_key, "r") as f:
-            key_text = f.read().strip()
+            openai.api_key = f.read().strip()
 
-        if "\n" in key_text:
-            keys = key_text.split('\n')
-        else:
-            keys = [key_text]
-
-        _OPENAI_KEY_MGR = _KeyManager(keys=keys)
+        _OPENAI_KEY_SET = True
 
     else:
         #  Check if the environment variable OPENAI_KEY is set.
-        key_text = os.getenv("OPENAI_KEY")
-        if key_text is not None:
-            #  Interpret
-            if key_text.startswith("["):
-                #  Interpret as a list
-                try:
-                    keys = eval(key_text)
-                except:
-                    raise ValueError("Could not understand environment variable OPENAI_KEY")
-
-            elif "," in key_text:
-                keys = key_text.split(",")
-
-            else:
-                keys = key_text.split()
-
+        key = os.getenv("OPENAI_KEY")
+        if key is not None:
             #  First, create the cache file.
             os.makedirs(os.path.dirname(path_key), exist_ok=True)
             with open(path_key, "w") as f:
-                f.write("\n".join(keys))
+                f.write(key)
 
-            _OPENAI_KEY_MGR = _KeyManager(keys=keys)
+            openai.api_key = key
+            _OPENAI_KEY_SET = True
 
         else:
             raise RuntimeError(
@@ -139,10 +103,7 @@ def openai_completion(engine: str,
 
     #  Ensure the API-key is set up.
     _setup_openai_key()
-    #  Set up the key, using load-balancing if multiple keys are available.
-    _OPENAI_KEY_MGR.set_next_key()
 
-    num_keys_tried = 0
     num_retries = 0
     while num_retries <= max_retries:
         try:
@@ -161,17 +122,8 @@ def openai_completion(engine: str,
             raise
 
         except openai.error.OpenAIError:
-            if num_keys_tried < len(_OPENAI_KEY_MGR.keys):
-                #  Try with another key before sleeping.
-                num_keys_tried += 1
-
-            else:
-                time.sleep(retry_wait_duration)
-                num_keys_tried = 0
-                num_retries += 1
-
-            #  Use the next key for the next request.
-            _OPENAI_KEY_MGR.set_next_key()
+            time.sleep(retry_wait_duration)
+            num_retries += 1
 
         else:
             result = OpenAICompletionResponse(
