@@ -125,7 +125,6 @@ class PlotlyMiner(VizMiner):
         exec(new_code, globs, globs)
 
         trace = miner.trace_instrumentation.get_hierarchical_trace()
-        miner.trace = trace
 
         #  Use the trace, matplotlib figure and df detectors to extract visualization code.
         miner._extract_viz_code(code_ast, trace, output_dir_path=output_dir_path)
@@ -146,9 +145,7 @@ class PlotlyMiner(VizMiner):
         obj_id_to_fig: Dict[int, plt.Figure] = self.fig_detector.get_found_figures()
 
         for obj_id, fig in obj_id_to_fig.items():
-            if obj_id not in fig_to_slicing_criteria:
-                logger.debug("Ignoring figure with zero writes")
-                #  There's no write to this figure, ignore.
+            if self.ignore_figure(obj_id, fig, fig_to_slicing_criteria):
                 continue
 
             #  Extract the slice as a list of trace items, whose corresponding ast node are the ones we will
@@ -159,6 +156,7 @@ class PlotlyMiner(VizMiner):
             # We add a return at the end of the body, to return the figure object.
             viz_body = self.add_return_fig_stmt(obj_id, viz_body, id_to_var_names)
             if viz_body is None: continue
+
             new_body = astlib.prepare_body(viz_body)
             candidate = astlib.update_stmt_body(code_ast, new_body)
 
@@ -196,16 +194,10 @@ class PlotlyMiner(VizMiner):
             #  We are all set. Save the output to an appropriate place.
             logger.info(f"Final Processed Visualization Function:\n{code}")
             #  Figure out the paths to store the input dataframes at.
-            for df in df_args.values():
-                if id(df) not in df_obj_id_to_pkl_paths:
-                    df_obj_id_to_pkl_paths[id(df)] = f"df_{len(df_obj_id_to_pkl_paths) + 1}.pkl"
-                    df_obj_id_to_df[id(df)] = df
 
-            viz_code.append({
-                "code": code,
-                "df_args": {arg: df_obj_id_to_pkl_paths[id(df)] for arg, df in df_args.items()},
-                "col_args": col_args,
-            })
+            self.update_df_mappings(df_args, df_obj_id_to_df, df_obj_id_to_pkl_paths)
+            viz_code.append(self.get_viz_code_json(code, df_args, col_args, df_obj_id_to_pkl_paths))
+
 
         # Prettify saved data and write to files
         self.write_output(viz_code, df_obj_id_to_pkl_paths, df_obj_id_to_df, output_dir_path)
@@ -248,3 +240,10 @@ class PlotlyMiner(VizMiner):
         else:
             logger.info(f"No variable to return detected")
             return None
+
+    def ignore_figure(self, obj_id, fig, fig_to_slicing_criteria):
+        if obj_id not in fig_to_slicing_criteria:
+            logger.debug("Ignoring figure with zero writes")
+             #  There's no write to this figure, ignore.
+            return True
+        return False

@@ -351,6 +351,19 @@ class VizMiner(BaseExecutor):
 
         return new_code, col_arguments
 
+    def update_df_mappings(self, df_args, df_obj_id_to_df, df_obj_id_to_pkl_paths):
+        for df in df_args.values():
+            if id(df) not in df_obj_id_to_pkl_paths:
+                df_obj_id_to_pkl_paths[id(df)] = f"df_{len(df_obj_id_to_pkl_paths) + 1}.pkl"
+                df_obj_id_to_df[id(df)] = df
+
+    def get_viz_code_json(self, code, df_args, col_args, df_obj_id_to_pkl_paths):
+        return {
+                "code": code,
+                "df_args": {arg: df_obj_id_to_pkl_paths[id(df)] for arg, df in df_args.items()},
+                "col_args": col_args,
+            }
+
     @classmethod
     def _get_module_versions(cls):
         result = {}
