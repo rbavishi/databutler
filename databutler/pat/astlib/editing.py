@@ -65,9 +65,9 @@ class StmtRemovalAndSimplificationTransformer(cst.CSTTransformer):
                     if updated_node.orelse is None:
                         return cst.RemoveFromParent()
                 elif isinstance(updated_node, cst.Try):
-                    if (len(updated_node.handlers) == 0 and
-                            updated_node.orelse is None and
-                            updated_node.finalbody is None):
+                    if len(updated_node.handlers) == 0 and \
+                            updated_node.orelse is None and \
+                            updated_node.finalbody is None:
                         return cst.RemoveFromParent()
 
                 else:

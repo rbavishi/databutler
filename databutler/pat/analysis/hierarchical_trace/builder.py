@@ -9,10 +9,10 @@ from typing import Optional, List, Callable, Any, Dict, Type
 from databutler.pat import astlib
 from databutler.pat.analysis.clock import LogicalClock
 from databutler.pat.analysis.hierarchical_trace.builder_aux import FuncDefLambdaAuxGenerator, ForLoopAuxGenerator
-from databutler.pat.analysis.hierarchical_trace.builder_basic import BasicDefEventsGenerator, BasicAccessEventsGenerator, \
-    BasicReadEventsGenerator, BasicWriteEventsGenerator, FunctionCallSpecsChecker
-from databutler.pat.analysis.hierarchical_trace.builder_utils import TraceItemsCollector, TraceEventsCollector, TraceItemGenerator, \
-    TemporaryVariablesGenerator, ValueKeepAliveAgent
+from databutler.pat.analysis.hierarchical_trace.builder_basic import BasicDefEventsGenerator, \
+    BasicAccessEventsGenerator, BasicReadEventsGenerator, BasicWriteEventsGenerator, FunctionCallSpecsChecker
+from databutler.pat.analysis.hierarchical_trace.builder_utils import TraceItemsCollector, TraceEventsCollector, \
+    TraceItemGenerator, TemporaryVariablesGenerator, ValueKeepAliveAgent
 from databutler.pat.analysis.hierarchical_trace.core import HierarchicalTrace, TraceItem, TraceEvent
 from databutler.pat.analysis.instrumentation import Instrumentation
 

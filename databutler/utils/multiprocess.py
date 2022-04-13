@@ -103,7 +103,7 @@ def run_tasks_in_parallel(func: Callable,
 
         iterator = future.result()
         if use_progress_bar:
-            pbar = tqdm.tqdm(desc=progress_bar_desc, total= len(tasks))
+            pbar = tqdm.tqdm(desc=progress_bar_desc, total=len(tasks))
         else:
             pbar = None
 

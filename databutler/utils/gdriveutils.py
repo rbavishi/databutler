@@ -55,7 +55,7 @@ def _setup_credentials():
         settings_yaml = textwrap.dedent(f"""
         client_config_backend: file
         client_config_file: {_get_client_secrets_path()}
-        
+
         save_credentials: True
         save_credentials_backend: file
         save_credentials_file: {_get_credentials_path()}

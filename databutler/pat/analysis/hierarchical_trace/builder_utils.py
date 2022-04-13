@@ -6,8 +6,8 @@ import attr
 from databutler.pat import astlib
 from databutler.pat.analysis.clock import LogicalClock
 from databutler.pat.analysis.hierarchical_trace.core import TraceItem, TraceEvent, DefEvent, TraceItemType
-from databutler.pat.analysis.instrumentation import StmtCallbacksGenerator, ExprCallbacksGenerator, StmtCallback, ExprCallback, \
-    ExprWrappersGenerator, ExprWrapper
+from databutler.pat.analysis.instrumentation import StmtCallbacksGenerator, ExprCallbacksGenerator, StmtCallback, \
+    ExprCallback, ExprWrappersGenerator, ExprWrapper
 
 
 @attr.s(cmp=False, repr=False)

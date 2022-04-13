@@ -22,4 +22,3 @@ class LoggingTests(unittest.TestCase):
 
         self.assertTrue(any(msg in _read_path(path)
                             for path in glob.glob(os.path.join(log_dir_path, "*.log"))))
-

@@ -348,8 +348,7 @@ class HierarchicalTrace:
             max_end_time = self.get_end_time()
 
         return [d for d in self._expr_items_by_obj_id[obj_id]
-                if (min_start_time <= d.start_time < max_start_time and
-                    min_end_time <= d.end_time < max_end_time)]
+                if min_start_time <= d.start_time < max_start_time and min_end_time <= d.end_time < max_end_time]
 
     @caching.caching_method
     def get_objs_item_depends_on(self, item: TraceItem) -> Set[int]:
