@@ -3,12 +3,9 @@ from typing import List, Dict, Optional, Any, Set
 
 import attrs
 import libcst
-import matplotlib.pyplot as plt
 
-from databutler.datana.viz.utils import mpl_exec
 from databutler.pat import astlib
 from databutler.utils.logging import logger
-
 from scripts.mining.kaggle.execution.plotly_mining import utils
 
 
@@ -43,10 +40,9 @@ def _check_statically(code: str) -> bool:
 
 
 def _get_viz_as_bytes(code: str, args: List[Any], kw_args: Dict[str, Any],
-                      timeout: Optional[int] = None) -> Optional[bytes]:
+                      timeout: Optional[int] = None) -> Optional[str]:
     try:
-        fig = utils.run_viz_code_plotly_mp(code, pos_args=args, kw_args=kw_args, func_name='viz',
-                                                  timeout=timeout)
+        fig = utils.run_viz_code_plotly_mp(code, pos_args=args, kw_args=kw_args, func_name='viz', timeout=timeout)
         if fig is not None:
             buf = io.StringIO()
             fig.write_json(buf)
