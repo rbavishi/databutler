@@ -80,15 +80,14 @@ class BaseExecutor(ABC):
                                  stdout_log_path=stdout_path, stderr_log_path=stderr_path)
 
     @classmethod
-    def _download_image_if_not_available(cls, client: DockerShellClient, notebook: KaggleNotebook):
+    def _download_image_if_not_available(cls, client: DockerShellClient, image: str):
         """
         Checks if image is available and downloads if unavailable.
 
         Args:
             client: A DockerShellClient instance.
-            notebook: The notebook to be run.
+            image (str): URL of the image.
         """
-        image = notebook.docker_image_url
 
         if not client.image_exists(image):
             client.pull_image(image, verbose=True)
@@ -97,39 +96,38 @@ class BaseExecutor(ABC):
             print("Already downloaded", image)
 
     @classmethod
-    def _get_modified_image_name(cls, notebook: KaggleNotebook):
+    def _get_modified_image_name(cls, image: str):
         """
         Returns a new name to use for the docker image created by running setup commands on the original Kaggle
         docker image for a Kaggle notebook.
 
         Args:
-            notebook: The notebook to be run.
+            image (str): URL of the image.
 
         Returns:
             (str): A string corresponding to the new image name.
 
         """
-        image_digest = notebook.docker_image_digest
+        image_digest = image.split('sha256:')[-1]
         new_image_name = f"databutler-{image_digest}"
 
         return new_image_name
 
     @classmethod
-    def _setup_image(cls, client: DockerShellClient, notebook: KaggleNotebook):
+    def _setup_image(cls, client: DockerShellClient, image: str):
         """
         Checks if setup commands have been run, and if not, creates a new image by creating a container, running setup,
         and then saving it.
 
         Args:
             client: A DockerShellClient instance.
-            notebook: The notebook to be run.
+            image (str): URL of the image.
         """
-        new_image_name = cls._get_modified_image_name(notebook)
+        new_image_name = cls._get_modified_image_name(image)
 
         if not client.image_exists(new_image_name):
             #  Run the setup commands and save the image.
             client = cls._get_docker_client()
-            image = notebook.docker_image_url
 
             container_id = client.create_container(image)
 
@@ -220,6 +218,7 @@ class BaseExecutor(ABC):
     def run_notebook(cls,
                      notebook: KaggleNotebook,
                      output_dir_path: str,
+                     docker_image_url: Optional[str] = None,
                      timeout: Optional[int] = None) -> NotebookExecResult:
 
         """
@@ -232,6 +231,8 @@ class BaseExecutor(ABC):
             notebook (KaggleNotebook): The notebook to run.
             output_dir_path: A string corresponding to a path on the host filesystem where all the output resulting
                 from the execution of the Kaggle notebook or the corresponding analyses should be stored.
+            docker_image_url: A string corresponding to a docker image URL that should be used to run the notebook,
+                overriding the one actually associated with the notebook.
             timeout: Time-out to use for every runner, in seconds. Optional.
 
         Returns:
@@ -242,6 +243,7 @@ class BaseExecutor(ABC):
             return cls._run_notebook_internal(
                 notebook=notebook,
                 output_dir_path=output_dir_path,
+                docker_image_url=docker_image_url,
                 timeout=timeout
             )
 
@@ -256,6 +258,7 @@ class BaseExecutor(ABC):
     def _run_notebook_internal(cls,
                                notebook: KaggleNotebook,
                                output_dir_path: str,
+                               docker_image_url: Optional[str] = None,
                                timeout: Optional[int] = None) -> NotebookExecResult:
         #  Make sure the output dir exists on the host filesystem.
         os.makedirs(output_dir_path, exist_ok=True)
@@ -270,13 +273,14 @@ class BaseExecutor(ABC):
         client = cls._get_docker_client()
 
         #  Make sure the image is available before making a container.
+        image = notebook.docker_image_url if docker_image_url is None else docker_image_url
         s = time.time()
-        cls._download_image_if_not_available(client, notebook)
+        cls._download_image_if_not_available(client, image)
         image_download_time = time.time() - s
 
         #  Ensure setup is complete
         s = time.time()
-        cls._setup_image(client, notebook)
+        cls._setup_image(client, image)
         image_setup_time = time.time() - s
 
         #  Initialize a container.
@@ -300,7 +304,7 @@ class BaseExecutor(ABC):
             }
         }
 
-        image = cls._get_modified_image_name(notebook)
+        image = cls._get_modified_image_name(image)
 
         #  Create a fresh client with stdout and stderr logging set up.
         client = cls._get_docker_client(stdout_path=cls.get_stdout_log_path(container_output_path),
@@ -367,6 +371,13 @@ class BaseExecutor(ABC):
                 return NotebookExecResult(
                     status=NotebookExecStatus.TIMEOUT,
                     msg="",
+                )
+
+            exit_code = res.get('exit_code', None)
+            if exit_code != 0:
+                return NotebookExecResult(
+                    status=NotebookExecStatus.ERROR,
+                    msg=f"Exit-Code: {exit_code}"
                 )
 
         return NotebookExecResult(

@@ -249,6 +249,18 @@ class HierarchicalTrace:
                 if d.src.timestamp < item.start_time]
 
     @caching.caching_method
+    def get_forward_dependencies(self, item: TraceItem) -> List[Dependency]:
+        """
+
+        :param item:
+        :return:
+        """
+        left_index = self._deps_src_timestamps.bisect_key_left(item.start_time)
+        right_index = self._deps_src_timestamps.bisect_key_left(item.end_time)
+        return [d for d in self._deps_src_timestamps[left_index:right_index]
+                if d.dst.timestamp >= item.end_time]
+
+    @caching.caching_method
     def get_dependencies(self, item: TraceItem) -> List[Dependency]:
         """
 
