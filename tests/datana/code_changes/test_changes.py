@@ -10,7 +10,7 @@ class CodeChangeTests(unittest.TestCase):
         orig_code = textwrap.dedent(
             """
             def func(n: int):
-                s = another_func(n, b=n-2) 
+                s = another_func(n, b=n-2)
                 return yet_another_func(s, b=n+2)
             """
         )
@@ -30,7 +30,7 @@ class CodeChangeTests(unittest.TestCase):
         target1 = textwrap.dedent(
             """
             def func(n: int):
-                s = another_func(n) 
+                s = another_func(n)
                 return yet_another_func(s, b=n+2)
             """
         )
@@ -38,7 +38,7 @@ class CodeChangeTests(unittest.TestCase):
         target2 = textwrap.dedent(
             """
             def func(n: int):
-                s = another_func(n, b=n-2) 
+                s = another_func(n, b=n-2)
                 return yet_another_func(s)
             """
         )
@@ -62,7 +62,7 @@ class CodeChangeTests(unittest.TestCase):
         orig_code = textwrap.dedent(
             """
             def func(n: int):
-                s = another_func(n, b=n-2) 
+                s = another_func(n, b=n-2)
                 return yet_another_func(s, b=n+2)
             """
         )
@@ -82,7 +82,7 @@ class CodeChangeTests(unittest.TestCase):
         target1 = textwrap.dedent(
             """
             def func(n: int):
-                s = another_func(n) 
+                s = another_func(n)
                 return yet_another_func(s, b=n+2)
             """
         )
@@ -90,7 +90,7 @@ class CodeChangeTests(unittest.TestCase):
         target2 = textwrap.dedent(
             """
             def func(n: int):
-                s = another_func(n, b=n-2) 
+                s = another_func(n, b=n-2)
                 return yet_another_func(s)
             """
         )

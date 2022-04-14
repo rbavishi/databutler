@@ -119,4 +119,3 @@ class CodeChangeGenTests(unittest.TestCase):
 
         self.assertEqual(2, len(changes))
         gen_code = change.SimpleAstLibRemovalChange.apply_changes(code, changes)
-
