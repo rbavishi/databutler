@@ -4,7 +4,7 @@ Core elements of the hierarchical program trace.
 import collections
 from abc import ABC
 from enum import Enum, auto
-from typing import Optional, List, Dict, Hashable, Set, Iterator
+from typing import Optional, List, Dict, Hashable, Set, Iterator, Collection
 
 import attr
 import intervaltree
@@ -247,6 +247,22 @@ class HierarchicalTrace:
         right_index = self._deps_dst_timestamps.bisect_key_left(item.end_time)
         return [d for d in self._deps_dst_timestamps[left_index:right_index]
                 if d.src.timestamp < item.start_time]
+
+    def get_external_dependencies_for_items(self, items: Collection[TraceItem]) -> List[Dependency]:
+        """
+
+        :param items:
+        :return:
+        """
+        s = min(i.start_time for i in items)
+        e = max(i.end_time for i in items)
+        tree = intervaltree.IntervalTree(
+            intervaltree.Interval(begin=i.start_time, end=i.end_time) for i in items
+        )
+        left_index = self._deps_dst_timestamps.bisect_key_left(s)
+        right_index = self._deps_dst_timestamps.bisect_key_left(e)
+        return [d for d in self._deps_dst_timestamps[left_index:right_index]
+                if (not tree.overlaps(d.src.timestamp)) and tree.overlaps(d.dst.timestamp)]
 
     @caching.caching_method
     def get_forward_dependencies(self, item: TraceItem) -> List[Dependency]:
