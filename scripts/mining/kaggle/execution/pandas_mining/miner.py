@@ -186,32 +186,22 @@ class DfColAttrAccessCollector(ExprWrappersGenerator):
     _df_exprs: Set[astlib.BaseExpression] = attrs.field(init=False, factory=set)
 
     def gen_expr_wrappers_simple(self, ast_root: astlib.AstNode) -> Iterator[Tuple[astlib.BaseExpression, ExprWrapper]]:
-        for expr in self.iter_valid_exprs(ast_root):
+        for expr in astlib.walk(ast_root):
             if isinstance(expr, astlib.Attribute):
                 yield expr.value, ExprWrapper(
-                    callable=self._gen_df_detector(expr.value),
-                    name=self.gen_wrapper_id(),
-                )
-                yield expr, ExprWrapper(
                     callable=self._gen_collector(expr),
                     name=self.gen_wrapper_id(),
                 )
-
-    def _gen_df_detector(self, expr: astlib.BaseExpression):
-        def wrapper(value):
-            if isinstance(value, pd.DataFrame):
-                self._df_exprs.add(expr)
-
-            return value
-
-        return wrapper
 
     def _gen_collector(self, expr: astlib.Attribute):
         attr_name = expr.attr.value
 
         def wrapper(value):
-            if expr.value in self._df_exprs and isinstance(value, pd.Series):
-                self._collected_accesses[expr] = attr_name
+            try:
+                if isinstance(value, pd.DataFrame) and attr_name.isidentifier():
+                    self._collected_accesses[expr] = attr_name
+            except:
+                pass
 
             return value
 
@@ -455,6 +445,7 @@ class PandasMiner(BaseExecutor):
                     })
 
                 code = astlib.to_code(func_def)
+                logger.info(f"Extracted Transformation\n{code}")
 
                 #  We lift the hard-coded column references to column parameters.
                 code_ast = astlib.parse(code)
@@ -628,10 +619,11 @@ class PandasMiner(BaseExecutor):
                             new_param = f"new_col{num_other_df_cols_found}"
 
                         cols_to_params[col_name] = new_param
+                        print("NEW", cols_to_params)
 
                     node_replacement_map[node] = astlib.create_name_expr(cols_to_params[col_name])
                     parent = astlib.get_parent(astlib.get_parent(node, code_ast), code_ast)
-                    if isinstance(parent, astlib.List):
+                    if isinstance(parent, astlib.List) and len(parent.elements) > 1:
                         if all(isinstance(elem.value, astlib.SimpleString) and elem.value.evaluated_value in inp_df_cols
                                for elem in parent.elements):
                             column_list_exprs[col_name].add(parent)
@@ -678,7 +670,6 @@ class PandasMiner(BaseExecutor):
                     if elem.value.evaluated_value in cols_to_params:
                         cols_to_params.pop(elem.value.evaluated_value)
 
-            cols_to_params = {}
             if len(eq_list_map) == 1:
                 cols_to_params[next(iter(eq_list_map.keys()))] = "columns"
             else:
