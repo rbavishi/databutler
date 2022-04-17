@@ -219,7 +219,8 @@ class BaseExecutor(ABC):
                      notebook: KaggleNotebook,
                      output_dir_path: str,
                      docker_image_url: Optional[str] = None,
-                     timeout: Optional[int] = None) -> NotebookExecResult:
+                     timeout: Optional[int] = None,
+                     **executor_kwargs: Dict[str, Any]) -> NotebookExecResult:
 
         """
         Runs a kaggle notebook with all the runners belonging to the executor class.
@@ -234,6 +235,7 @@ class BaseExecutor(ABC):
             docker_image_url: A string corresponding to a docker image URL that should be used to run the notebook,
                 overriding the one actually associated with the notebook.
             timeout: Time-out to use for every runner, in seconds. Optional.
+            **executor_kwargs: Additional keyword arguments specific to the executor.
 
         Returns:
             A KaggleExecResult instance containing information about the run, including error details if an exception
@@ -244,7 +246,8 @@ class BaseExecutor(ABC):
                 notebook=notebook,
                 output_dir_path=output_dir_path,
                 docker_image_url=docker_image_url,
-                timeout=timeout
+                timeout=timeout,
+                **executor_kwargs,
             )
 
         except Exception as e:
@@ -259,7 +262,8 @@ class BaseExecutor(ABC):
                                notebook: KaggleNotebook,
                                output_dir_path: str,
                                docker_image_url: Optional[str] = None,
-                               timeout: Optional[int] = None) -> NotebookExecResult:
+                               timeout: Optional[int] = None,
+                               **executor_kwargs: Dict[str, Any]) -> NotebookExecResult:
         #  Make sure the output dir exists on the host filesystem.
         os.makedirs(output_dir_path, exist_ok=True)
         #  Its counterpart on the container.
@@ -345,7 +349,8 @@ class BaseExecutor(ABC):
 
             runner_script_src = cls._create_runner_script(output_dir_path=container_output_path,
                                                           script_path=f"{cls.KAGGLE_WORKING_DIR}/{script_name}",
-                                                          script_src_type=source_type)
+                                                          script_src_type=source_type,
+                                                          **executor_kwargs)
 
             client.write_file(container_id, filepath=f"{cls.KAGGLE_WORKING_DIR}/kaggle_runner.py",
                               contents=runner_script_src)
@@ -389,7 +394,8 @@ class BaseExecutor(ABC):
     def _create_runner_script(cls,
                               output_dir_path: str,
                               script_path: str,
-                              script_src_type: KaggleNotebookSourceType) -> str:
+                              script_src_type: KaggleNotebookSourceType,
+                              **executor_kwargs: Dict[str, Any]) -> str:
         """
         Returns the entrypoint code to run in the container. This script invokes the `runner_main` method for the
         target executor class.
@@ -400,6 +406,7 @@ class BaseExecutor(ABC):
             script_path: A string corresponding to a path on the container filesystem where the contents of the
                 original Kaggle notebook are stored.
             script_src_type: Source type of the original Kaggle notebook.
+            **executor_kwargs: Additional keyword arguments specific to the executor.
 
         Returns:
 `           (str): A string corresponding to code to run.
@@ -411,6 +418,8 @@ class BaseExecutor(ABC):
         src_type_file = inspect.getabsfile(KaggleNotebookSourceType)
         src_type_import_path = os.path.relpath(src_type_file, cls._get_databutler_project_root()).replace("/", ".")
         src_type_import_path = ".".join(src_type_import_path.split('.')[:-1])  # Remove the .py
+
+        executor_kwargs_str = ",\n".join(f"{k}={v!r}" for k, v in executor_kwargs.items())
 
         return textwrap.dedent(f"""
         import sys
@@ -428,7 +437,8 @@ class BaseExecutor(ABC):
             
         {cls.__name__}.runner_main(source=source, 
                                    source_type={str(script_src_type)}, 
-                                   output_dir_path={output_dir_path!r})
+                                   output_dir_path={output_dir_path!r},
+                                   {executor_kwargs_str})
         """)
 
     @classmethod
@@ -445,7 +455,8 @@ class BaseExecutor(ABC):
         return runners
 
     @classmethod
-    def runner_main(cls, source: str, source_type: KaggleNotebookSourceType, output_dir_path: str):
+    def runner_main(cls, source: str, source_type: KaggleNotebookSourceType, output_dir_path: str,
+                    **executor_kwargs):
         """
         Runs all the runners defined in the executor.
 
@@ -461,12 +472,13 @@ class BaseExecutor(ABC):
                 notebook.
             output_dir_path: A string corresponding to a path on the host filesystem where all the output resulting
                 from the execution of the Kaggle notebook or the corresponding analyses should be stored.
+            **executor_kwargs: Additional keyword arguments specific to the executor.
         """
         runner_output_dict: Dict[str, Any] = {}
 
         for runner in cls._get_cls_runners():
             name = runner.__dict__[_RUNNER_METADATA_KEY]["name"]
-            runner_output_dict[name] = runner(source, source_type, output_dir_path)
+            runner_output_dict[name] = runner(source, source_type, output_dir_path, **executor_kwargs)
 
         for name, output in runner_output_dict.items():
             with open(os.path.join(output_dir_path, name), "wb") as f:
