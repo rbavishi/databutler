@@ -188,18 +188,20 @@ class DfColAttrAccessCollector(ExprWrappersGenerator):
     def gen_expr_wrappers_simple(self, ast_root: astlib.AstNode) -> Iterator[Tuple[astlib.BaseExpression, ExprWrapper]]:
         for expr in astlib.walk(ast_root):
             if isinstance(expr, astlib.Attribute):
+                has_store_ctx = astlib.expr_has_store_ctx(expr, ast_root)
                 yield expr.value, ExprWrapper(
-                    callable=self._gen_collector(expr),
+                    callable=self._gen_collector(expr, has_store_ctx),
                     name=self.gen_wrapper_id(),
                 )
 
-    def _gen_collector(self, expr: astlib.Attribute):
+    def _gen_collector(self, expr: astlib.Attribute, has_store_ctx: bool):
         attr_name = expr.attr.value
 
         def wrapper(value):
             try:
                 if isinstance(value, pd.DataFrame) and attr_name.isidentifier():
-                    self._collected_accesses[expr] = attr_name
+                    if has_store_ctx or isinstance(getattr(value, attr_name), pd.Series):
+                        self._collected_accesses[expr] = attr_name
             except:
                 pass
 
