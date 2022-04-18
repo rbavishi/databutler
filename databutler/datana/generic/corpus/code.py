@@ -63,10 +63,10 @@ class DatanaFunction:
         if isinstance(self.pos_args, (lazyobjs.LazyList, lazyobjs.ObjRef)):
             return self.pos_args.resolve()
         else:
-            return self.pos_args
+            return [arg.resolve() if isinstance(arg, lazyobjs.ObjRef) else arg for arg in self.pos_args]
 
     def get_kw_args(self) -> Dict[str, Any]:
         if isinstance(self.kw_args, (lazyobjs.LazyDict, lazyobjs.ObjRef)):
             return self.kw_args.resolve()
         else:
-            return self.kw_args
+            return {k: v.resolve() if isinstance(v, lazyobjs.ObjRef) else v for k, v in self.kw_args.items()}

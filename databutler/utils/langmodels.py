@@ -9,6 +9,10 @@ import attrs
 import openai
 
 from databutler.utils import paths
+from databutler.utils.logging import logger
+
+
+_CTR = 0
 
 
 @attrs.define(eq=False, repr=False)
@@ -136,7 +140,7 @@ def openai_completion(engine: str,
     :raises InvalidRequestError: If the request is invalid. This can happen if the wrong model is specified, or invalid
         values for max_tokens, temperature, stop etc. are provided.
     """
-
+    global _CTR
     #  Ensure the API-key is set up.
     _setup_openai_key()
     #  Set up the key, using load-balancing if multiple keys are available.
@@ -160,20 +164,24 @@ def openai_completion(engine: str,
         except openai.error.InvalidRequestError:
             raise
 
-        except openai.error.OpenAIError:
+        except openai.error.OpenAIError as e:
             if num_keys_tried < len(_OPENAI_KEY_MGR.keys):
                 #  Try with another key before sleeping.
                 num_keys_tried += 1
 
             else:
+                logger.exception(e)
+                logger.info(f"OpenAIError: Waiting for {retry_wait_duration} seconds after {_CTR} requests")
                 time.sleep(retry_wait_duration)
                 num_keys_tried = 0
                 num_retries += 1
+                _CTR = 0
 
             #  Use the next key for the next request.
             _OPENAI_KEY_MGR.set_next_key()
 
         else:
+            _CTR += 1
             result = OpenAICompletionResponse(
                 completions=[
                     OpenAICompletion(
