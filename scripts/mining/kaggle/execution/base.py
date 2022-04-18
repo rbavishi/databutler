@@ -80,15 +80,14 @@ class BaseExecutor(ABC):
                                  stdout_log_path=stdout_path, stderr_log_path=stderr_path)
 
     @classmethod
-    def _download_image_if_not_available(cls, client: DockerShellClient, notebook: KaggleNotebook):
+    def _download_image_if_not_available(cls, client: DockerShellClient, image: str):
         """
         Checks if image is available and downloads if unavailable.
 
         Args:
             client: A DockerShellClient instance.
-            notebook: The notebook to be run.
+            image (str): URL of the image.
         """
-        image = notebook.docker_image_url
 
         if not client.image_exists(image):
             client.pull_image(image, verbose=True)
@@ -97,39 +96,38 @@ class BaseExecutor(ABC):
             print("Already downloaded", image)
 
     @classmethod
-    def _get_modified_image_name(cls, notebook: KaggleNotebook):
+    def _get_modified_image_name(cls, image: str):
         """
         Returns a new name to use for the docker image created by running setup commands on the original Kaggle
         docker image for a Kaggle notebook.
 
         Args:
-            notebook: The notebook to be run.
+            image (str): URL of the image.
 
         Returns:
             (str): A string corresponding to the new image name.
 
         """
-        image_digest = notebook.docker_image_digest
+        image_digest = image.split('sha256:')[-1]
         new_image_name = f"databutler-{image_digest}"
 
         return new_image_name
 
     @classmethod
-    def _setup_image(cls, client: DockerShellClient, notebook: KaggleNotebook):
+    def _setup_image(cls, client: DockerShellClient, image: str):
         """
         Checks if setup commands have been run, and if not, creates a new image by creating a container, running setup,
         and then saving it.
 
         Args:
             client: A DockerShellClient instance.
-            notebook: The notebook to be run.
+            image (str): URL of the image.
         """
-        new_image_name = cls._get_modified_image_name(notebook)
+        new_image_name = cls._get_modified_image_name(image)
 
         if not client.image_exists(new_image_name):
             #  Run the setup commands and save the image.
             client = cls._get_docker_client()
-            image = notebook.docker_image_url
 
             container_id = client.create_container(image)
 
@@ -220,7 +218,9 @@ class BaseExecutor(ABC):
     def run_notebook(cls,
                      notebook: KaggleNotebook,
                      output_dir_path: str,
-                     timeout: Optional[int] = None) -> NotebookExecResult:
+                     docker_image_url: Optional[str] = None,
+                     timeout: Optional[int] = None,
+                     **executor_kwargs: Dict[str, Any]) -> NotebookExecResult:
 
         """
         Runs a kaggle notebook with all the runners belonging to the executor class.
@@ -232,7 +232,10 @@ class BaseExecutor(ABC):
             notebook (KaggleNotebook): The notebook to run.
             output_dir_path: A string corresponding to a path on the host filesystem where all the output resulting
                 from the execution of the Kaggle notebook or the corresponding analyses should be stored.
+            docker_image_url: A string corresponding to a docker image URL that should be used to run the notebook,
+                overriding the one actually associated with the notebook.
             timeout: Time-out to use for every runner, in seconds. Optional.
+            **executor_kwargs: Additional keyword arguments specific to the executor.
 
         Returns:
             A KaggleExecResult instance containing information about the run, including error details if an exception
@@ -242,7 +245,9 @@ class BaseExecutor(ABC):
             return cls._run_notebook_internal(
                 notebook=notebook,
                 output_dir_path=output_dir_path,
-                timeout=timeout
+                docker_image_url=docker_image_url,
+                timeout=timeout,
+                **executor_kwargs,
             )
 
         except Exception as e:
@@ -256,7 +261,9 @@ class BaseExecutor(ABC):
     def _run_notebook_internal(cls,
                                notebook: KaggleNotebook,
                                output_dir_path: str,
-                               timeout: Optional[int] = None) -> NotebookExecResult:
+                               docker_image_url: Optional[str] = None,
+                               timeout: Optional[int] = None,
+                               **executor_kwargs: Dict[str, Any]) -> NotebookExecResult:
         #  Make sure the output dir exists on the host filesystem.
         os.makedirs(output_dir_path, exist_ok=True)
         #  Its counterpart on the container.
@@ -270,13 +277,14 @@ class BaseExecutor(ABC):
         client = cls._get_docker_client()
 
         #  Make sure the image is available before making a container.
+        image = notebook.docker_image_url if docker_image_url is None else docker_image_url
         s = time.time()
-        cls._download_image_if_not_available(client, notebook)
+        cls._download_image_if_not_available(client, image)
         image_download_time = time.time() - s
 
         #  Ensure setup is complete
         s = time.time()
-        cls._setup_image(client, notebook)
+        cls._setup_image(client, image)
         image_setup_time = time.time() - s
 
         #  Initialize a container.
@@ -300,7 +308,7 @@ class BaseExecutor(ABC):
             }
         }
 
-        image = cls._get_modified_image_name(notebook)
+        image = cls._get_modified_image_name(image)
 
         #  Create a fresh client with stdout and stderr logging set up.
         client = cls._get_docker_client(stdout_path=cls.get_stdout_log_path(container_output_path),
@@ -341,7 +349,8 @@ class BaseExecutor(ABC):
 
             runner_script_src = cls._create_runner_script(output_dir_path=container_output_path,
                                                           script_path=f"{cls.KAGGLE_WORKING_DIR}/{script_name}",
-                                                          script_src_type=source_type)
+                                                          script_src_type=source_type,
+                                                          **executor_kwargs)
 
             client.write_file(container_id, filepath=f"{cls.KAGGLE_WORKING_DIR}/kaggle_runner.py",
                               contents=runner_script_src)
@@ -369,6 +378,13 @@ class BaseExecutor(ABC):
                     msg="",
                 )
 
+            exit_code = res.get('exit_code', None)
+            if exit_code != 0:
+                return NotebookExecResult(
+                    status=NotebookExecStatus.ERROR,
+                    msg=f"Exit-Code: {exit_code}"
+                )
+
         return NotebookExecResult(
             status=NotebookExecStatus.SUCCESS,
             msg="",
@@ -378,7 +394,8 @@ class BaseExecutor(ABC):
     def _create_runner_script(cls,
                               output_dir_path: str,
                               script_path: str,
-                              script_src_type: KaggleNotebookSourceType) -> str:
+                              script_src_type: KaggleNotebookSourceType,
+                              **executor_kwargs: Dict[str, Any]) -> str:
         """
         Returns the entrypoint code to run in the container. This script invokes the `runner_main` method for the
         target executor class.
@@ -389,6 +406,7 @@ class BaseExecutor(ABC):
             script_path: A string corresponding to a path on the container filesystem where the contents of the
                 original Kaggle notebook are stored.
             script_src_type: Source type of the original Kaggle notebook.
+            **executor_kwargs: Additional keyword arguments specific to the executor.
 
         Returns:
 `           (str): A string corresponding to code to run.
@@ -400,6 +418,8 @@ class BaseExecutor(ABC):
         src_type_file = inspect.getabsfile(KaggleNotebookSourceType)
         src_type_import_path = os.path.relpath(src_type_file, cls._get_databutler_project_root()).replace("/", ".")
         src_type_import_path = ".".join(src_type_import_path.split('.')[:-1])  # Remove the .py
+
+        executor_kwargs_str = ",\n".join(f"{k}={v!r}" for k, v in executor_kwargs.items())
 
         return textwrap.dedent(f"""
         import sys
@@ -417,7 +437,8 @@ class BaseExecutor(ABC):
             
         {cls.__name__}.runner_main(source=source, 
                                    source_type={str(script_src_type)}, 
-                                   output_dir_path={output_dir_path!r})
+                                   output_dir_path={output_dir_path!r},
+                                   {executor_kwargs_str})
         """)
 
     @classmethod
@@ -434,7 +455,8 @@ class BaseExecutor(ABC):
         return runners
 
     @classmethod
-    def runner_main(cls, source: str, source_type: KaggleNotebookSourceType, output_dir_path: str):
+    def runner_main(cls, source: str, source_type: KaggleNotebookSourceType, output_dir_path: str,
+                    **executor_kwargs):
         """
         Runs all the runners defined in the executor.
 
@@ -450,12 +472,13 @@ class BaseExecutor(ABC):
                 notebook.
             output_dir_path: A string corresponding to a path on the host filesystem where all the output resulting
                 from the execution of the Kaggle notebook or the corresponding analyses should be stored.
+            **executor_kwargs: Additional keyword arguments specific to the executor.
         """
         runner_output_dict: Dict[str, Any] = {}
 
         for runner in cls._get_cls_runners():
             name = runner.__dict__[_RUNNER_METADATA_KEY]["name"]
-            runner_output_dict[name] = runner(source, source_type, output_dir_path)
+            runner_output_dict[name] = runner(source, source_type, output_dir_path, **executor_kwargs)
 
         for name, output in runner_output_dict.items():
             with open(os.path.join(output_dir_path, name), "wb") as f:

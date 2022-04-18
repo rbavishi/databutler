@@ -4,7 +4,7 @@ Core elements of the hierarchical program trace.
 import collections
 from abc import ABC
 from enum import Enum, auto
-from typing import Optional, List, Dict, Hashable, Set, Iterator
+from typing import Optional, List, Dict, Hashable, Set, Iterator, Collection
 
 import attr
 import intervaltree
@@ -248,6 +248,34 @@ class HierarchicalTrace:
         return [d for d in self._deps_dst_timestamps[left_index:right_index]
                 if d.src.timestamp < item.start_time]
 
+    def get_external_dependencies_for_items(self, items: Collection[TraceItem]) -> List[Dependency]:
+        """
+
+        :param items:
+        :return:
+        """
+        s = min(i.start_time for i in items)
+        e = max(i.end_time for i in items)
+        tree = intervaltree.IntervalTree(
+            intervaltree.Interval(begin=i.start_time, end=i.end_time) for i in items
+        )
+        left_index = self._deps_dst_timestamps.bisect_key_left(s)
+        right_index = self._deps_dst_timestamps.bisect_key_left(e)
+        return [d for d in self._deps_dst_timestamps[left_index:right_index]
+                if (not tree.overlaps(d.src.timestamp)) and tree.overlaps(d.dst.timestamp)]
+
+    @caching.caching_method
+    def get_forward_dependencies(self, item: TraceItem) -> List[Dependency]:
+        """
+
+        :param item:
+        :return:
+        """
+        left_index = self._deps_src_timestamps.bisect_key_left(item.start_time)
+        right_index = self._deps_src_timestamps.bisect_key_left(item.end_time)
+        return [d for d in self._deps_src_timestamps[left_index:right_index]
+                if d.dst.timestamp >= item.end_time]
+
     @caching.caching_method
     def get_dependencies(self, item: TraceItem) -> List[Dependency]:
         """
@@ -348,8 +376,7 @@ class HierarchicalTrace:
             max_end_time = self.get_end_time()
 
         return [d for d in self._expr_items_by_obj_id[obj_id]
-                if (min_start_time <= d.start_time < max_start_time and
-                    min_end_time <= d.end_time < max_end_time)]
+                if min_start_time <= d.start_time < max_start_time and min_end_time <= d.end_time < max_end_time]
 
     @caching.caching_method
     def get_objs_item_depends_on(self, item: TraceItem) -> Set[int]:

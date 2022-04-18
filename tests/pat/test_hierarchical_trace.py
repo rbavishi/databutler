@@ -50,7 +50,7 @@ class HierarchicalTraceTests(unittest.TestCase):
         def func(x, y, z, *args, a=10, b=100, c=200, default=20, **kwargs):
             return x + y + z + a
 
-        func(10, 15, *[20, 30], 40, *(i for i in (50, 60)), **{'c': 150, 'b': 200, 'e': 9}, a=300, d=500) 
+        func(10, 15, *[20, 30], 40, *(i for i in (50, 60)), **{'c': 150, 'b': 200, 'e': 9}, a=300, d=500)
         """
         code = textwrap.dedent(code).strip()
 
@@ -75,8 +75,8 @@ class HierarchicalTraceTests(unittest.TestCase):
         code = """
         import pandas as pd
         df = pd.DataFrame([
-        ["Pants", 50, 70], 
-        ["Pants", 100, 90], 
+        ["Pants", 50, 70],
+        ["Pants", 100, 90],
         ["Shirts", 80, 110]], columns=["Type", "Low", "High"])
 
         df.Low = df.Low.apply(lambda x: x * 2)
@@ -94,8 +94,8 @@ class HierarchicalTraceTests(unittest.TestCase):
         code = """
         import pandas as pd
         df = pd.DataFrame([
-        ["Pants", 50, 70], 
-        ["Pants", 100, 90], 
+        ["Pants", 50, 70],
+        ["Pants", 100, 90],
         ["Shirts", 80, 110]], columns=["Type", "Low", "High"])
         
         s = 0
@@ -137,7 +137,7 @@ class HierarchicalTraceTests(unittest.TestCase):
     def test_5(self):
         code = """
         a = [1, 2, 3, 4]
-        a.extend([1,2]) 
+        a.extend([1,2])
         """
         code = textwrap.dedent(code).strip()
 
@@ -148,15 +148,15 @@ class HierarchicalTraceTests(unittest.TestCase):
         code = """
         import pandas as pd
         df2 = pd.DataFrame([
-        ["Pants", 50, 70], 
+        ["Pants", 50, 70],
         ["Shirts", 80, 110]], columns=["Type", "Low", "High"])
         df = pd.DataFrame([
-        ["Pants", 50, 70], 
-        ["Pants", 100, 90], 
+        ["Pants", 50, 70],
+        ["Pants", 100, 90],
         ["Shirts", 80, 110]], columns=["Type", "Low", "High"])
         df3 = df + df
 
-        df3['Low'] = df3['Low'].apply(lambda x: x * 2) 
+        df3['Low'] = df3['Low'].apply(lambda x: x * 2)
         """
         code = textwrap.dedent(code).strip()
         code_ast = astlib.parse(code)

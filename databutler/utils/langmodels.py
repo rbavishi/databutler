@@ -9,8 +9,30 @@ import attrs
 import openai
 
 from databutler.utils import paths
+from databutler.utils.logging import logger
 
-_OPENAI_KEY_SET = False
+
+_CTR = 0
+
+
+@attrs.define(eq=False, repr=False)
+class _KeyManager:
+    """
+    An internal manager that cycles between OPENAI keys to enable a net-increase in rate=limits.
+    """
+    keys: List[str]
+    _cur_key_idx: int = attrs.field(init=False, default=0)
+
+    def set_next_key(self) -> None:
+        """
+        Cycles between available API keys. This method should be called before any request.
+        """
+        cur_key = self.keys[self._cur_key_idx]
+        self._cur_key_idx = (self._cur_key_idx + 1) % len(self.keys)
+        openai.api_key = cur_key
+
+
+_OPENAI_KEY_MGR: Optional[_KeyManager] = None
 
 
 def _setup_openai_key() -> None:
@@ -19,30 +41,48 @@ def _setup_openai_key() -> None:
 
     :raises RuntimeError: if neither the path exists, nor the environment variable is supplied.
     """
-    global _OPENAI_KEY_SET
+    global _OPENAI_KEY_MGR
 
-    if _OPENAI_KEY_SET:
+    if _OPENAI_KEY_MGR is not None:
         return
 
     path_key = os.path.join(paths.get_user_home_dir_path(), ".databutler", "openai_key.txt")
     if os.path.exists(path_key):
         #  Great just load it from the file.
         with open(path_key, "r") as f:
-            openai.api_key = f.read().strip()
+            key_text = f.read().strip()
 
-        _OPENAI_KEY_SET = True
+        if "\n" in key_text:
+            keys = key_text.split('\n')
+        else:
+            keys = [key_text]
+
+        _OPENAI_KEY_MGR = _KeyManager(keys=keys)
 
     else:
         #  Check if the environment variable OPENAI_KEY is set.
-        key = os.getenv("OPENAI_KEY")
-        if key is not None:
+        key_text = os.getenv("OPENAI_KEY")
+        if key_text is not None:
+            #  Interpret
+            if key_text.startswith("["):
+                #  Interpret as a list
+                try:
+                    keys = eval(key_text)
+                except:
+                    raise ValueError("Could not understand environment variable OPENAI_KEY")
+
+            elif "," in key_text:
+                keys = key_text.split(",")
+
+            else:
+                keys = key_text.split()
+
             #  First, create the cache file.
             os.makedirs(os.path.dirname(path_key), exist_ok=True)
             with open(path_key, "w") as f:
-                f.write(key)
+                f.write("\n".join(keys))
 
-            openai.api_key = key
-            _OPENAI_KEY_SET = True
+            _OPENAI_KEY_MGR = _KeyManager(keys=keys)
 
         else:
             raise RuntimeError(
@@ -100,10 +140,13 @@ def openai_completion(engine: str,
     :raises InvalidRequestError: If the request is invalid. This can happen if the wrong model is specified, or invalid
         values for max_tokens, temperature, stop etc. are provided.
     """
-
+    global _CTR
     #  Ensure the API-key is set up.
     _setup_openai_key()
+    #  Set up the key, using load-balancing if multiple keys are available.
+    _OPENAI_KEY_MGR.set_next_key()
 
+    num_keys_tried = 0
     num_retries = 0
     while num_retries <= max_retries:
         try:
@@ -121,11 +164,24 @@ def openai_completion(engine: str,
         except openai.error.InvalidRequestError:
             raise
 
-        except openai.error.OpenAIError:
-            time.sleep(retry_wait_duration)
-            num_retries += 1
+        except openai.error.OpenAIError as e:
+            if num_keys_tried < len(_OPENAI_KEY_MGR.keys):
+                #  Try with another key before sleeping.
+                num_keys_tried += 1
+
+            else:
+                logger.exception(e)
+                logger.info(f"OpenAIError: Waiting for {retry_wait_duration} seconds after {_CTR} requests")
+                time.sleep(retry_wait_duration)
+                num_keys_tried = 0
+                num_retries += 1
+                _CTR = 0
+
+            #  Use the next key for the next request.
+            _OPENAI_KEY_MGR.set_next_key()
 
         else:
+            _CTR += 1
             result = OpenAICompletionResponse(
                 completions=[
                     OpenAICompletion(

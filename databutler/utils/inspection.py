@@ -137,3 +137,22 @@ def get_fully_qualified_name(func: Optional[Callable]) -> Optional[str]:
             pass
 
     return None
+
+
+def get_qualified_module_name(obj) -> Optional[str]:
+    """
+    Returns the fully qualified name of a module associated with a object, if applicable, and None otherwise.
+    Args:
+        obj: An object
+
+    Returns:
+        A string if the qualified name could be extracted, and None otherwise.
+    """
+
+    try:
+        mod = inspect.getmodule(obj)
+        return mod.__name__
+    except:
+        pass
+
+    return None

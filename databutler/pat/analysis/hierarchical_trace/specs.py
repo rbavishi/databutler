@@ -79,7 +79,6 @@ else:
         def spec(binding: inspect.BoundArguments, ret_val: Any) -> List[Tuple[Any, str]]:
             return [(binding.arguments['self'], 'write')]
 
-
         methods_with_inplace = []
         for elem in [pd.DataFrame, pd.Series]:
             for klass in elem.mro():
@@ -93,14 +92,12 @@ else:
                     except:
                         pass
 
-
         @read_write_spec(methods_with_inplace)
         def spec(binding: inspect.BoundArguments, ret_val: Any) -> List[Tuple[Any, str]]:
             if binding.arguments['inplace'] is True:
                 return [(binding.arguments['self'], 'write')]
             else:
                 return []
-
 
         methods_with_copy = []
         for elem in [pd.DataFrame, pd.Series]:
@@ -118,14 +115,12 @@ else:
                     except:
                         pass
 
-
         @read_write_spec(methods_with_copy)
         def spec(binding: inspect.BoundArguments, ret_val: Any) -> List[Tuple[Any, str]]:
             if binding.arguments['copy'] is False:
                 return [(binding.arguments['self'], 'write')]
             else:
                 return []
-
 
         pd_plotting_functions = [
             pd.DataFrame.plot,
@@ -190,7 +185,6 @@ else:
             *(getattr(estimator, "fit_transform") for estimator in estimators
               if hasattr(estimator, "fit_transform")),
         ]
-
 
         @read_write_spec(fit_and_fit_transform_methods)
         def spec(binding: inspect.BoundArguments, ret_val: Any) -> List[Tuple[Any, str]]:
@@ -276,13 +270,11 @@ else:
             if inspect.isroutine(getattr(plt, k, None)) and k != 'show' and k != 'figure'
         ]
 
-
         @read_write_spec(plt_functions)
         def spec(binding: inspect.BoundArguments, ret_val: Any) -> List[Tuple[Any, str]]:
             #  Mark the current figure object as read and written, in that order.
             gcf = plt.gcf()
             return [(gcf, 'read'), (gcf, 'write')]
-
 
         @read_write_spec([plt.figure])
         def spec(binding: inspect.BoundArguments, ret_val: Any) -> List[Tuple[Any, str]]:
@@ -354,7 +346,6 @@ else:
                 #  Mark the current figure object as read and written, in that order.
                 gcf = plt.gcf()
                 return [(gcf, 'read'), (gcf, 'write')]
-
 
             grid_subclasses = pythonutils.get_all_subclasses(sns.axisgrid.Grid)
             grid_functions = {

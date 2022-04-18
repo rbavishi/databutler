@@ -29,6 +29,7 @@ from scripts.mining.kaggle.execution.plotly_mining import utils
 
 _MAX_VIZ_FUNC_EXEC_TIME = 5
 
+
 @attrs.define(eq=False, repr=False)
 class PlotlyFigureDetector(ExprWrappersGenerator):
     """
@@ -53,6 +54,7 @@ class PlotlyFigureDetector(ExprWrappersGenerator):
                 print(f'Figure detected: {id(value)}')
                 self._found_figures[id(value)] = value
             return value
+
         return wrapper
 
     def get_found_figures(self):
@@ -61,6 +63,7 @@ class PlotlyFigureDetector(ExprWrappersGenerator):
     def get_found_objects(self):
         return self._found_figures.values()
 
+
 @attrs.define(eq=False, repr=False)
 class PlotlyFigureVariableNameDetector(ExprWrappersGenerator):
     """
@@ -68,7 +71,7 @@ class PlotlyFigureVariableNameDetector(ExprWrappersGenerator):
     the program.
     """
     # mapping from object ids to variable names
-    _found_vars : Dict[int, Sequence[AssignTarget]] = attrs.field(init=False, factory=dict)
+    _found_vars: Dict[int, Sequence[AssignTarget]] = attrs.field(init=False, factory=dict)
 
     def gen_expr_wrappers_simple(self, ast_root: astlib.AstNode) -> Iterator[Tuple[astlib.BaseExpression, ExprWrapper]]:
         for node in astlib.walk(ast_root):
@@ -86,6 +89,7 @@ class PlotlyFigureVariableNameDetector(ExprWrappersGenerator):
                 graph_obj_id = id(value)
                 self._found_vars[graph_obj_id] = stmt.targets
             return value
+
         return wrapper
 
     def get_found_vars(self):
@@ -96,7 +100,6 @@ class PlotlyFigureVariableNameDetector(ExprWrappersGenerator):
                 if isinstance(var_name, astlib.Name):
                     id_to_var_name[graph_id] = var_name.value
         return id_to_var_name
-
 
 
 @attrs.define(eq=False, repr=False)
@@ -124,6 +127,7 @@ class ReadCsvDfCollector(ExprWrappersGenerator):
     def get_collected_dfs(self) -> Dict[astlib.Call, pd.DataFrame]:
         return self._collected_dfs.copy()
 
+
 @attrs.define(eq=False, repr=False)
 class DfStrColumnsCollector(ExprWrappersGenerator):
     #  Internal
@@ -149,6 +153,7 @@ class DfStrColumnsCollector(ExprWrappersGenerator):
 
     def get_collected_cols(self) -> Set[str]:
         return self._collected_cols.copy()
+
 
 @attrs.define(eq=False, repr=False)
 class DfColAttrAccessCollector(ExprWrappersGenerator):
@@ -191,6 +196,7 @@ class DfColAttrAccessCollector(ExprWrappersGenerator):
     def get_df_col_attr_accesses(self) -> Dict[astlib.Attribute, str]:
         return self._collected_accesses.copy()
 
+
 @attrs.define(eq=False, repr=False)
 class PlotlyMiner(BaseExecutor):
     @classmethod
@@ -212,9 +218,9 @@ class PlotlyMiner(BaseExecutor):
         var_detection_instrumentation = Instrumentation.from_generators(var_detector)
 
         instrumentation = (trace_instrumentation | plotly_instrumentation |
-                            df_collector_instrumentation |col_collector_instrumentation |
-                            var_detection_instrumentation
-                            )
+                           df_collector_instrumentation | col_collector_instrumentation |
+                           var_detection_instrumentation
+                           )
 
         instrumenter = Instrumenter(instrumentation)
 
@@ -235,7 +241,8 @@ class PlotlyMiner(BaseExecutor):
 
         #  Use the trace, matplotlib figure and df detectors to extract visualization code.
         cls._extract_viz_code(code_ast, trace, df_collector=df_collector, col_collector=col_collector,
-                              fig_detector=plotly_fig_detector, var_detector=var_detector ,output_dir_path=output_dir_path)
+                              fig_detector=plotly_fig_detector, var_detector=var_detector,
+                              output_dir_path=output_dir_path)
 
     @classmethod
     def _extract_viz_code(cls, code_ast: astlib.AstNode, trace: HierarchicalTrace,
@@ -375,6 +382,7 @@ class PlotlyMiner(BaseExecutor):
                 "col_args": col_args,
             })
 
+<<<<<<< HEAD
         mining_output_dir = os.path.join(output_dir_path, cls.__name__)
         os.makedirs(mining_output_dir, exist_ok=True)
 
@@ -404,6 +412,8 @@ class PlotlyMiner(BaseExecutor):
 
         logger.info("Finished Extraction")
 
+=======
+>>>>>>> 480bad8efd3618549b284d8b3948aa7eafffbc45
     @classmethod
     def _get_slice(cls,
                    trace: HierarchicalTrace,
@@ -425,13 +435,12 @@ class PlotlyMiner(BaseExecutor):
 
         return sorted(queued, key=lambda x: x.start_time)
 
-
     @classmethod
     def _check_execution(cls, code: str, pos_args: List[Any], kw_args: Dict[str, Any],
                          timeout: int = _MAX_VIZ_FUNC_EXEC_TIME) -> bool:
         try:
             fig = utils.run_viz_code_plotly_mp(code, pos_args=pos_args, kw_args=kw_args,
-                                                        timeout=timeout, func_name='viz')
+                                               timeout=timeout, func_name='viz')
             return fig is not None
         except:
             return False

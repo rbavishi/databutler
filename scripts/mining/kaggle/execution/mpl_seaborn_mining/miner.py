@@ -306,7 +306,7 @@ class MplSeabornVizMiner(BaseExecutor):
             #  With the arguments figured out, we can construct the desired function by creating a new function
             #  with the required signature, and making the slice the body of the function.
             candidate = astlib.with_deep_replacements(candidate, replacements)
-            func_def = astlib.parse_stmt(f"def viz({', '.join(i.value for i in replacements.values())}):\n    pass")
+            func_def = astlib.parse_stmt(f"def viz({', '.join(df_args.keys())}):\n    pass")
             func_def = astlib.update_stmt_body(func_def, candidate.body)
             code = astlib.to_code(func_def)
 

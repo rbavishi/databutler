@@ -50,6 +50,15 @@ class NotebookCell(cst.BaseCompoundStatement):
         self.body._codegen(state)
 
 
+def _remove_magics_from_cell_code(code: str) -> str:
+    new_lines = []
+    for line in code.split('\n'):
+        if not line.lstrip().startswith("%"):
+            new_lines.append(line)
+
+    return "\n".join(new_lines)
+
+
 def parse_ipynb(src: Union[str, dict], python_version: str = None):
     if python_version is not None:
         config = cst.PartialParserConfig(encoding="utf-8", python_version=python_version)
@@ -65,6 +74,8 @@ def parse_ipynb(src: Union[str, dict], python_version: str = None):
         cell_src = "".join(cell['source'])
         cell_type = cell['cell_type']
         if cell_type == 'code':
+            #  For now, delete lines involving magics
+            cell_src = _remove_magics_from_cell_code(cell_src)
             module = cst.parse_module(cell_src, config)
             body = NotebookCellBody(body=module.body)
             cell_nodes.append(NotebookCell(body=body, markdown=None, header=module.header, footer=module.footer))

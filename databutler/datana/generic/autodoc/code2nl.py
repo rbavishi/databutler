@@ -131,7 +131,6 @@ class SimpleCodeToNatLang(BaseCodeToNatLang):
             num_completions=num_results,
             max_tokens=self.max_tokens,
             stop=["\n"],  # Use new-line as the stop-token for single-line descriptions.
-            retry_wait_duration=60,
             max_retries=5,
             return_logprobs=False,
         )
@@ -168,7 +167,6 @@ class SimpleCodeToNatLang(BaseCodeToNatLang):
                 num_completions=1,
                 max_tokens=self.max_tokens,
                 stop=["\n"],  # Use new-line as the stop-token for single-line descriptions.
-                retry_wait_duration=60,
                 max_retries=5,
                 return_logprobs=False,
             )

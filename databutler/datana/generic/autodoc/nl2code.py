@@ -104,7 +104,6 @@ class SimpleNatLangToCode(BaseNatLangToCode):
             num_completions=1,
             max_tokens=self.max_tokens,
             stop=[self.stop_token],
-            retry_wait_duration=60,
             max_retries=5,
             return_logprobs=False,
         )
