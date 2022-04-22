@@ -17,4 +17,4 @@ jobs:
         python -m pip install --upgrade pip
         pip install pycodestyle
     - name: Python Style Checker
-      run: pycodestyle --max-line-length=120 --ignore=E722,W293 .
+      run: pycodestyle --max-line-length=120 --ignore=E722,W293,W503,W504 .
