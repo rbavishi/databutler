@@ -82,4 +82,3 @@ class KaggleDataSource:
 
         else:
             raise NotImplementedError(f"Unrecognized data-source {self.url}")
-

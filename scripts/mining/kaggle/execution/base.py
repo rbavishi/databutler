@@ -435,8 +435,8 @@ class BaseExecutor(ABC):
         with open({script_path!r}, "r") as f_script:
             source = f_script.read()
             
-        {cls.__name__}.runner_main(source=source, 
-                                   source_type={str(script_src_type)}, 
+        {cls.__name__}.runner_main(source=source,
+                                   source_type={str(script_src_type)},
                                    output_dir_path={output_dir_path!r},
                                    {executor_kwargs_str})
         """)

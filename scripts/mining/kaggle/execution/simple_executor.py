@@ -5,12 +5,14 @@ from scripts.mining.kaggle.notebooks.notebook import KaggleNotebookSourceType
 
 from databutler.pat import astlib
 
+
 class SimpleExecutor(BaseExecutor):
     """
     Simply runs the Kaggle notebook as is.
 
     Useful for debugging.
     """
+
     @classmethod
     @register_runner(name="simple_executor")
     def simple_runner(cls, source: str, source_type: KaggleNotebookSourceType, output_dir_path: str):
