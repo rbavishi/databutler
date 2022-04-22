@@ -167,6 +167,8 @@ class KaggleNotebook:
             if ds.src_type == KaggleDataSourceType.COMPETITION:
                 if ds.url.startswith("/c/"):
                     found_competitions.append(ds.url[len("/c/"):])
+                elif ds.url.startswith('/competition/'):
+                    found_competitions.append(ds.url[len("/competition/"):])
 
         if len(found_competitions) != 1:
             #  If no competitions found, or more than one competition's data-sources are being used, deem it

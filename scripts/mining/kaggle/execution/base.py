@@ -21,9 +21,9 @@ _RUNNER_METADATA_KEY = "__databutler_mining_runner"
 def register_runner(_method: Callable = None, *, name: str = None):
     """
     Decorates a method to be a runner.
-    
+
     Every runner must have a unique name. A runner must be a classmethod that has the following signature
-    
+
     ```
     @register_runner(name='my_runner')
     def runner(source: str, source_type: nb_utils.KaggleSourceType, output_dir_path: str):
@@ -90,6 +90,7 @@ class BaseExecutor(ABC):
         """
 
         if not client.image_exists(image):
+            raise Exception('we not doing this')
             client.pull_image(image, verbose=True)
 
         else:
@@ -425,18 +426,18 @@ class BaseExecutor(ABC):
         import sys
         from {cls_import_path} import {cls.__name__}
         from {src_type_import_path} import {KaggleNotebookSourceType.__name__}
-        
+
         from databutler.utils.logging import logger
-        
+
         #  Setup the logger to output everything to stdout
         logger.remove()
         logger.add(sys.stdout, level="INFO")
-        
+
         with open({script_path!r}, "r") as f_script:
             source = f_script.read()
-            
-        {cls.__name__}.runner_main(source=source, 
-                                   source_type={str(script_src_type)}, 
+
+        {cls.__name__}.runner_main(source=source,
+                                   source_type={str(script_src_type)},
                                    output_dir_path={output_dir_path!r},
                                    {executor_kwargs_str})
         """)

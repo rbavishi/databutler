@@ -83,3 +83,6 @@ class KaggleDataSource:
         else:
             raise NotImplementedError(f"Unrecognized data-source {self.url}")
 
+    def __repr__(self):
+        return f'{self.url}: {self.src_type}'
+

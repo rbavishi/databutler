@@ -15,6 +15,7 @@ from scripts.mining.kaggle.notebooks.download import get_notebooks_using_meta_ka
 from scripts.mining.kaggle.notebooks.notebook import KaggleNotebook, KaggleNotebookSourceType
 from scripts.mining.kaggle.utils import fire_command
 
+from databutler.pat import astlib
 
 @fire_command(name='MetaKaggleNotebooks', collection=__file__)
 @attrs.define(eq=False, repr=False)
@@ -307,6 +308,170 @@ def run_notebook(owner: str, slug: str, executor_name: str, output_dir_path: str
             print(f.read())
 
         print("----------------")
+
+@fire_command(name='run_plotlies', collection=__file__)
+def run_notebooks(path, output_main, iter_num=None):
+    def get_nb_retrieval_data(link):
+        """
+        Returns the owner and slug of the link.
+        """
+        split_url = link.replace('\n', '').split('/')
+        return split_url[3], split_url[4]
+
+    file = open(path, 'r')
+    data = json.load(file)
+    links = data['links']
+    list = []
+    count = 0
+    competitions_used = [
+        'titanic',
+        'house-prices-advanced-regression-techniques',
+        "covid19-global-forecasting-week-2",
+        "tmdb-box-office-prediction",
+        "bike-sharing-demand",
+        "tweet-sentiment-extraction",
+        "home-credit-default-risk"
+    ]
+
+    for link in tqdm.tqdm(links):
+        if iter_num is not None:
+            if iter_num == 0: break
+            else: iter_num -= 1
+
+        owner, slug = get_nb_retrieval_data(link)
+        notebook = KaggleNotebook(owner, slug)
+
+        try:
+            if notebook.source_type == KaggleNotebookSourceType.IPYTHON_NOTEBOOK:
+                source = astlib.to_code(astlib.parse_ipynb(notebook.source_code))
+            else:
+                raise NotImplementedError()
+        except Exception as e:
+            print(e)
+            continue
+
+        output_path = f'{output_main}/reduced.json'
+
+        if (is_library_used(source, 'plotly.express') or is_library_used(source, 'plotly.graph_objects')):
+            if(notebook.is_pure_competition_notebook()):
+                if(not notebook.is_gpu_accelerated()):
+                    if(notebook.associated_competition in competitions_used):
+                        # count +=1
+                        run_notebook(owner, slug, 'plotly_miner', f'{output_main}/{owner}-{slug}',
+            'gcr.io/kaggle-images/python@sha256:4dfdfe2be20e8bf9da5eec9d10188e893eb2ab99f08e6aa854fcff0b6bb10823')
+
+    # print(count)
+
+
+@fire_command(name='run_plotly_count', collection=__file__)
+def run_notebook_count(path, output_main, iter_num=None, start_point=0):
+
+    competitions_used = [
+        'titanic',
+        'house-prices-advanced-regression-techniques',
+        "covid19-global-forecasting-week-2",
+        "tmdb-box-office-prediction",
+        "bike-sharing-demand",
+        "tweet-sentiment-extraction",
+        "home-credit-default-risk"
+        ]
+
+    libs_used = [
+        'plotly.express',
+        'plotly.graph_objects'
+        ]
+
+    list = []
+    log_messages = []
+    with nb_utils.get_local_nb_data_storage_reader() as reader:
+        for (owner, slug) in tqdm.tqdm(reader.keys(), total=len(reader)):
+            if iter_num is not None:
+                if iter_num == 0: break
+                else: iter_num -= 1
+
+            notebook = KaggleNotebook.from_raw_data(owner, slug, reader[owner, slug])
+
+            nb_data = {
+                "owner": owner,
+                "slug": slug,
+                "pure_competition": notebook.is_pure_competition_notebook(),
+                "gpu": notebook.is_gpu_accelerated(),
+                "associated_comp": notebook.associated_competition,
+                "data_sources": repr(notebook.data_sources),
+                # "docker_img": notebook.docker_image_url,
+                "uses_plotly": check_lib_usage(notebook, libs_used)
+            }
+
+            log_messages.append(nb_data)
+
+            # if(notebook.is_pure_competition_notebook()):
+            #     if(not notebook.is_gpu_accelerated()):
+            #         if(notebook.associated_competition in competitions_used):
+            #             if (check_lib_usage(notebook, libs_used)):
+            #                 print(f'Passes filter: {owner}/{slug}')
+            #                 log_messages.append(f'QUALIFIED: {owner}/{slug} can be mined\n')
+            #                 list.append({
+            #                     "owner": owner,
+            #                     "slug": slug
+            #                 })
+            #             else:
+            #                 log_messages.append(f'DISQUALIFIED: {owner}/{slug} does not use at least one of the required libraries\n')
+            #         else:
+            #             log_messages.append(f'DISQUALIFIED: {owner}/{slug} not in considered competitions\n')
+            #     else:
+            #         log_messages.append(f'DISQUALIFIED: {owner}/{slug} is GPU accelerated\n')
+            # else:
+            #     log_messages.append(f'DISQUALIFIED: {owner}/{slug} not a pure competition notebook\n')
+
+    # with open(f'{output_main}/result.json', 'w+') as f:
+    #     json.dump(list, f)
+
+    with open(f'{output_main}/log.json', 'w+') as log:
+        json.dump(log_messages, log)
+
+    print(f'Count: {len(list)}')
+
+def check_lib_usage(notebook, libs):
+    try:
+        if notebook.source_type == KaggleNotebookSourceType.IPYTHON_NOTEBOOK:
+            source = astlib.to_code(astlib.parse_ipynb(notebook.source_code))
+        else:
+            raise NotImplementedError()
+
+        return any([is_library_used(source, lib) for lib in libs])
+
+    except Exception as e:
+        return False
+
+import ast
+
+def is_library_used(code: str, qual_name: str) -> bool:
+    try:
+        c_ast = ast.parse(code)
+
+        vars_to_track = set()
+        for node in ast.walk(c_ast):
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    if alias.name == qual_name:
+                        if alias.asname is None:
+                            vars_to_track.add(alias.name)
+                        else:
+                            vars_to_track.add(alias.asname)
+
+            elif isinstance(node, ast.ImportFrom):
+                for alias in node.names:
+                    full_name = node.module + "." + alias.name
+                    if full_name == qual_name:
+                        vars_to_track.add(alias.asname or full_name)
+
+        for node in ast.walk(c_ast):
+            if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load) and node.id in vars_to_track:
+                return True
+
+        return False
+    except Exception as e:
+        return False
 
 
 if __name__ == "__main__":

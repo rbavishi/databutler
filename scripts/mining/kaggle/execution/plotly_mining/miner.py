@@ -382,7 +382,6 @@ class PlotlyMiner(BaseExecutor):
                 "col_args": col_args,
             })
 
-<<<<<<< HEAD
         mining_output_dir = os.path.join(output_dir_path, cls.__name__)
         os.makedirs(mining_output_dir, exist_ok=True)
 
@@ -412,8 +411,6 @@ class PlotlyMiner(BaseExecutor):
 
         logger.info("Finished Extraction")
 
-=======
->>>>>>> 480bad8efd3618549b284d8b3948aa7eafffbc45
     @classmethod
     def _get_slice(cls,
                    trace: HierarchicalTrace,

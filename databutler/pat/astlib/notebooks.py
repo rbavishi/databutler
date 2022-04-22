@@ -53,7 +53,7 @@ class NotebookCell(cst.BaseCompoundStatement):
 def _remove_magics_from_cell_code(code: str) -> str:
     new_lines = []
     for line in code.split('\n'):
-        if not line.lstrip().startswith("%"):
+        if not line.lstrip().startswith("%") and not line.lstrip().startswith("!"):
             new_lines.append(line)
 
     return "\n".join(new_lines)
