@@ -2,7 +2,7 @@ import ast
 import collections
 import os
 import sys
-from typing import Sequence, Set, Dict, List, Tuple, Iterator, Any
+from typing import Sequence, Set, Dict, List, Tuple, Iterator, Any, Optional
 
 import attrs
 from libcst import AssignTarget
@@ -14,8 +14,10 @@ from matplotlib import pyplot as plt
 from databutler.datana.viz.utils import mpl_exec
 from databutler.pat import astlib
 from databutler.pat.analysis.clock import LogicalClock
-from databutler.pat.analysis.hierarchical_trace.builder import get_hierarchical_trace_instrumentation
-from databutler.pat.analysis.hierarchical_trace.core import HierarchicalTrace, ObjWriteEvent, TraceItem
+from databutler.pat.analysis.hierarchical_trace.builder import get_hierarchical_trace_instrumentation, \
+    HierarchicalTraceInstrumentationHooks
+from databutler.pat.analysis.hierarchical_trace.core import HierarchicalTrace, ObjWriteEvent, TraceItem, DependencyType, \
+    AccessEvent
 from databutler.pat.analysis.instrumentation import ExprCallbacksGenerator, ExprCallback, StmtCallbacksGenerator, \
     StmtCallback, Instrumentation, Instrumenter, ExprWrappersGenerator, ExprWrapper
 from databutler.utils.logging import logger
@@ -103,29 +105,81 @@ class PlotlyFigureVariableNameDetector(ExprWrappersGenerator):
 
 
 @attrs.define(eq=False, repr=False)
-class ReadCsvDfCollector(ExprWrappersGenerator):
-    #  Internal
-    _collected_dfs: Dict[astlib.Call, pd.DataFrame] = attrs.field(init=False, factory=dict)
+class DfCollector(ExprWrappersGenerator):
+    clock: LogicalClock
+    trace_hooks: HierarchicalTraceInstrumentationHooks
+
+    _read_csv_dfs: Dict[astlib.Call, pd.DataFrame] = attrs.field(init=False, factory=dict)
+    _df_exprs: Dict[astlib.BaseExpression, Set[int]] = attrs.field(init=False,
+                                                                   factory=lambda: collections.defaultdict(set))
+    _df_obj_refs: Dict[int, pd.DataFrame] = attrs.field(init=False, factory=dict)
+    _df_obj_store: Dict[int, Dict[int, pd.DataFrame]] = attrs.field(init=False,
+                                                                    factory=lambda: collections.defaultdict(dict))
+
+    def __attrs_post_init__(self):
+        self.trace_hooks.install_event_handler(ObjWriteEvent, self.df_obj_write_event_handler)
+
+    def df_obj_write_event_handler(self, event: ObjWriteEvent, **kwargs):
+        if event.obj_id in self._df_obj_store:
+            cur_time = self.clock.get_time()
+            self._df_obj_store[event.obj_id][cur_time] = self._df_obj_refs[event.obj_id].copy()
 
     def gen_expr_wrappers_simple(self, ast_root: astlib.AstNode) -> Iterator[Tuple[astlib.BaseExpression, ExprWrapper]]:
+        #  First handle the read_csv calls
         for expr in self.iter_valid_exprs(ast_root):
             if isinstance(expr, astlib.Call) and "read_csv" in astlib.to_code(expr.func):
                 yield expr, ExprWrapper(
-                    callable=self._gen_collecting_wrapper(expr),
+                    callable=self._gen_read_csv_wrapper(expr),
                     name=self.gen_wrapper_id(),
                 )
 
-    def _gen_collecting_wrapper(self, expr: astlib.Call):
+        #  Trap any expressions producing dataframes. This will keep track of all the dataframe objects seen during
+        #  execution.
+        for expr in self.iter_valid_exprs(ast_root):
+            yield expr, ExprWrapper(
+                callable=self._gen_df_collecting_wrapper(expr),
+                name=self.gen_wrapper_id(),
+            )
+
+    def _gen_read_csv_wrapper(self, expr: astlib.Call):
         def wrapper(value):
             if isinstance(value, pd.DataFrame):
-                self._collected_dfs[expr] = value.copy()
+                self._read_csv_dfs[expr] = value.copy()
 
             return value
 
         return wrapper
 
-    def get_collected_dfs(self) -> Dict[astlib.Call, pd.DataFrame]:
-        return self._collected_dfs.copy()
+    def get_read_csv_dfs(self) -> Dict[astlib.Call, pd.DataFrame]:
+        return self._read_csv_dfs.copy()
+
+    def _gen_df_collecting_wrapper(self, expr: astlib.BaseExpression):
+        def wrapper(value):
+            if isinstance(value, pd.DataFrame):
+                self._df_exprs[expr].add(id(value))
+                if id(value) not in self._df_obj_refs:
+                    self._df_obj_refs[id(value)] = value
+                    self._df_obj_store[id(value)][self.clock.get_time()] = value.copy()
+
+            return value
+
+        return wrapper
+
+    def get_df_exprs(self) -> Set[astlib.BaseExpression]:
+        return set(self._df_exprs.keys())
+
+    def get_df_obj_ids(self) -> Set[int]:
+        return set(self._df_obj_refs.keys())
+
+    def get_creation_times(self) -> Dict[int, int]:
+        return {k: min(v.keys()) for k, v in self._df_obj_store.items()}
+
+    def get_df_snapshot(self, obj_id: int, latest_before: int) -> Optional[pd.DataFrame]:
+        for timestamp, df in sorted(self._df_obj_store[obj_id].items(), key=lambda x: -x[0]):
+            if timestamp < latest_before:
+                return df
+
+        print(f"Did not find: {obj_id} {latest_before} {list(self._df_obj_store[obj_id].keys())}")
 
 
 @attrs.define(eq=False, repr=False)
@@ -208,7 +262,7 @@ class PlotlyMiner(BaseExecutor):
         trace_instrumentation = get_hierarchical_trace_instrumentation(clock=clock)
         #  Ready up the instrumentation for the matplotlib and df detectors.
         plotly_fig_detector = PlotlyFigureDetector()
-        df_collector = ReadCsvDfCollector()
+        df_collector = DfCollector(clock, trace_instrumentation.get_hooks())
         col_collector = DfStrColumnsCollector()
         var_detector = PlotlyFigureVariableNameDetector()
 
@@ -246,7 +300,7 @@ class PlotlyMiner(BaseExecutor):
 
     @classmethod
     def _extract_viz_code(cls, code_ast: astlib.AstNode, trace: HierarchicalTrace,
-                          df_collector: ReadCsvDfCollector,
+                          df_collector: DfCollector,
                           col_collector: DfStrColumnsCollector,
                           fig_detector: PlotlyFigureDetector,
                           var_detector: PlotlyFigureVariableNameDetector,
@@ -281,10 +335,24 @@ class PlotlyMiner(BaseExecutor):
                             fig_to_slicing_criteria[e.obj_id].add(i)
                             break
 
+        df_obj_ids: Set[int] = df_collector.get_df_obj_ids()
+        obj_id_to_writing_items: Dict[int, List[TraceItem]] = collections.defaultdict(list)
+        for e in trace.get_events():
+            if isinstance(e, ObjWriteEvent) and e.obj_id in df_obj_ids:
+                item = e.owner
+                if item.ast_node in body_stmts:
+                    obj_id_to_writing_items[e.obj_id].append(item)
+                else:
+                    for i in trace.iter_parents(item):
+                        if i.ast_node in body_stmts:
+                            obj_id_to_writing_items[e.obj_id].append(i)
+                            break
+
         #  For each non-empty figure, we'll perform slicing using the collected criteria,
         viz_code: List[Dict] = []
         df_obj_id_to_pkl_paths: Dict[int, str] = {}
         df_obj_id_to_df: Dict[int, pd.DataFrame] = {}
+        df_exprs = df_collector.get_df_exprs()
         logger.info("Extracting Visualization Code")
         for obj_id, fig in obj_id_to_fig.items():
             if obj_id not in fig_to_slicing_criteria:
@@ -295,7 +363,19 @@ class PlotlyMiner(BaseExecutor):
             #  Extract the slice as a list of trace items, whose corresponding ast node are the ones we will
             #  use to build up the body of our visualization.
             criteria = fig_to_slicing_criteria[obj_id]
-            viz_slice: List[TraceItem] = cls._get_slice(trace, criteria, body_stmts)
+
+            ignore_timestamps = {}
+            min_start_time = min(i.start_time for i in criteria)
+            for df_obj_id, w_items in obj_id_to_writing_items.items():
+                for i in sorted(w_items, key=lambda x: -x.end_time):
+                    if i.end_time <= min_start_time:
+                        ignore_timestamps[df_obj_id] = i.end_time
+                        break
+
+            for df_obj_id, creation_time in df_collector.get_creation_times().items():
+                ignore_timestamps[df_obj_id] = max(ignore_timestamps.get(df_obj_id, 0), creation_time)
+
+            viz_slice: List[TraceItem] = cls._get_slice(trace, criteria, body_stmts, ignore_timestamps)
             viz_body = [item.ast_node for item in sorted(viz_slice, key=lambda x: x.start_time)]
 
             # We add a return at the end of the body, to return the figure object.
@@ -317,26 +397,53 @@ class PlotlyMiner(BaseExecutor):
             #  We will consult the read_csv df collector for this.
             all_nodes = set(astlib.walk(candidate))
             to_replace: List[Tuple[astlib.AstNode, pd.DataFrame]] = []
-            for node, df in df_collector.get_collected_dfs().items():
+            for node, df in df_collector.get_read_csv_dfs().items():
                 if node in all_nodes:
                     to_replace.append((node, df))
 
+            df_vars: Dict[int, List[astlib.Name]] = collections.defaultdict(list)
+            earliest_access: Dict[int, int] = {}
+            for d in trace.get_external_dependencies_for_items(viz_slice):
+                if d.type == DependencyType.DEF_ACCESS:
+                    assert isinstance(d.dst, AccessEvent)
+                    if d.dst.owner is not None and d.dst.owner.ast_node in df_exprs:
+                        assert isinstance(d.dst.owner.ast_node, astlib.Name)
+                        df_vars[d.dst.obj_id].append(d.dst.owner.ast_node)
+                        if d.dst.obj_id not in earliest_access:
+                            earliest_access[d.dst.obj_id] = d.dst.timestamp
+                        else:
+                            earliest_access[d.dst.obj_id] = min(earliest_access[d.dst.obj_id], d.dst.timestamp)
+
             #  The mapping df_args will represent the arguments to be provided to the function
             #  to recreate the visualization.
-            if len(to_replace) == 1:
-                var_name = "_df"
-                replacements = {to_replace[0][0]: astlib.create_name_expr(var_name)}
-                df_args = {var_name: to_replace[0][1]}
+            if len(df_vars) == 1:
+                var_name = "df"
+                df_obj_id, var_names = next(iter(df_vars.items()))
+                replacements = {v: astlib.create_name_expr(var_name) for v in var_names}
+                df_args = {var_name: df_collector.get_df_snapshot(df_obj_id, latest_before=earliest_access[df_obj_id])}
             else:
-                var_prefix = "_df_"
-                replacements = {node: astlib.create_name_expr(f"{var_prefix}{idx}")
-                                for idx, (node, df) in enumerate(to_replace, 1)}
-                df_args = {f"{var_prefix}{idx}": df for idx, (node, df) in enumerate(to_replace, 1)}
+                var_prefix = "df"
+                replacements = {}
+                df_args = {}
+                for idx, (df_obj_id, var_names) in enumerate(df_vars.items(), 1):
+                    var_name = f"{var_prefix}{idx}"
+                    replacements.update({v: astlib.create_name_expr(var_name) for v in var_names})
+                    df_args[var_name] = df_collector.get_df_snapshot(df_obj_id,
+                                                                     latest_before=earliest_access[df_obj_id])
+            # if len(to_replace) == 1:
+            #     var_name = "_df"
+            #     replacements = {to_replace[0][0]: astlib.create_name_expr(var_name)}
+            #     df_args = {var_name: to_replace[0][1]}
+            # else:
+            #     var_prefix = "_df_"
+            #     replacements = {node: astlib.create_name_expr(f"{var_prefix}{idx}")
+            #                     for idx, (node, df) in enumerate(to_replace, 1)}
+            #     df_args = {f"{var_prefix}{idx}": df for idx, (node, df) in enumerate(to_replace, 1)}
 
             #  With the arguments figured out, we can construct the desired function by creating a new function
             #  with the required signature, and making the slice the body of the function.
             candidate = astlib.with_deep_replacements(candidate, replacements)
-            func_def = astlib.parse_stmt(f"def viz({', '.join(i.value for i in replacements.values())}):\n    pass")
+            func_def = astlib.parse_stmt(f"def viz({', '.join(sorted(df_args.keys()))}):\n    pass")
             func_def = astlib.update_stmt_body(func_def, candidate.body)
             code = astlib.to_code(func_def)
 
@@ -400,7 +507,7 @@ class PlotlyMiner(BaseExecutor):
 
         yaml.add_representer(str, str_presenter)
 
-        logger.info("Dumping viz functions")
+        logger.info(f"Dumping {len(viz_code)} viz functions")
         with open(os.path.join(mining_output_dir, "viz_functions.yaml"), "w") as f:
             yaml.dump(code_artifact, f)
 
@@ -415,7 +522,25 @@ class PlotlyMiner(BaseExecutor):
     def _get_slice(cls,
                    trace: HierarchicalTrace,
                    criteria: Set[TraceItem],
-                   body_stmts: Set[astlib.AstNode]) -> List[TraceItem]:
+                   body_stmts: Set[astlib.AstNode],
+                   ignore_timestamps: Dict[int, int]) -> List[TraceItem]:
+        worklist = collections.deque(criteria)
+        queued: Set[TraceItem] = set(criteria)
+        disallowed: Set[TraceItem] = set()
+
+        while len(worklist) > 0:
+            item = worklist.popleft()
+            for d in trace.get_external_dependencies(item):
+                for i in trace.get_explicitly_resolving_items(d):
+                    #  We only want to use the statements specified in body_stmts
+                    if i.ast_node in body_stmts:
+                        if i not in queued:
+                            if d.dst.obj_id in ignore_timestamps and ignore_timestamps[d.dst.obj_id] >= i.start_time:
+                                disallowed.add(i)
+                            queued.add(i)
+                            worklist.append(i)
+                            break
+
         worklist = collections.deque(criteria)
         queued: Set[TraceItem] = set(criteria)
 
@@ -425,7 +550,7 @@ class PlotlyMiner(BaseExecutor):
                 for i in trace.get_explicitly_resolving_items(d):
                     #  We only want to use the statements specified in body_stmts
                     if i.ast_node in body_stmts:
-                        if i not in queued:
+                        if (i not in queued) and (i not in disallowed):
                             queued.add(i)
                             worklist.append(i)
                             break

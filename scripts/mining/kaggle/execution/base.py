@@ -294,6 +294,8 @@ class BaseExecutor(ABC):
         #  We create a separate directory for the datasources, and then symlink all files to the destination.
         #  This way, if the notebook makes changes to the destination, it won't mess with the host filesystem.
         ro_ds_mappings = [f"/host_{idx}" for idx in range(len(notebook.data_sources))]
+        for ds in notebook.data_sources:
+            print(ds.local_storage_path, "a", ds.url, "b", ds.mount_slug)
 
         volumes = {
             **{
@@ -329,8 +331,11 @@ class BaseExecutor(ABC):
             s = time.time()
             #  Copy over the data-sources using symlinks
             for ds, vol in zip(notebook.data_sources, ro_ds_mappings):
+                #  Older notebooks have the contents of the data-source directly flattened out into /input
+                client.exec(container_id, cmd=f"cp -as {vol}/* {cls.KAGGLE_INPUT_DIR}/")
                 #  NOTE: `cp -as` only works on linux containers.
-                client.exec(container_id, cmd=f"cp -as {vol}/ {cls.KAGGLE_INPUT_DIR}/{ds.mount_slug}/")
+                if ds.mount_slug != '' and ds.mount_slug is not None:
+                    client.exec(container_id, cmd=f"cp -as {vol}/ {cls.KAGGLE_INPUT_DIR}/{ds.mount_slug}/")
 
             #  Update the source code for databutler. We do not need to install it again.
             cls._copy_databutler_sources(client, container_id)
