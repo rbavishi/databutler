@@ -390,6 +390,19 @@ def _uniqify_functions(all_functions: List[DatanaFunction]) -> List[List[DatanaF
 
 
 def prepare_few_shot(campaign_dir: str, num_examples: int = 5, version: int = 1, strategy: str = "random"):
+    """
+    Given a campaign where datana functions have been generated, prepare a list of few-shot examples as a YAML file.
+    You should fill out the NL fields for each of the example before you use this for autodoc
+
+    Args:
+        campaign_dir: Path to an output directory (same as the one used for create_datana_functions)
+        num_examples: Number of examples to generate
+        version: An integer corresponding to the version number.
+        strategy: One of ['random', ]
+
+    Returns:
+        None. Generates the file {campaign_dir}/few_shot_{version}.yaml
+    """
     few_shot_path = os.path.join(campaign_dir, f"few_shot_{version}.yaml")
 
     if os.path.exists(few_shot_path) and not click.confirm(f"Do you want to overwrite version {version}?"):
@@ -437,6 +450,26 @@ def prepare_few_shot(campaign_dir: str, num_examples: int = 5, version: int = 1,
 def run_autodoc(campaign_dir: str, num_few_shot: int = 5, few_shot_version: int = 1, temperature: float = 0.0,
                 num_tries: int = 3, max_desc_len: int = 3, engine: str = 'code-davinci-001',
                 rerun_timestamp: Optional[str] = None):
+    """
+    Run auto-documentation on all datana functions. Make sure you have written NL for the few-shot examples
+
+    Args:
+        campaign_dir: Path to the campaign directory (same as the one used for create_datana_functions and
+            prepare_few_shot
+        num_few_shot: Number of few-shot examples to used. Capped at the number of few-shot examples provided.
+        few_shot_version: Version number of the few-shot examples dump to use.
+        temperature: Temperature for the model
+        num_tries: Number of times to attempt generation a bidirectionally consistent description. Only makes sense
+            if temperature > 0
+        max_desc_len: Maximum number of bullets to generate as part of a description
+        engine: The Codex engine to use. Do not change from default unless you know what you're doing.
+        rerun_timestamp: Timestamp of the run to resume/overwrite. Useful to recover from errors.
+
+    Returns:
+        None. Generates a file "gen_desc_{timestamp}.yaml" containing descriptions for datana functions for which
+            the auto-doc process was successful.
+
+    """
     logger.info("Loading datana functions")
     all_functions: List[DatanaFunction] = _load_datana_functions(campaign_dir)
     logger.info(f"Found {len(all_functions)} datana functions")
