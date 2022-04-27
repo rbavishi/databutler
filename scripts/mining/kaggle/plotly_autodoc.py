@@ -16,6 +16,7 @@ import fire
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import plotly.graph_objs
 import tqdm
 import yaml
 
@@ -27,8 +28,8 @@ from databutler.utils import pickleutils
 from databutler.utils.logging import logger
 
 SCRIPT_DIR = os.path.abspath(os.path.dirname(__file__))
-PANDAS_MINER_NAME = 'PandasMiner'
-PANDAS_CODE_OUTFILE = 'pandas_functions.yaml'
+PLOTLY_MINER_NAME = 'PlotlyMiner'
+PLOTLY_CODE_OUTFILE = 'viz_functions.yaml'
 DATANA_FUNC_FILENAME = "datana_funcs.db"
 DATANA_DF_FILENAME = "datana_dfs.db"
 
@@ -109,7 +110,7 @@ class CodeMiningResult:
 
     @property
     def data(self):
-        return self.raw['code']
+        return self.raw
 
     @property
     def code(self) -> str:
@@ -120,7 +121,7 @@ class CodeMiningResult:
         return self.data['col_args']
 
     @property
-    def args_size(self) -> float:
+    def args_size_mb(self) -> float:
         return sum(_get_file_size_in_mb(os.path.join(self.results_path, v))
                    for v in self.data['df_args'].values())
 
@@ -136,16 +137,8 @@ class CodeMiningResult:
         }
 
     @property
-    def username(self) -> str:
-        return self.results_path.split(os.path.sep)[-3]
-
-    @property
-    def slug(self) -> str:
+    def username_slug(self) -> str:
         return self.results_path.split(os.path.sep)[-2]
-
-    @property
-    def all_functions_used(self) -> List[str]:
-        return self.data['other_functions'] + self.data['pandas_functions']
 
 
 @attrs.define(eq=False, repr=False)
@@ -154,18 +147,6 @@ class AutodocDatanaFunction:
     A wrapper around a datana function with additional convenience methods for running autodoc
     """
     func: DatanaFunction
-
-    @property
-    def pandas_functions(self) -> List[str]:
-        return self.func.metadata["pandas_functions"]
-
-    @property
-    def other_functions(self) -> List[str]:
-        return self.func.metadata["other_functions"]
-
-    @property
-    def all_functions(self) -> List[str]:
-        return self.pandas_functions + self.other_functions
 
     @property
     def func_type(self) -> str:
@@ -188,7 +169,7 @@ class AutodocDatanaFunction:
             for k, v in self.func.get_kw_args().items()
         }
 
-    def _execute_code_with_func_args(self, code: str, func_name: Optional[str] = None) -> Tuple[Any, Dict[str, Any]]:
+    def _execute_code_with_func_args(self, code: str, func_name: Optional[str] = None) -> plotly.graph_objs.Figure:
         if func_name is None:
             func_name = self.func.func_name
 
@@ -200,19 +181,14 @@ class AutodocDatanaFunction:
 
         kw_args = self.get_kw_args_copy()
         np.random.seed(42)
-        return fn(**kw_args), kw_args
+        return fn(**kw_args)
 
     def execute(self) -> Any:
         """
         Gets the result of executing the function on its associated arguments
         """
-        result, kw_args = self._execute_code_with_func_args(self.func.code_str)
-
-        if self.func_type == "DF_WRITE":
-            #  There is no return value, so we'll just return the modified arguments
-            return kw_args
-        else:
-            return result
+        result = self._execute_code_with_func_args(self.func.code_str)
+        return result
 
     def is_equivalent(self, code: str, func_result: Optional = None) -> bool:
         """
@@ -225,9 +201,6 @@ class AutodocDatanaFunction:
             func_result = self.execute()
 
         result, kw_args = self._execute_code_with_func_args(code)
-        if self.func_type == "DF_WRITE":
-            #  There is no return value, so we'll just use the modified arguments.
-            result = kw_args
 
         try:
             return _cmp_values(func_result, result)
@@ -240,9 +213,9 @@ class AutodocDatanaFunction:
 
 
 def _load_code_results(results_path: str) -> List[CodeMiningResult]:
-    with open(os.path.join(results_path, PANDAS_CODE_OUTFILE), 'r') as f:
+    with open(os.path.join(results_path, PLOTLY_CODE_OUTFILE), 'r') as f:
         return [
-            CodeMiningResult(raw, results_path) for raw in yaml.full_load(f)
+            CodeMiningResult(raw, results_path) for raw in yaml.full_load(f)['viz_functions']
         ]
 
 
@@ -255,17 +228,26 @@ def _get_code_lines(code: str) -> int:
     return len(astunparse.unparse(ast.parse(code)).strip().split("\n"))
 
 
-def consolidate_mining_data(campaign_dir: str, path_to_results: str) -> None:
+def create_datana_functions(campaign_dir: str, path_to_results: str) -> None:
+    """
+    Collects raw plotly mining data, and creates a single database of datana functions
+
+    Args:
+        campaign_dir: Path to an output directory
+        path_to_results: Path to the results directory. The directory structure must be of the form
+            <kaggle-username>-<notebook-slug>/PlotlyMiner
+    """
+
     #  --------
     #  Collect all the non-empty results
     #  --------
 
     results_path_mapping: Dict[Tuple[str, str], str] = {}
     ignored: Set[Tuple[str, str]] = set()
-    for path in glob.glob(os.path.join(path_to_results, "*", "*", PANDAS_MINER_NAME)):
-        username, slug = path.split(os.path.sep)[-3:-1]
+    for path in glob.glob(os.path.join(path_to_results, "*", PLOTLY_MINER_NAME)):
+        username_slug = path.split(os.path.sep)[-2]
         if len(_load_code_results(path)) > 0:
-            results_path_mapping[username, slug] = path
+            results_path_mapping[username_slug] = path
         else:
             ignored.add(path)
 
@@ -279,25 +261,18 @@ def consolidate_mining_data(campaign_dir: str, path_to_results: str) -> None:
     #  First gather all the results, after some basic filtering
     all_code_results: List[CodeMiningResult] = []
     ignored: List[CodeMiningResult] = []
-    for (username, slug), results_path in tqdm.tqdm(results_path_mapping.items(),
-                                                    desc="Processing Results"):
+    for results_path in tqdm.tqdm(results_path_mapping.values(), desc="Processing Results"):
         code_results = _load_code_results(results_path)
 
         for code_res in code_results:
-            if _get_code_length(code_res.code) > 15:
+            if _get_code_length(code_res.code) > 10:
+                #  Not more than 10 statements
+                #  NOTE: These are not text lines, rather the number of AST statement nodes
                 ignored.append(code_res)
                 continue
 
             if len(code_res.col_args) + len(code_res.lazy_df_args) > 5:
-                ignored.append(code_res)
-                continue
-
-            if any(any(i.startswith(lib) for lib in ['seaborn.', 'matplotlib.', 'missingno.'])
-                   for i in code_res.all_functions_used):
-                ignored.append(code_res)
-                continue
-
-            if code_res.args_size > 5:
+                #  Ignore too many args
                 ignored.append(code_res)
                 continue
 
@@ -312,7 +287,7 @@ def consolidate_mining_data(campaign_dir: str, path_to_results: str) -> None:
     datana_func_path = os.path.join(campaign_dir, DATANA_FUNC_FILENAME)
     datana_df_path = os.path.join(campaign_dir, DATANA_DF_FILENAME)
 
-    username_slug_set: Dict[Tuple[str, str], int] = collections.defaultdict(int)
+    username_slug_set: Dict[str, int] = collections.defaultdict(int)
     verif_map: Dict[CodeMiningResult, int] = {}
 
     os.makedirs(campaign_dir, exist_ok=True)
@@ -343,19 +318,18 @@ def consolidate_mining_data(campaign_dir: str, path_to_results: str) -> None:
             kw_args.update(res.col_args)
 
             #  We now have all the ingredients for a datana function
-            ctr = username_slug_set[res.username, res.slug]
-            username_slug_set[res.username, res.slug] += 1
+            ctr = username_slug_set[res.username_slug]
+            username_slug_set[res.username_slug] += 1
 
             func = DatanaFunction(
                 code_str=res.code,
-                uid=f"{res.username}_{res.slug}_{ctr}",
-                func_name="transform",
+                uid=f"{res.username_slug}_{ctr}",
+                func_name="viz",
                 pos_args=[],
                 kw_args=kw_args,
                 metadata={
                     **res.data,
-                    "username": res.username,
-                    "slug": res.slug,
+                    "username_slug": res.username_slug,
                 }
             )
 
@@ -614,7 +588,7 @@ def run_autodoc(campaign_dir: str, num_few_shot: int = 5, few_shot_version: int 
 
                     new_code = nl2c_engine.get_code(nl2c_task)
                     new_code = f"{func_sig_str}\n" \
-                               f"{textwrap.indent(wrapper.get_imports(), ' '*4)}\n" \
+                               f"{textwrap.indent(wrapper.get_imports(), ' ' * 4)}\n" \
                                f"{new_code[len(func_sig_str) + 1:]}"
                     logger.trace(f"Generated Code:\n {new_code}")
 
@@ -695,10 +669,11 @@ if __name__ == "__main__":
             return dumper.represent_scalar('tag:yaml.org,2002:str', data, style='|')
         return dumper.represent_scalar('tag:yaml.org,2002:str', data)
 
+
     yaml.add_representer(str, str_presenter)
 
     fire.Fire({
-        'consolidate_mining_data': consolidate_mining_data,
+        'create_datana_functions': create_datana_functions,
         'prepare_few_shot': prepare_few_shot,
         'run_autodoc': run_autodoc,
         'analyze_autodoc_results': analyze_autodoc_results,
