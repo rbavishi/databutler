@@ -96,6 +96,15 @@ def _cmp_values(val1, val2) -> bool:
         print(buf1, buf2)
         return buf1.read() == buf2.read()
 
+    elif isinstance(val1, plotly.graph_objs.Figure):
+        buf1 = io.StringIO()
+        buf2 = io.StringIO()
+        val1.write_json(buf1)
+        val2.write_json(buf2)
+        buf1.seek(0)
+        buf2.seek(0)
+        return buf1.read() == buf2.read()
+
     else:
         try:
             return val1 == val2
@@ -200,7 +209,7 @@ class AutodocDatanaFunction:
         if func_result is None:
             func_result = self.execute()
 
-        result, kw_args = self._execute_code_with_func_args(code)
+        result = self._execute_code_with_func_args(code)
 
         try:
             return _cmp_values(func_result, result)
@@ -380,7 +389,7 @@ def _uniqify_functions(all_functions: List[DatanaFunction]) -> List[List[DatanaF
     return list(per_code_mapping.values())
 
 
-def prepare_few_shot(campaign_dir: str, num_examples: int = 5, version: int = 1, strategy: str = "simple_diversity"):
+def prepare_few_shot(campaign_dir: str, num_examples: int = 5, version: int = 1, strategy: str = "random"):
     few_shot_path = os.path.join(campaign_dir, f"few_shot_{version}.yaml")
 
     if os.path.exists(few_shot_path) and not click.confirm(f"Do you want to overwrite version {version}?"):
@@ -394,33 +403,9 @@ def prepare_few_shot(campaign_dir: str, num_examples: int = 5, version: int = 1,
     logger.info(f"Found {len(uniqified_funcs)} equivalence classes")
 
     selected: List[DatanaFunction] = []
-    all_functions = [fn for fn in all_functions
-                     if _get_code_length(fn.code_str) >= 2 and ("IQR" in fn.code_str or "LabelEncoder" in fn.code_str)]
 
-    if strategy == "simple_diversity":
-        #  Simply make sure the examples exercise different API functions as much as possible.
-        apis_exercised: Set[str] = set()
-        while len(selected) < num_examples:
-            cur_overlap: Optional[int] = None
-            pool: List[DatanaFunction] = []
-
-            #  Find candidates with the minimum overlap value
-            for func in all_functions:
-                apis_used = func.metadata['pandas_functions'] + func.metadata['other_functions']
-                overlap = len(apis_exercised.intersection(apis_used))
-                if cur_overlap is None or overlap < cur_overlap:
-                    cur_overlap = overlap
-                    pool.clear()
-                    pool.append(func)
-
-                elif overlap == cur_overlap:
-                    pool.append(func)
-
-            #  Pick one from the candidates
-            example = random.choice(pool)
-            selected.append(example)
-            apis_used = example.metadata['pandas_functions'] + example.metadata['other_functions']
-            apis_exercised.update(apis_used)
+    if strategy == "random":
+        selected.extend(random.sample(all_functions, num_examples))
 
     else:
         raise NotImplementedError(f"Unknown strategy {strategy}")
@@ -553,8 +538,7 @@ def run_autodoc(campaign_dir: str, num_few_shot: int = 5, few_shot_version: int 
 
             few_shot_nl2c: List[FewShotExampleCodeAndNL] = [
                 FewShotExampleCodeAndNL(code=ex["code"],
-                                        nl=ex["nl"] + ["Modify in place" if "return " not in ex["code"]
-                                                       else "Return a value"])
+                                        nl=ex["nl"])
                 for ex in few_shot_examples
             ]
 
@@ -578,10 +562,9 @@ def run_autodoc(campaign_dir: str, num_few_shot: int = 5, few_shot_version: int 
                     collected_bullets.append(bullet)
 
                     #  Check if this is enough to reproduce the code (semantic equivalence check)
-                    snippet_type_desc = "Modify in place" if wrapper.func_type == "DF_WRITE" else "Return a value"
                     nl2c_task = nl2code.NatLangToCodeTask(
                         few_shot_examples=few_shot_nl2c,
-                        target_nl=collected_bullets + [snippet_type_desc],
+                        target_nl=collected_bullets,
                         task_description="Generate a data science code snippet given the description",
                         output_prefix=func_sig_str,
                     )
