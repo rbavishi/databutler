@@ -111,3 +111,4 @@ pip-selfcheck.json
 
 .vscode/
 node_modules
+scratch/
