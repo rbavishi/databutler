@@ -7,6 +7,124 @@ from libcst import CSTVisitorT
 from libcst._add_slots import add_slots
 from libcst._nodes.internal import CodegenState, visit_body_sequence, visit_required, visit_sequence
 
+MAGICS = {
+    "automagic": "AutoMagics",
+    "autocall": "AutoMagics",
+    "alias_magic": "BasicMagics",
+    "lsmagic": "BasicMagics",
+    "magic": "BasicMagics",
+    "page": "BasicMagics",
+    "pprint": "BasicMagics",
+    "colors": "BasicMagics",
+    "xmode": "BasicMagics",
+    "quickref": "BasicMagics",
+    "doctest_mode": "BasicMagics",
+    "gui": "BasicMagics",
+    "precision": "BasicMagics",
+    "notebook": "BasicMagics",
+    "save": "CodeMagics",
+    "pastebin": "CodeMagics",
+    "loadpy": "CodeMagics",
+    "load": "CodeMagics",
+    "edit": "KernelMagics",
+    "config": "ConfigMagics",
+    "pdb": "ExecutionMagics",
+    "tb": "ExecutionMagics",
+    "run": "ExecutionMagics",
+    "macro": "ExecutionMagics",
+    "load_ext": "ExtensionMagics",
+    "unload_ext": "ExtensionMagics",
+    "reload_ext": "ExtensionMagics",
+    "history": "HistoryMagics",
+    "recall": "HistoryMagics",
+    "rerun": "HistoryMagics",
+    "logstart": "LoggingMagics",
+    "logstop": "LoggingMagics",
+    "logoff": "LoggingMagics",
+    "logon": "LoggingMagics",
+    "logstate": "LoggingMagics",
+    "pinfo": "NamespaceMagics",
+    "pinfo2": "NamespaceMagics",
+    "pdef": "NamespaceMagics",
+    "pdoc": "NamespaceMagics",
+    "psource": "NamespaceMagics",
+    "pfile": "NamespaceMagics",
+    "psearch": "NamespaceMagics",
+    "who_ls": "NamespaceMagics",
+    "who": "NamespaceMagics",
+    "whos": "NamespaceMagics",
+    "reset": "NamespaceMagics",
+    "reset_selective": "NamespaceMagics",
+    "xdel": "NamespaceMagics",
+    "alias": "OSMagics",
+    "unalias": "OSMagics",
+    "rehashx": "OSMagics",
+    "pwd": "OSMagics",
+    "cd": "OSMagics",
+    "env": "OSMagics",
+    "set_env": "OSMagics",
+    "pushd": "OSMagics",
+    "popd": "OSMagics",
+    "dirs": "OSMagics",
+    "dhist": "OSMagics",
+    "sc": "OSMagics",
+    "system": "OSMagics",
+    "bookmark": "OSMagics",
+    "pycat": "OSMagics",
+    "pip": "PackagingMagics",
+    "conda": "PackagingMagics",
+    "matplotlib": "PylabMagics",
+    "pylab": "PylabMagics",
+    "killbgscripts": "ScriptMagics",
+    "autoawait": "AsyncMagics",
+    "ed": "Other",
+    "hist": "Other",
+    "rep": "Other",
+    "clear": "KernelMagics",
+    "less": "KernelMagics",
+    "more": "KernelMagics",
+    "man": "KernelMagics",
+    "connect_info": "KernelMagics",
+    "qtconsole": "KernelMagics",
+    "autosave": "KernelMagics",
+    "mkdir": "Other",
+    "rmdir": "Other",
+    "mv": "Other",
+    "rm": "Other",
+    "cp": "Other",
+    "cat": "Other",
+    "ls": "Other",
+    "ll": "Other",
+    "lf": "Other",
+    "lk": "Other",
+    "ldir": "Other",
+    "lx": "Other",
+    "store": "StoreMagics",
+    "bigquery_stats": "Other",
+    "js": "DisplayMagics",
+    "javascript": "DisplayMagics",
+    "latex": "DisplayMagics",
+    "svg": "DisplayMagics",
+    "html": "DisplayMagics",
+    "markdown": "DisplayMagics",
+    "capture": "ExecutionMagics",
+    "!": "OSMagics",
+    "writefile": "OSMagics",
+    "script": "ScriptMagics",
+    "sh": "Other",
+    "bash": "Other",
+    "perl": "Other",
+    "ruby": "Other",
+    "python": "Other",
+    "python2": "Other",
+    "python3": "Other",
+    "pypy": "Other",
+    "SVG": "Other",
+    "HTML": "Other",
+    "file": "Other",
+    "bigquery": "Other",
+}
+
 
 @add_slots
 @dataclass(frozen=True)
@@ -53,8 +171,20 @@ class NotebookCell(cst.BaseCompoundStatement):
 def _remove_magics_from_cell_code(code: str) -> str:
     new_lines = []
     for line in code.split('\n'):
-        if not line.lstrip().startswith("%"):
-            new_lines.append(line)
+        line_s = line.lstrip()
+        if line_s.startswith("%") or line_s.startswith("!"):
+            continue
+
+        line_s_split = line_s.split()
+        if len(line_s_split) > 0 and line_s_split[0] in MAGICS:
+            #  We'll have to try to parse the statement as you can still have variables like cp
+            #  We do not want to discard assignments such as "cp = 10"
+            try:
+                cst.parse_statement(line_s)
+            except cst.ParserSyntaxError:
+                continue
+
+        new_lines.append(line)
 
     return "\n".join(new_lines)
 
