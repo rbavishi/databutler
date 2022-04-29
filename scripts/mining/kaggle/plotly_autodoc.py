@@ -237,7 +237,7 @@ def _get_code_lines(code: str) -> int:
     return len(astunparse.unparse(ast.parse(code)).strip().split("\n"))
 
 
-def create_datana_functions(campaign_dir: str, path_to_results: str) -> None:
+def create_datana_functions(campaign_dir: str, path_to_paths: str) -> None:
     """
     Collects raw plotly mining data, and creates a single database of datana functions
 
@@ -253,12 +253,15 @@ def create_datana_functions(campaign_dir: str, path_to_results: str) -> None:
 
     results_path_mapping: Dict[Tuple[str, str], str] = {}
     ignored: Set[Tuple[str, str]] = set()
-    for path in glob.glob(os.path.join(path_to_results, "*", PLOTLY_MINER_NAME)):
-        username_slug = path.split(os.path.sep)[-2]
-        if len(_load_code_results(path)) > 0:
-            results_path_mapping[username_slug] = path
-        else:
-            ignored.add(path)
+    for path_to_results in open(path_to_paths, 'r'):
+        path_to_results = path_to_results.replace("\n", "")
+        print(path_to_results)
+        for path in glob.glob(os.path.join(path_to_results, PLOTLY_MINER_NAME)):
+            username_slug = path.split(os.path.sep)[-2]
+            if len(_load_code_results(path)) > 0:
+                results_path_mapping[username_slug] = path
+            else:
+                ignored.add(path)
 
     logger.info(f"Found {len(results_path_mapping)} non-empty notebook mining results "
                 f"out of {len(results_path_mapping) + len(ignored)} total.")
@@ -419,7 +422,6 @@ def prepare_few_shot(campaign_dir: str, num_examples: int = 5, version: int = 1,
 
     if strategy == "random":
         selected.extend(random.sample(all_functions, num_examples))
-
     else:
         raise NotImplementedError(f"Unknown strategy {strategy}")
 
