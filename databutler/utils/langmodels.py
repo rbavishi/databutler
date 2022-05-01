@@ -3,10 +3,11 @@ A collection of wrapper utilities around language model APIs like the one offere
 """
 import os
 import time
-from typing import Optional, List, Union
+from typing import Optional, List, Union, Dict
 
 import attrs
 import openai
+import transformers
 
 from databutler.utils import paths
 
@@ -99,6 +100,41 @@ class OpenAICompletionResponse:
     timestamp: str
     model: str
     id: str
+
+
+_CODEX_TOKENIZER: Optional[transformers.GPT2Tokenizer] = None
+
+
+def codex_tokenize(text: str) -> Dict[str, Union[List[int], List[str]]]:
+    global _CODEX_TOKENIZER
+    if _CODEX_TOKENIZER is None:
+        _CODEX_TOKENIZER = transformers.GPT2Tokenizer.from_pretrained("SaulLu/codex-like-tokenizer")
+
+    return {
+        "token_ids": _CODEX_TOKENIZER(text)['input_ids'],
+        "token_strs": _CODEX_TOKENIZER.tokenize(text)
+    }
+
+
+_GPT3_TOKENIZER: Optional[transformers.GPT2TokenizerFast] = None
+
+
+def gpt3_tokenize(text: str) -> Dict[str, Union[List[int], List[str]]]:
+    global _GPT3_TOKENIZER
+    if _GPT3_TOKENIZER is None:
+        _GPT3_TOKENIZER = transformers.GPT2TokenizerFast.from_pretrained("gpt2")
+
+    return {
+        "token_ids": _GPT3_TOKENIZER(text)['input_ids'],
+        "token_strs": _GPT3_TOKENIZER.tokenize(text)
+    }
+
+
+def tokenize(text: str, engine: str) -> Dict[str, Union[List[int], List[str]]]:
+    if engine.startswith("code-"):
+        return codex_tokenize(text)
+    else:
+        return gpt3_tokenize(text)
 
 
 def openai_completion(engine: str,
