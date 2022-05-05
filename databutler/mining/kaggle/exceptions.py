@@ -1,0 +1,2 @@
+class NotebookFetchError(Exception):
+    pass
