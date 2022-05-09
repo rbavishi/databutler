@@ -46,3 +46,19 @@ class SerializedMypyType:
                 return True
 
         return False
+
+    def equals(self, other: Union[str, Dict, MypyType, 'SerializedMypyType']) -> bool:
+        if isinstance(other, str):
+            if isinstance(self.type_json, str):
+                return self.type_json == other
+
+        elif isinstance(self.type_json, dict):
+            return self.type_json == other
+
+        elif isinstance(other, SerializedMypyType):
+            return self.type_json == other.type_json
+
+        elif isinstance(other, MypyType):
+            return self.type_json == other.serialize()
+
+        return False
