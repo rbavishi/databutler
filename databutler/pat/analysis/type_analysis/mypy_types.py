@@ -34,3 +34,15 @@ class SerializedMypyType:
             return self.type_json['last_known_value']['value']
 
         raise ValueError(f"Cannot extract literal value from {self.type_json}")
+
+    def is_module_type(self) -> bool:
+        if isinstance(self.type_json, str) and self.type_json == "types.ModuleType":
+            return True
+
+        if isinstance(self.type_json, dict) and self.type_json['.class'] == 'AnyType':
+            if self.type_json.get('type_of_any', None) == 3:
+                return True
+            if self.type_json.get('missing_import_name', None) is not None:
+                return True
+
+        return False
