@@ -1,7 +1,7 @@
 import multiprocessing as mp
 import traceback
 from enum import Enum
-from typing import Callable, Optional, Dict, Any, List
+from typing import Callable, Optional, Dict, Any, List, Iterator
 from concurrent.futures import TimeoutError
 
 import attrs
@@ -69,16 +69,15 @@ class TaskResult:
         return self.status == TaskRunStatus.PROCESS_EXPIRED
 
 
-def run_tasks_in_parallel(func: Callable,
-                          tasks: List[Any],
-                          num_workers: int = 2,
-                          timeout_per_task: Optional[int] = None,
-                          use_progress_bar: bool = False,
-                          progress_bar_desc: Optional[str] = None,
-                          max_tasks_per_worker: Optional[int] = None,
-                          use_spawn: bool = True) -> List[TaskResult]:
+def run_tasks_in_parallel_iter(func: Callable,
+                               tasks: List[Any],
+                               num_workers: int = 2,
+                               timeout_per_task: Optional[int] = None,
+                               use_progress_bar: bool = False,
+                               progress_bar_desc: Optional[str] = None,
+                               max_tasks_per_worker: Optional[int] = None,
+                               use_spawn: bool = True) -> Iterator[TaskResult]:
     """
-
     Args:
         func: The function to run. The function must accept a single argument.
         tasks: A list of tasks i.e. arguments to func.
@@ -89,13 +88,11 @@ def run_tasks_in_parallel(func: Callable,
         max_tasks_per_worker: Maximum number of tasks assigned to a single process / worker. None means infinite.
             Use 1 to force a restart.
         use_spawn: The 'spawn' multiprocess context is used if True. 'fork' is used otherwise.
-
     Returns:
         A list of TaskResult objects, one per task.
     """
 
     mode = 'spawn' if use_spawn else 'fork'
-    task_results: List[TaskResult] = []
 
     with ProcessPool(max_workers=num_workers,
                      max_tasks=0 if max_tasks_per_worker is None else max_tasks_per_worker,
@@ -119,33 +116,34 @@ def run_tasks_in_parallel(func: Callable,
 
             except TimeoutError as error:
                 logger.warning(f"Process timed out after {timeout_per_task} seconds")
-                task_results.append(TaskResult(
+                yield TaskResult(
                     status=TaskRunStatus.TIMEOUT,
-                ))
+                )
+
                 timeouts += 1
 
             except ProcessExpired as error:
                 logger.warning(f"Process exited with code {error.exitcode}: {str(error)}")
-                task_results.append(TaskResult(
+                yield TaskResult(
                     status=TaskRunStatus.PROCESS_EXPIRED,
-                ))
+                )
                 expirations += 1
 
             except Exception as error:
                 logger.exception(error)
                 exception_tb = traceback.format_exc()
 
-                task_results.append(TaskResult(
+                yield TaskResult(
                     status=TaskRunStatus.EXCEPTION,
                     exception_tb=exception_tb,
-                ))
+                )
                 exceptions += 1
 
             else:
-                task_results.append(TaskResult(
+                yield TaskResult(
                     status=TaskRunStatus.SUCCESS,
                     result=result,
-                ))
+                )
 
                 succ += 1
 
@@ -153,4 +151,39 @@ def run_tasks_in_parallel(func: Callable,
                 pbar.update(1)
                 pbar.set_postfix(succ=succ, timeouts=timeouts, exc=exceptions, p_exp=expirations)
 
-        return task_results
+
+def run_tasks_in_parallel(func: Callable,
+                          tasks: List[Any],
+                          num_workers: int = 2,
+                          timeout_per_task: Optional[int] = None,
+                          use_progress_bar: bool = False,
+                          progress_bar_desc: Optional[str] = None,
+                          max_tasks_per_worker: Optional[int] = None,
+                          use_spawn: bool = True) -> List[TaskResult]:
+    """
+    Args:
+        func: The function to run. The function must accept a single argument.
+        tasks: A list of tasks i.e. arguments to func.
+        num_workers: Maximum number of parallel workers.
+        timeout_per_task: The timeout, in seconds, to use per task.
+        use_progress_bar: Whether to use a progress bar. Defaults to False (no progress bar).
+        progress_bar_desc: An optional string to display in the progress bar. Defaults to None (no description).
+        max_tasks_per_worker: Maximum number of tasks assigned to a single process / worker. None means infinite.
+            Use 1 to force a restart.
+        use_spawn: The 'spawn' multiprocess context is used if True. 'fork' is used otherwise.
+    Returns:
+        A list of TaskResult objects, one per task.
+    """
+
+    task_results: List[TaskResult] = list(run_tasks_in_parallel_iter(
+        func=func,
+        tasks=tasks,
+        num_workers=num_workers,
+        timeout_per_task=timeout_per_task,
+        use_progress_bar=use_progress_bar,
+        progress_bar_desc=progress_bar_desc,
+        max_tasks_per_worker=max_tasks_per_worker,
+        use_spawn=use_spawn
+    ))
+
+    return task_results
