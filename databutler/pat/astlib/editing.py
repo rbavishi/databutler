@@ -5,6 +5,7 @@ import libcst as cst
 class ChildReplacementTransformer(cst.CSTTransformer):
     def __init__(self, replacements: Dict[cst.CSTNode, cst.CSTNode]) -> None:
         self.replacements = replacements
+        self.output_mapping: Dict[cst.CSTNode, cst.CSTNode] = {}
 
     def on_visit(self, node: cst.CSTNode) -> bool:
         # If the node is one we are about to replace, we shouldn't
@@ -15,7 +16,9 @@ class ChildReplacementTransformer(cst.CSTTransformer):
                  original_node: cst.CSTNode,
                  updated_node: cst.CSTNode) -> Union[cst.CSTNode, cst.RemovalSentinel]:
         if original_node in self.replacements:
-            return self.replacements[original_node]
+            updated_node = self.replacements[original_node]
+
+        self.output_mapping[original_node] = updated_node
         return updated_node
 
 

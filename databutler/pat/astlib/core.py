@@ -213,7 +213,7 @@ class _AstMetadata:
                 accesses=[],
             )
 
-        for access in all_accesses.keys():
+        for access in itertools.chain(all_accesses.keys(), *(scope.accesses for scope in all_scopes)):
             all_accesses[access] = Access(
                 node=access.node,
                 scope_id=self._scope_id_dict[access.scope],
@@ -415,7 +415,8 @@ def with_changes(node: AstNode, **changes):
     return node.with_changes(**changes)
 
 
-def with_deep_replacements(node: AstNode, replacements: typing.Dict[AstNode, AstNode]):
+def with_deep_replacements(node: AstNode, replacements: typing.Dict[AstNode, AstNode],
+                           output_mapping: Optional[typing.Dict[AstNode, AstNode]] = None):
     #  If a node does not have a child (direct or indirect) in replacements, it should not be
     #  replaced for no reason. Hence add an identity mapping to replacements.
     replacements = replacements.copy()
@@ -444,7 +445,13 @@ def with_deep_replacements(node: AstNode, replacements: typing.Dict[AstNode, Ast
     unaffected = all_nodes - affected
     replacements.update({n: n for n in unaffected})
 
-    node = node.visit(ChildReplacementTransformer(replacements))
+    transformer = ChildReplacementTransformer(replacements)
+    node = node.visit(transformer)
+
+    if output_mapping is not None:
+        output_mapping.clear()
+        output_mapping.update(transformer.output_mapping)
+
     return node
 
 
@@ -507,7 +514,15 @@ def iter_stmts(node: AstNode) -> Iterator[AstStatementT]:
             yield n
 
 
-def iter_true_exprs(node: AstNode, context: AstNode) -> Iterator[BaseExpression]:
+def iter_true_exprs(node: AstNode, context: Optional[AstNode] = None) -> Iterator[BaseExpression]:
+    if context is None:
+        if is_expr(node):
+            context = Module(prepare_body([Expr(node)]))
+        elif is_stmt(node):
+            context = Module(prepare_body(prepare_body([node])))
+        else:
+            context = node
+
     for n in walk(node):
         if isinstance(n, BaseExpression) and expr_is_evaluated(n, context):
             yield n
