@@ -2,6 +2,7 @@ import multiprocessing as mp
 import traceback
 from enum import Enum
 from typing import Callable, Optional, Dict, Any, List
+from concurrent.futures import TimeoutError
 
 import attrs
 import tqdm
@@ -117,7 +118,7 @@ def run_tasks_in_parallel(func: Callable,
                 break
 
             except TimeoutError as error:
-                logger.warning(f"Process timed out after {error.args[1]} seconds")
+                logger.warning(f"Process timed out after {timeout_per_task} seconds")
                 task_results.append(TaskResult(
                     status=TaskRunStatus.TIMEOUT,
                 ))
