@@ -179,10 +179,12 @@ def _remove_magics_from_cell_code(code: str) -> str:
         if len(line_s_split) > 0 and line_s_split[0] in MAGICS:
             #  We'll have to try to parse the statement as you can still have variables like cp
             #  We do not want to discard assignments such as "cp = 10"
-            try:
-                cst.parse_statement(line_s)
-            except cst.ParserSyntaxError:
-                continue
+            if not (len(line_s_split) > 2 and line_s_split[1].endswith("=")):
+                #  TODO: This is finnicky. Need a robust way.
+                try:
+                    cst.parse_statement(line_s)
+                except cst.ParserSyntaxError:
+                    continue
 
         new_lines.append(line)
 
