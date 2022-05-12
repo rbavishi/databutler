@@ -349,6 +349,7 @@ def start_mining_campaign(
                       f"\n-----\n")
 
             finally:
+                writer.flush()
                 print("Cleaning up...")
                 #  Remove the mypy cache paths
                 for path in mypy_cache_paths:
