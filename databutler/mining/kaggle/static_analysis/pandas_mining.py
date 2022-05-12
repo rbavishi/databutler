@@ -279,6 +279,7 @@ def start_mining_campaign(
         num_processes: int = 2,
         chunk_size: int = 10000,
         timeout_per_notebook: int = 100,
+        saving_frequency: int = 1000,
         num_notebooks: Optional[int] = None,
 ) -> None:
     os.makedirs(campaign_dir, exist_ok=True)
@@ -309,6 +310,7 @@ def start_mining_campaign(
                      for owner, slug in chunk]
 
             try:
+                save_ctr = 0
                 for nb, result in zip(tasks,
                                       multiprocess.run_tasks_in_parallel_iter(_mine_notebook_mp_helper,
                                                                               tasks=tasks,
@@ -334,9 +336,13 @@ def start_mining_campaign(
                     else:
                         other += 1
 
-                #  Make sure we save intermediate results. We do this after every chunk so as to not overdo it
-                #  and burden the file system.
-                writer.flush()
+                    #  Make sure we save intermediate results. Saving frequency shouldn't be too high so as to
+                    #  burden the file system.
+                    save_ctr += 1
+                    if save_ctr == saving_frequency:
+                        save_ctr = 0
+                        writer.flush()
+
                 print(f"\n-----\n"
                       f"Snippets found so far: {num_snippets_found}\n"
                       f"Success: {succ} Exceptions: {exceptions} Timeouts: {timeouts}"

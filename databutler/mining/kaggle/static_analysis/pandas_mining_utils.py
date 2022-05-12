@@ -136,7 +136,6 @@ def has_undefined_references(
             typ = inferred_types[node]
             is_builtin_func = typ.is_callable_type() and node.value in _BUILTIN_FUNCS
             if not (typ.equals(DF_TYPE) or typ.equals(SERIES_TYPE) or typ.is_bool_type() or is_builtin_func):
-                print("NOOO", node)
                 return True
 
     return False
