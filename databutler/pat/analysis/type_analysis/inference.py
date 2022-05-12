@@ -103,7 +103,8 @@ def capture_revealed_types(type_store: List[SerializedMypyType]) -> None:
 
 
 def run_mypy(
-        source: Union[str, astlib.AstNode]
+        source: Union[str, astlib.AstNode],
+        cache_dir: Optional[str] = None,
 ) -> Tuple[astlib.AstNode, Dict[astlib.BaseExpression, SerializedMypyType]]:
     if isinstance(source, str):
         src_ast = astlib.parse(source)
@@ -132,8 +133,12 @@ def run_mypy(
         try:
             with set_env(MYPYPATH=STUBS_PATH):
                 from mypy.main import main
+                args = [fp.name, "--ignore-missing-imports"]
+                if cache_dir is not None:
+                    args.append(f"--cache-dir={cache_dir}")
+
                 main(None,
-                     args=[fp.name, "--ignore-missing-imports"],
+                     args=args,
                      stdout=stdout_buf, stderr=stderr_buf,
                      clean_exit=True)
         except BaseException as e:
