@@ -20,3 +20,4 @@ black
 PyDrive2
 fire
 markdownify
+bs4
