@@ -19,3 +19,4 @@ pebble
 astunparse
 black
 PyDrive2
+mypy==0.950 --install-option='--no-binary mypy'
