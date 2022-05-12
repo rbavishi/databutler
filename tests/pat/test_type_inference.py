@@ -31,3 +31,17 @@ class TypeInferenceTests(unittest.TestCase):
         src_ast, inferred_types = run_mypy(code)
         for node, typ in inferred_types.items():
             print(astlib.to_code(node), typ)
+
+    def test_simple_3(self):
+        code = textwrap.dedent("""
+        class A:
+            @property
+            def a(self):
+                return 10
+                
+        b = A()
+        """)
+
+        src_ast, inferred_types = run_mypy(code)
+        for node, typ in inferred_types.items():
+            print(astlib.to_code(node), typ)

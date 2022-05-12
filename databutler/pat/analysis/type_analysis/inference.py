@@ -47,6 +47,10 @@ class _TypeInferenceInstrumenter(astlib.AstTransformer):
         if astlib.is_starred_expr(node):
             self._uninstrumentable_exprs.add(node)
 
+        if isinstance(node, astlib.Decorator):
+            self._uninstrumentable_exprs.add(node)
+            return False
+
         return True
 
     def on_leave(self, original_node: astlib.AstNode, updated_node: astlib.AstNode):
