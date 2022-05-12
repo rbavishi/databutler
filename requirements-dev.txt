@@ -21,3 +21,4 @@ PyDrive2
 fire
 markdownify
 bs4
+tqdm
