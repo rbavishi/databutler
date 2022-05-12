@@ -1,13 +1,16 @@
 import contextlib
 import io
-import itertools
-from typing import Dict, Any, List, Set, Optional
+import os
+import shutil
+from typing import Dict, Any, List, Set, Optional, Tuple
 
 import attrs
+import click
 import fire
+import tqdm
 
-from databutler.mining.kaggle.notebooks.notebook import KaggleNotebook
 from databutler.mining.kaggle.notebooks import utils as nb_utils
+from databutler.mining.kaggle.notebooks.notebook import KaggleNotebook
 from databutler.mining.kaggle.static_analysis.pandas_mining_utils import (
     find_library_usages,
     find_constants,
@@ -22,9 +25,16 @@ from databutler.mining.kaggle.static_analysis.pandas_mining_utils import (
 from databutler.pat import astlib
 from databutler.pat.analysis.type_analysis.inference import run_mypy
 from databutler.pat.analysis.type_analysis.mypy_types import SerializedMypyType
-from databutler.utils import multiprocess, pickleutils, code as codeutils
+from databutler.utils import pickleutils, code as codeutils, multiprocess
 
 JsonDict = Dict
+MINING_RESULTS_FILE = "pandas_mining_results.pkl"
+
+
+def get_mypy_cache_dir_path(uid: int) -> str:
+    """Returns a cache dir to use for mypy based on a UID. Useful for multiprocess safety."""
+    script_dir = os.path.abspath(os.path.dirname(__file__))
+    return os.path.join(script_dir, f".mypy_cache{uid}")
 
 
 @attrs.define(eq=False, repr=False)
@@ -141,10 +151,12 @@ def prepare_mined_result(
     return res
 
 
-def mine_code(code: str, nb_owner: str = "owner", nb_slug: str = "slug") -> List[MinedResult]:
+def mine_code(code: str, nb_owner: str = "owner", nb_slug: str = "slug",
+              multiprocess_safe: bool = False) -> List[MinedResult]:
     result: List[MinedResult] = []
     code_ast = astlib.parse(code)
-    _, inferred_types = run_mypy(code_ast)
+    cache_dir = None if not multiprocess_safe else get_mypy_cache_dir_path(os.getpid())
+    _, inferred_types = run_mypy(code_ast, cache_dir=cache_dir)
 
     lib_usages = find_library_usages(code_ast)
     constants = find_constants(code_ast)
@@ -247,23 +259,112 @@ def mine_code(code: str, nb_owner: str = "owner", nb_slug: str = "slug") -> List
     return result
 
 
-def mine_notebook(owner: str, slug: str) -> List[MinedResult]:
-    nb = KaggleNotebook.from_raw_data(owner, slug, nb_utils.retrieve_notebook_data(owner, slug))
+def _mine_notebook(nb: KaggleNotebook, multiprocess_safe: bool = False) -> List[MinedResult]:
     #  Convert notebook to script
     normalized_code = codeutils.normalize_code_fast(astlib.to_code(nb.get_astlib_ast()))
-    mined_results = mine_code(normalized_code, nb.owner, nb.slug)
+    mined_results = mine_code(normalized_code, nb.owner, nb.slug, multiprocess_safe=multiprocess_safe)
     return mined_results
 
 
-def _mine_notebook_mp_helper(nb: KaggleNotebook):
-    pass
+def mine_notebook(owner: str, slug: str) -> List[MinedResult]:
+    return _mine_notebook(KaggleNotebook.from_raw_data(owner, slug, nb_utils.retrieve_notebook_data(owner, slug)))
 
 
-def start_mining_campaign(campaign_dir: str, num_processes: int = 2):
-    pass
+def _mine_notebook_mp_helper(nb: KaggleNotebook) -> Tuple[List[MinedResult], str]:
+    return _mine_notebook(nb, multiprocess_safe=True), get_mypy_cache_dir_path(os.getpid())
+
+
+def start_mining_campaign(
+        campaign_dir: str,
+        num_processes: int = 2,
+        chunk_size: int = 10000,
+        timeout_per_notebook: int = 100,
+        num_notebooks: Optional[int] = None,
+) -> None:
+    os.makedirs(campaign_dir, exist_ok=True)
+    outfile_path = os.path.join(campaign_dir, MINING_RESULTS_FILE)
+    if os.path.exists(outfile_path):
+        if not click.confirm("Overwrite existing mining results?"):
+            print(f"Cancelling...")
+            return
+
+        os.unlink(outfile_path)
+
+    with nb_utils.get_local_nb_data_storage_reader() as reader, \
+            pickleutils.PickledCollectionWriter(outfile_path) as writer:
+        #  Fetch all notebook (owner, slug) pairs
+        all_keys: List[Tuple[str, str]] = list(reader.keys())
+        print(f"Found {len(all_keys)} notebooks in total")
+        if num_notebooks is not None:
+            all_keys = all_keys[:num_notebooks]
+            print(f"Only considering {len(all_keys)} notebooks")
+
+        num_snippets_found = 0
+        succ = exceptions = timeouts = other = 0
+        mypy_cache_paths: Set[str] = set()
+
+        for idx in tqdm.tqdm(range(0, len(all_keys), chunk_size)):
+            chunk = all_keys[idx: idx + chunk_size]
+            tasks = [KaggleNotebook.from_raw_data(owner, slug, reader[owner, slug])
+                     for owner, slug in chunk]
+
+            try:
+                for nb, result in zip(tasks,
+                                      multiprocess.run_tasks_in_parallel_iter(_mine_notebook_mp_helper,
+                                                                              tasks=tasks,
+                                                                              use_progress_bar=True,
+                                                                              num_workers=num_processes,
+                                                                              timeout_per_task=timeout_per_notebook)):
+                    if result.is_success() and len(result.result) == 2:
+                        mining_result, mypy_cache_path = result.result
+                        mypy_cache_paths.add(mypy_cache_path)
+                        if len(mining_result) > 0:
+                            num_snippets_found += len(mining_result)
+                            for snippet in mining_result:
+                                writer.append(snippet)
+
+                    if result.is_success():
+                        succ += 1
+                    elif result.is_exception():
+                        print(f"Failed for https://kaggle.com/{nb.owner}/{nb.slug}")
+                        exceptions += 1
+                    elif result.is_timeout():
+                        print(f"Timed out for https://kaggle.com/{nb.owner}/{nb.slug}")
+                        timeouts += 1
+                    else:
+                        other += 1
+
+                #  Make sure we save intermediate results. We do this after every chunk so as to not overdo it
+                #  and burden the file system.
+                writer.flush()
+                print(f"\n-----\n"
+                      f"Snippets found so far: {num_snippets_found}\n"
+                      f"Success: {succ} Exceptions: {exceptions} Timeouts: {timeouts}"
+                      f"\n-----\n")
+
+            finally:
+                print("Cleaning up...")
+                #  Remove the mypy cache paths
+                for path in mypy_cache_paths:
+                    if os.path.exists(path):
+                        print(f"Removing {path}")
+                        shutil.rmtree(path, ignore_errors=True)
+                    else:
+                        print(f"WARNING: Did not find mypy cache path {path}")
+
+                mypy_cache_paths.clear()
+
+    print("----------------------")
+    print(f"Total Snippets Found: {num_snippets_found}")
+    print("----------------------")
+
+    # with pickleutils.PickledCollectionReader(outfile_path) as reader:
+    #     for res in reader:
+    #         print(res)
 
 
 if __name__ == "__main__":
     fire.Fire({
-        'mine_notebook': mine_notebook
+        "mine_notebook": mine_notebook,
+        "start_mining_campaign": start_mining_campaign,
     })
