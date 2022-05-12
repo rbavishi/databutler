@@ -204,9 +204,12 @@ def parse_ipynb(src: Union[str, dict], python_version: str = None):
         cell_src = "".join(cell['source'])
         cell_type = cell['cell_type']
         if cell_type == 'code':
-            #  For now, delete lines involving magics
-            cell_src = _remove_magics_from_cell_code(cell_src)
-            module = cst.parse_module(cell_src, config)
+            try:
+                module = cst.parse_module(cell_src, config)
+            except cst.ParserSyntaxError:
+                #  Try after removing magics
+                module = cst.parse_module(_remove_magics_from_cell_code(cell_src), config)
+
             body = NotebookCellBody(body=module.body)
             cell_nodes.append(NotebookCell(body=body, markdown=None, header=module.header, footer=module.footer))
 
