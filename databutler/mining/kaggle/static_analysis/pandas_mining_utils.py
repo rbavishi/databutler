@@ -172,14 +172,18 @@ def normalize_df_series_vars(
             series_repl_map[node] = node  # Will update later
 
     if len(df_repl_map) <= 1:
-        df_arg_creator = lambda ctr: "df"
+        def df_arg_creator(ctr: int):
+            return "df"
     else:
-        df_arg_creator = lambda ctr: f"df{ctr}"
+        def df_arg_creator(ctr: int):
+            return f"df{ctr}"
 
     if len(series_repl_map) <= 1:
-        series_arg_creator = lambda ctr: "ss"
+        def series_arg_creator(ctr: int):
+            return "ss"
     else:
-        series_arg_creator = lambda ctr: f"ss{ctr}"
+        def series_arg_creator(ctr: int):
+            return f"ss{ctr}"
 
     for node in df_repl_map.keys():
         df_repl_map[node] = astlib.create_name_expr(df_arg_creator(seen_dfs[node.value]))
