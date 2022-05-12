@@ -12,11 +12,9 @@ intervaltree~=3.1.0
 sortedcontainers~=2.2.2
 matplotlib~=3.2.1
 seaborn~=0.10.0
-scikit-learn~=0.21.3
 openai
 transformers
 pebble
 astunparse
 black
 PyDrive2
-mypy==0.950 --install-option='--no-binary mypy'

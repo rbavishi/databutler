@@ -1,0 +1,1 @@
+mypy==0.950 --install-option='--no-binary mypy'
