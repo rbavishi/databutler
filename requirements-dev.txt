@@ -18,3 +18,4 @@ pebble
 astunparse
 black
 PyDrive2
+fire
