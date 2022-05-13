@@ -1,7 +1,12 @@
 import builtins
 import collections
+import contextlib
+import io
+import os
 import string
-from typing import Dict, Any, Tuple, List, Collection
+from typing import Dict, Any, Tuple, List, Collection, Optional
+
+import attrs
 
 import pandas as pd
 from databutler.pat import astlib
@@ -22,8 +27,52 @@ NewTarget = astlib.AstNode
 DfArgs = List[str]
 SeriesArgs = List[str]
 NodeReplMap = Dict[astlib.AstNode, astlib.AstNode]
+JsonDict = Dict
 
 _BUILTIN_FUNCS = {k for k in builtins.__dict__ if not k.startswith("_")}
+
+
+@attrs.define(eq=False, repr=False)
+class MinedResult:
+    code: str
+    template: str
+    kind: str
+    nb_owner: str
+    nb_slug: str
+    uid: str
+
+    expr_type: Optional[SerializedMypyType]
+    type_map: Dict[str, SerializedMypyType]
+    df_vars: List[str]
+    series_vars: List[str]
+    template_vars: Dict[str, List[str]]
+
+    def to_json(self) -> JsonDict:
+        pass
+
+    @classmethod
+    def from_json(cls, json_dict: JsonDict) -> 'MinedResult':
+        pass
+
+    def prettify(self) -> str:
+        with contextlib.redirect_stdout(io.StringIO()) as f_out:
+            url = f"https://kaggle.com/{self.nb_owner}/{self.nb_slug}"
+            print(f"UID: {self.uid}\nKind: {self.kind}\nURL: {url}")
+            print("----------")
+            print(f"Code:\n{self.code}")
+            print("----------")
+            print(f"Templatized:\n{self.template}")
+            print("----------")
+            print(f"Value Type: {'Any' if self.expr_type is None else self.expr_type.to_string()}")
+            print("==========")
+
+        return f_out.getvalue()
+
+    def __repr__(self):
+        return self.prettify()
+
+    def __str__(self):
+        return self.prettify()
 
 
 def find_library_usages(
@@ -352,3 +401,9 @@ def templatize(
             repl_map[expr] = astlib.create_name_expr(f"{typ_key.upper()}{idx}")
 
     return astlib.with_deep_replacements(target, repl_map), names_map
+
+
+def get_mypy_cache_dir_path(uid: int) -> str:
+    """Returns a cache dir to use for mypy based on a UID. Useful for multiprocess safety."""
+    script_dir = os.path.abspath(os.path.dirname(__file__))
+    return os.path.join(script_dir, f".mypy_cache{uid}")
