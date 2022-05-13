@@ -1,4 +1,5 @@
 import multiprocessing as mp
+import queue
 import traceback
 from enum import Enum
 from typing import Callable, Optional, Dict, Any, List, Iterator
@@ -13,6 +14,20 @@ from databutler.utils.logging import logger
 
 class FuncTimeoutError(TimeoutError):
     pass
+
+
+def generate_queue() -> mp.Queue:
+    """
+    Generates a queue that can be shared amongst processes
+
+    Returns:
+        (multiprocessing.Queue): A queue instance
+    """
+    manager = mp.Manager()
+    return manager.Queue()
+
+
+QueueEmptyException = queue.Empty
 
 
 def run_func_in_process(func: Callable, *args, _timeout: Optional[int] = None, _use_spawn: bool = True, **kwargs):
