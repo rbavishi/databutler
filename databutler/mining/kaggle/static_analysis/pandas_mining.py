@@ -1,6 +1,7 @@
 import contextlib
 import io
 import os
+import random
 import shutil
 from typing import Dict, Any, List, Set, Optional, Tuple
 
@@ -151,12 +152,15 @@ def prepare_mined_result(
     return res
 
 
-def mine_code(code: str, nb_owner: str = "owner", nb_slug: str = "slug",
-              multiprocess_safe: bool = False) -> List[MinedResult]:
+def mine_code(
+        code: str,
+        nb_owner: str = "owner",
+        nb_slug: str = "slug",
+        mypy_cache_path: Optional[str] = None
+) -> List[MinedResult]:
     result: List[MinedResult] = []
     code_ast = astlib.parse(code)
-    cache_dir = None if not multiprocess_safe else get_mypy_cache_dir_path(os.getpid())
-    _, inferred_types = run_mypy(code_ast, cache_dir=cache_dir)
+    _, inferred_types = run_mypy(code_ast, cache_dir=mypy_cache_path)
 
     lib_usages = find_library_usages(code_ast)
     constants = find_constants(code_ast)
@@ -259,10 +263,10 @@ def mine_code(code: str, nb_owner: str = "owner", nb_slug: str = "slug",
     return result
 
 
-def _mine_notebook(nb: KaggleNotebook, multiprocess_safe: bool = False) -> List[MinedResult]:
+def _mine_notebook(nb: KaggleNotebook, mypy_cache_path: Optional[str] = None) -> List[MinedResult]:
     #  Convert notebook to script
     normalized_code = codeutils.normalize_code_fast(astlib.to_code(nb.get_astlib_ast()))
-    mined_results = mine_code(normalized_code, nb.owner, nb.slug, multiprocess_safe=multiprocess_safe)
+    mined_results = mine_code(normalized_code, nb.owner, nb.slug, mypy_cache_path=mypy_cache_path)
     return mined_results
 
 
@@ -270,8 +274,27 @@ def mine_notebook(owner: str, slug: str) -> List[MinedResult]:
     return _mine_notebook(KaggleNotebook.from_raw_data(owner, slug, nb_utils.retrieve_notebook_data(owner, slug)))
 
 
-def _mine_notebook_mp_helper(nb: KaggleNotebook) -> Tuple[List[MinedResult], str]:
-    return _mine_notebook(nb, multiprocess_safe=True), get_mypy_cache_dir_path(os.getpid())
+#
+# def _mine_notebook_mp_helper(nb: KaggleNotebook) -> Tuple[List[MinedResult], str]:
+#     return _mine_notebook(nb, multiprocess_safe=True), get_mypy_cache_dir_path(os.getpid())
+
+
+def _mine_notebook_mp_helper(args: Tuple[KaggleNotebook, multiprocess.mp.Queue]) -> List[MinedResult]:
+    nb, available_mypy_cache_paths = args
+    try:
+        cache_path = available_mypy_cache_paths.get(block=False)
+        # print(f"\nReusing {cache_path}:{os.getpid()}\n", flush=True)
+    except multiprocess.QueueEmptyException:
+        cache_path = get_mypy_cache_dir_path(os.getpid())
+        # print(f"\nCreated New {cache_path}:{os.getpid()}\n", flush=True)
+
+    try:
+        return _mine_notebook(nb, mypy_cache_path=cache_path)
+    finally:
+        #  This will likely not be executed if there is a timeout, so the cache path will be lost
+        #  until the chunk is finished. That's a loss we will have to take.
+        #  No gains in complicating the solution further.
+        available_mypy_cache_paths.put(cache_path)
 
 
 def start_mining_campaign(
@@ -302,64 +325,79 @@ def start_mining_campaign(
 
         num_snippets_found = 0
         succ = exceptions = timeouts = other = 0
-        mypy_cache_paths: Set[str] = set()
 
-        for idx in tqdm.tqdm(range(0, len(all_keys), chunk_size)):
-            chunk = all_keys[idx: idx + chunk_size]
-            tasks = [KaggleNotebook.from_raw_data(owner, slug, reader[owner, slug])
-                     for owner, slug in chunk]
+        available_mypy_cache_paths = multiprocess.generate_queue()
+        og_cache_dirs: Set[str] = {get_mypy_cache_dir_path(i) for i in range(num_processes)}
+        for cache_path in og_cache_dirs:
+            available_mypy_cache_paths.put(cache_path)
 
-            try:
-                save_ctr = 0
-                for nb, result in zip(tasks,
-                                      multiprocess.run_tasks_in_parallel_iter(_mine_notebook_mp_helper,
-                                                                              tasks=tasks,
-                                                                              use_progress_bar=True,
-                                                                              num_workers=num_processes,
-                                                                              timeout_per_task=timeout_per_notebook)):
-                    if result.is_success() and len(result.result) == 2:
-                        mining_result, mypy_cache_path = result.result
-                        mypy_cache_paths.add(mypy_cache_path)
-                        if len(mining_result) > 0:
-                            num_snippets_found += len(mining_result)
-                            for snippet in mining_result:
+        def _remove_mypy_cache_path(path: str):
+            if os.path.exists(path):
+                print(f"Removing {path}")
+                shutil.rmtree(path, ignore_errors=True)
+            else:
+                print(f"WARNING: Did not find mypy cache path {path}")
+
+        try:
+            for idx in tqdm.tqdm(range(0, len(all_keys), chunk_size)):
+                chunk = all_keys[idx: idx + chunk_size]
+                tasks = [(KaggleNotebook.from_raw_data(owner, slug, reader[owner, slug]), available_mypy_cache_paths)
+                         for owner, slug in chunk]
+
+                try:
+                    save_ctr = 0
+                    mp_iter = multiprocess.run_tasks_in_parallel_iter(_mine_notebook_mp_helper,
+                                                                      tasks=tasks,
+                                                                      use_progress_bar=True,
+                                                                      num_workers=num_processes,
+                                                                      timeout_per_task=timeout_per_notebook)
+                    for (nb, _), result in zip(tasks, mp_iter):
+                        if result.is_success() and isinstance(result.result, list) and len(result.result) > 0:
+                            num_snippets_found += len(result.result)
+                            for snippet in result.result:
                                 writer.append(snippet)
 
-                    if result.is_success():
-                        succ += 1
-                    elif result.is_exception():
-                        print(f"Failed for https://kaggle.com/{nb.owner}/{nb.slug}")
-                        exceptions += 1
-                    elif result.is_timeout():
-                        print(f"Timed out for https://kaggle.com/{nb.owner}/{nb.slug}")
-                        timeouts += 1
-                    else:
-                        other += 1
+                        if result.is_success():
+                            succ += 1
+                        elif result.is_exception():
+                            print(f"Failed for https://kaggle.com/{nb.owner}/{nb.slug}")
+                            exceptions += 1
+                        elif result.is_timeout():
+                            print(f"Timed out for https://kaggle.com/{nb.owner}/{nb.slug}")
+                            timeouts += 1
+                        else:
+                            other += 1
 
-                    #  Make sure we save intermediate results. Saving frequency shouldn't be too high so as to
-                    #  burden the file system.
-                    save_ctr += 1
-                    if save_ctr == saving_frequency:
-                        save_ctr = 0
-                        writer.flush()
+                        #  Make sure we save intermediate results. Saving frequency shouldn't be too high so as to
+                        #  burden the file system.
+                        save_ctr += 1
+                        if save_ctr == saving_frequency:
+                            save_ctr = 0
+                            writer.flush()
 
-                print(f"\n-----\n"
-                      f"Snippets found so far: {num_snippets_found}\n"
-                      f"Success: {succ} Exceptions: {exceptions} Timeouts: {timeouts}"
-                      f"\n-----\n")
+                    print(f"\n-----\n"
+                          f"Snippets found so far: {num_snippets_found}\n"
+                          f"Success: {succ} Exceptions: {exceptions} Timeouts: {timeouts}"
+                          f"\n-----\n")
 
-            finally:
-                writer.flush()
-                print("Cleaning up...")
-                #  Remove the mypy cache paths
-                for path in mypy_cache_paths:
-                    if os.path.exists(path):
-                        print(f"Removing {path}")
-                        shutil.rmtree(path, ignore_errors=True)
-                    else:
-                        print(f"WARNING: Did not find mypy cache path {path}")
+                finally:
+                    writer.flush()
+                    print("Cleaning up...")
+                    #  Remove the non-og mypy cache paths
+                    cache_paths: Set[str] = set()
+                    while not available_mypy_cache_paths.empty():
+                        cache_paths.add(available_mypy_cache_paths.get())
+                    for path in cache_paths - og_cache_dirs:
+                        _remove_mypy_cache_path(path)
 
-                mypy_cache_paths.clear()
+                    #  Requeue the og cache paths
+                    for cache_path in og_cache_dirs:
+                        available_mypy_cache_paths.put(cache_path)
+
+        finally:
+            #  Remove the og mypy cache paths
+            for path in og_cache_dirs:
+                _remove_mypy_cache_path(path)
 
     print("----------------------")
     print(f"Total Snippets Found: {num_snippets_found}")
