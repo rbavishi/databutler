@@ -151,3 +151,42 @@ class Code2NLTests(unittest.TestCase):
         prompt_code = code_generator._create_completion_prompt(nl2code_task)
         self.assertIn(task_description_nl, prompt_nl)
         self.assertIn(task_description_code, prompt_code)
+
+    def test_parallel_1(self):
+        few_shot_examples = [
+            few_shot.FewShotExampleCodeAndNL(
+                nl="A function to add two numbers",
+                code=(
+                    "def f(a, b):\n"
+                    "    return a + b"
+                )
+            ),
+            few_shot.FewShotExampleCodeAndNL(
+                nl="A function to multiply two numbers",
+                code=(
+                    "def f(a, b):\n"
+                    "    return a * b"
+                )
+            ),
+        ]
+
+        target_codes = [(
+            "def f(x, y):"
+            "    return x & y"
+        ), (
+            "def f(x, y):"
+            "    return x | y"
+        )]
+
+        nl_generator = code2nl.SimpleCodeToNatLang()
+        code2nl_tasks = [
+            code2nl.CodeToNatLangTask(few_shot_examples=few_shot_examples, target_code=target_code)
+            for target_code in target_codes
+        ]
+
+        descriptions = nl_generator.parallel_get_nl(code2nl_tasks)
+        self.assertEqual(2, len(descriptions))
+        self.assertEqual(1, len(descriptions[0]))
+        self.assertEqual(1, len(descriptions[1]))
+        self.assertIn("bitwise and", descriptions[0][0].lower())
+        self.assertIn("bitwise or", descriptions[1][0].lower())

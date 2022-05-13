@@ -34,6 +34,21 @@ class BaseCodeToNatLang(ABC):
         :return: A list of strings of size <= `num_results` corresponding to generated candidate description.
         """
 
+    @abstractmethod
+    def parallel_get_nl(self, tasks: List[CodeToNatLangTask], num_results: int = 1) -> List[str]:
+        """
+        A parallel version of get_nl.
+
+        This must be implemented by all subclasses.
+
+        :param tasks: A list of code-to-natural-language tasks.
+        :param num_results: An integer representing the number of NL descriptions to generate. Note that the number
+                            of descriptions actually returned *may be less* than `num_results`. This can happen if the
+                            language model does not come up with enough unique descriptions.
+
+        :return: A list of strings of size <= `num_results` corresponding to generated candidate description.
+        """
+
     def get_nl_bullets(self, task: CodeToNatLangTask) -> Iterator[str]:
         """
         Generates natural language description as a sequence of bullet points. This method should return an iterator.
@@ -141,6 +156,35 @@ class SimpleCodeToNatLang(BaseCodeToNatLang):
         ))
 
         return descriptions
+
+    def parallel_get_nl(self, tasks: List[CodeToNatLangTask], num_results: int = 1) -> List[List[str]]:
+        """
+        Creates a simple prompt stringing examples together and uses it to generate the descriptions.
+        This is a parallel version of get_nl that supports doing multiple tasks at once using openai parallelism
+
+        See base method for a description of the arguments and return value.
+        """
+        #  Ensure that the few-shot examples do not use bullet-points.
+        for task in tasks:
+            if any(isinstance(ex.nl, list) for ex in task.few_shot_examples):
+                raise ValueError("Few-shot examples cannot contain bullet-point descriptions "
+                                 "when generating single-line descriptions.")
+
+        completion_prompts = [self._create_completion_prompt(task) for task in tasks]
+
+        resps: List[langmodels.OpenAICompletionResponse] = langmodels.openai_completion(
+            engine=self.engine,
+            prompts=completion_prompts,
+            temperature=self.temperature,
+            num_completions=num_results,
+            max_tokens=self.max_tokens,
+            stop=["\n"],  # Use new-line as the stop-token for single-line descriptions.
+            retry_wait_duration=60,
+            max_retries=5,
+            return_logprobs=False,
+        )
+
+        return [list({c.text.strip() for c in resp.completions}) for resp in resps]
 
     def get_nl_bullets(self, task: CodeToNatLangTask) -> Iterator[str]:
         """

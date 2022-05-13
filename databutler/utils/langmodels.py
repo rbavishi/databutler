@@ -138,7 +138,8 @@ def tokenize(text: str, engine: str) -> Dict[str, Union[List[int], List[str]]]:
 
 
 def openai_completion(engine: str,
-                      prompt: str,
+                      prompt: Optional[str] = None,
+                      prompts: Optional[List[str]] = None,
                       temperature: float = 0,
                       num_completions: int = 1,
                       max_tokens: int = 64,
@@ -148,13 +149,17 @@ def openai_completion(engine: str,
                       retry_wait_duration: int = 60,
                       max_retries: int = 5,
                       **completion_kwargs,
-                      ) -> OpenAICompletionResponse:
+                      ) -> Union[OpenAICompletionResponse, List[OpenAICompletionResponse]]:
     """
     Wraps the OpenAI completion API, primarily for handling errors in a retry loop.
 
     :param engine: A string corresponding to the name of the engine to use.
                    Refer to https://beta.openai.com/docs/engines for a list of available engines.
-    :param prompt: A string representing the prompt to complete.
+    :param prompt: A string representing the prompt to complete. Must be specified (not specified) if prompts
+        is not specified (specified).
+    :param prompts: A list of strings corresponding to prompts to complete. Must be specified (not specified) if prompt
+        is not specified (specified).
+    :param prompts: A string representing the prompt to complete.
     :param temperature: A float for the temperature.
                         Defaults to 0.0 where the model gives the most well-defined answer.
                         A value of 1.0 means the model is the most creative.
@@ -172,6 +177,11 @@ def openai_completion(engine: str,
     :raises InvalidRequestError: If the request is invalid. This can happen if the wrong model is specified, or invalid
         values for max_tokens, temperature, stop etc. are provided.
     """
+    if (prompt is None and prompts is None) or (prompt is not None and prompts is not None):
+        raise ValueError("Exactly one of prompt and prompts must be specified")
+
+    if prompts is not None and return_logprobs:
+        raise NotImplementedError("Logprobs not supported for multiple prompts currently")
 
     #  Ensure the API-key is set up.
     _setup_openai_key()
@@ -180,11 +190,15 @@ def openai_completion(engine: str,
 
     num_keys_tried = 0
     num_retries = 0
+
+    is_parallel = (prompts is not None)
+    req_prompt = prompt if prompt is not None else prompts
+
     while num_retries <= max_retries:
         try:
             response = openai.Completion.create(
                 engine=engine,
-                prompt=prompt,
+                prompt=req_prompt,
                 temperature=temperature,
                 n=num_completions,
                 max_tokens=max_tokens,
@@ -210,35 +224,52 @@ def openai_completion(engine: str,
             _OPENAI_KEY_MGR.set_next_key()
 
         else:
-            result = OpenAICompletionResponse(
-                completions=[
-                    OpenAICompletion(
-                        text=c['text'],
-                        logprob=None,
-                        finish_reason=c['finish_reason']
-                    ) for c in response['choices']
-                ],
-                timestamp=response['created'],
-                model=response['model'],
-                id=response['id'],
-            )
+            if is_parallel:
+                assert prompts is not None
+                #  Currently log prob not supported for multiple prompts
+                return [OpenAICompletionResponse(
+                    completions=[
+                        OpenAICompletion(
+                            text=c['text'],
+                            logprob=None,
+                            finish_reason=c['finish_reason']
+                        ) for c in response['choices'][idx: idx + num_completions]
+                    ],
+                    timestamp=response['created'],
+                    model=response['model'],
+                    id=response['id'],
+                ) for idx in range(0, len(prompts), num_completions)]
 
-            if return_logprobs:
-                #  We need to compute log-probability of the completion(s).
-                for c, orig_c in zip(result.completions, response['choices']):
-                    if orig_c['finish_reason'] == "stop":
-                        stop_set = {stop} if isinstance(stop, str) else set(stop)
-                        logprob_sum = 0
-                        logprobs_entry = orig_c["logprobs"]
-                        for token, log_prob in zip(logprobs_entry["tokens"], logprobs_entry["token_logprobs"]):
-                            if token in stop_set:
-                                break
+            else:
+                result = OpenAICompletionResponse(
+                    completions=[
+                        OpenAICompletion(
+                            text=c['text'],
+                            logprob=None,
+                            finish_reason=c['finish_reason']
+                        ) for c in response['choices']
+                    ],
+                    timestamp=response['created'],
+                    model=response['model'],
+                    id=response['id'],
+                )
 
-                            logprob_sum += log_prob
+                if return_logprobs:
+                    #  We need to compute log-probability of the completion(s).
+                    for c, orig_c in zip(result.completions, response['choices']):
+                        if orig_c['finish_reason'] == "stop":
+                            stop_set = {stop} if isinstance(stop, str) else set(stop)
+                            logprob_sum = 0
+                            logprobs_entry = orig_c["logprobs"]
+                            for token, log_prob in zip(logprobs_entry["tokens"], logprobs_entry["token_logprobs"]):
+                                if token in stop_set:
+                                    break
 
-                        c.logprob = logprob_sum
+                                logprob_sum += log_prob
 
-                    else:
-                        c.logprob = sum(orig_c["token_logprobs"])
+                            c.logprob = logprob_sum
 
-            return result
+                        else:
+                            c.logprob = sum(orig_c["token_logprobs"])
+
+                return result
