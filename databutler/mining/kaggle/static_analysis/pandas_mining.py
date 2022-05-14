@@ -248,15 +248,17 @@ def _mine_notebook_mp_helper(args: Tuple[KaggleNotebook, multiprocess.mp.Queue])
 
 def start_mining_campaign(
         campaign_dir: str,
+        append: bool = False,
         num_processes: int = 2,
         chunk_size: int = 10000,
         timeout_per_notebook: int = 100,
         saving_frequency: int = 1000,
         num_notebooks: Optional[int] = None,
+        start_idx: Optional[int] = None,
 ) -> None:
     os.makedirs(campaign_dir, exist_ok=True)
     outfile_path = os.path.join(campaign_dir, MINING_RESULTS_FILE)
-    if os.path.exists(outfile_path):
+    if os.path.exists(outfile_path) and not append:
         if not click.confirm("Overwrite existing mining results?"):
             print(f"Cancelling...")
             return
@@ -264,12 +266,13 @@ def start_mining_campaign(
         os.unlink(outfile_path)
 
     with nb_utils.get_local_nb_data_storage_reader() as reader, \
-            pickleutils.PickledCollectionWriter(outfile_path) as writer:
+            pickleutils.PickledCollectionWriter(outfile_path, overwrite_existing=(not append)) as writer:
         #  Fetch all notebook (owner, slug) pairs
         all_keys: List[Tuple[str, str]] = list(reader.keys())
         print(f"Found {len(all_keys)} notebooks in total")
-        if num_notebooks is not None:
-            all_keys = all_keys[:num_notebooks]
+        if num_notebooks is not None or start_idx is not None:
+            num_notebooks = num_notebooks or len(all_keys)
+            all_keys = all_keys[start_idx or 0:num_notebooks]
             print(f"Only considering {len(all_keys)} notebooks")
 
         num_snippets_found = 0
