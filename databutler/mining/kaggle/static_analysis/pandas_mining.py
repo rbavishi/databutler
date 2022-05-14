@@ -272,7 +272,8 @@ def start_mining_campaign(
         print(f"Found {len(all_keys)} notebooks in total")
         if num_notebooks is not None or start_idx is not None:
             num_notebooks = num_notebooks or len(all_keys)
-            all_keys = all_keys[start_idx or 0:num_notebooks]
+            start_idx = start_idx or 0
+            all_keys = all_keys[start_idx:start_idx + num_notebooks]
             print(f"Only considering {len(all_keys)} notebooks")
 
         num_snippets_found = 0
