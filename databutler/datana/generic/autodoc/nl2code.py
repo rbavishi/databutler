@@ -51,6 +51,7 @@ class SimpleNatLangToCode(BaseNatLangToCode):
     max_tokens: int = 512
 
     stop_token: str = "END"
+    min_latency: Optional[int] = None
     _stop_token_id: Optional[int] = None
     _newline_token_id: Optional[int] = None
 
@@ -147,6 +148,7 @@ class SimpleNatLangToCode(BaseNatLangToCode):
             return_logprobs=False,
             logit_bias=logit_bias,
             key_manager=key_manager,
+            min_latency=self.min_latency,
         )
 
         text = resp.completions[0].text
@@ -197,6 +199,7 @@ class SimpleNatLangToCode(BaseNatLangToCode):
             return_logprobs=False,
             logit_bias=logit_bias,
             key_manager=key_manager,
+            min_latency=self.min_latency,
         )
 
         results: List[str] = []

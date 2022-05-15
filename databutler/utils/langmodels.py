@@ -174,6 +174,7 @@ def openai_completion(engine: str,
                       retry_wait_duration: int = 60,
                       max_retries: int = 5,
                       key_manager: Optional[OpenAIKeyManager] = None,
+                      min_latency: Optional[int] = None,
                       **completion_kwargs,
                       ) -> Union[OpenAICompletionResponse, List[OpenAICompletionResponse]]:
     """
@@ -198,6 +199,9 @@ def openai_completion(engine: str,
     :param max_retries: An integer representing the maximum number of retries.
     :param key_manager: A key manager to use instead of the default one. Useful for limiting keys or using a specific
         key.
+    :param min_latency: An integer representing the desired observed latency. If the request completes faster, the
+        process will sleep to achieve the target latency. This can be used to achieve better steady utilization amidst
+        rate limits.
     :param completion_kwargs: Other keyword arguments accepted by openai.Completion.create.
                               See https://beta.openai.com/docs/api-reference/completions/create for a full list.
 
@@ -220,6 +224,8 @@ def openai_completion(engine: str,
 
     is_parallel = (prompts is not None)
     req_prompt = prompt if prompt is not None else prompts
+
+    start_time = time.time()
 
     while num_retries <= max_retries:
         try:
@@ -252,7 +258,7 @@ def openai_completion(engine: str,
             if is_parallel:
                 assert prompts is not None
                 #  Currently log prob not supported for multiple prompts
-                return [OpenAICompletionResponse(
+                responses = [OpenAICompletionResponse(
                     completions=[
                         OpenAICompletion(
                             text=c['text'],
@@ -265,8 +271,14 @@ def openai_completion(engine: str,
                     id=response['id'],
                 ) for idx in range(0, len(prompts))]
 
+                cur_time = time.time()
+                if min_latency is not None and cur_time - start_time < min_latency:
+                    time.sleep(min_latency - (cur_time - start_time))
+
+                return responses
+
             else:
-                result = OpenAICompletionResponse(
+                response = OpenAICompletionResponse(
                     completions=[
                         OpenAICompletion(
                             text=c['text'],
@@ -281,7 +293,7 @@ def openai_completion(engine: str,
 
                 if return_logprobs:
                     #  We need to compute log-probability of the completion(s).
-                    for c, orig_c in zip(result.completions, response['choices']):
+                    for c, orig_c in zip(response.completions, response['choices']):
                         if orig_c['finish_reason'] == "stop":
                             stop_set = {stop} if isinstance(stop, str) else set(stop)
                             logprob_sum = 0
@@ -297,4 +309,8 @@ def openai_completion(engine: str,
                         else:
                             c.logprob = sum(orig_c["token_logprobs"])
 
-                return result
+                cur_time = time.time()
+                if min_latency is not None and cur_time - start_time < min_latency:
+                    time.sleep(min_latency - (cur_time - start_time))
+
+                return response

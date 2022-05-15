@@ -86,6 +86,8 @@ class SimpleCodeToNatLang(BaseCodeToNatLang):
     engine: str = 'code-davinci-001'
     max_tokens: int = 256
 
+    min_latency: Optional[int] = None
+
     def _create_completion_prompt(self, task: CodeToNatLangTask, generated_bullets: Optional[List[str]] = None) -> str:
         """
         Helper method to create the prompt. Strings the few-shot examples together, and adds the target description to
@@ -171,6 +173,7 @@ class SimpleCodeToNatLang(BaseCodeToNatLang):
             max_retries=5,
             return_logprobs=False,
             key_manager=key_manager,
+            min_latency=self.min_latency,
         )
 
         descriptions = list(set(
@@ -210,6 +213,7 @@ class SimpleCodeToNatLang(BaseCodeToNatLang):
             max_retries=5,
             return_logprobs=False,
             key_manager=key_manager,
+            min_latency=self.min_latency,
         )
 
         return [list({c.text.strip() for c in resp.completions}) for resp in resps]
@@ -248,6 +252,7 @@ class SimpleCodeToNatLang(BaseCodeToNatLang):
                 max_retries=5,
                 return_logprobs=False,
                 key_manager=key_manager,
+                min_latency=self.min_latency,
             )
 
             new_bullet = resp.completions[0].text.strip()
