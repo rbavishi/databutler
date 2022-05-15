@@ -233,12 +233,12 @@ def openai_completion(engine: str,
                             text=c['text'],
                             logprob=None,
                             finish_reason=c['finish_reason']
-                        ) for c in response['choices'][idx: idx + num_completions]
+                        ) for c in response['choices'][idx * num_completions: (idx + 1) * num_completions]
                     ],
                     timestamp=response['created'],
                     model=response['model'],
                     id=response['id'],
-                ) for idx in range(0, len(prompts), num_completions)]
+                ) for idx in range(0, len(prompts))]
 
             else:
                 result = OpenAICompletionResponse(
