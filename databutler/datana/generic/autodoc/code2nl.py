@@ -20,7 +20,11 @@ class CodeToNatLangTask:
 @attrs.define(eq=False)
 class BaseCodeToNatLang(ABC):
     @abstractmethod
-    def get_nl(self, task: CodeToNatLangTask, num_results: int = 1) -> List[str]:
+    def get_nl(
+            self,
+            task: CodeToNatLangTask, num_results: int = 1,
+            key_manager: Optional[langmodels.OpenAIKeyManager] = None
+    ) -> List[str]:
         """
         Generates natural language descriptions of code with language-models using the provided few-shot examples.
 
@@ -30,12 +34,18 @@ class BaseCodeToNatLang(ABC):
         :param num_results: An integer representing the number of NL descriptions to generate. Note that the number
                             of descriptions actually returned *may be less* than `num_results`. This can happen if the
                             language model does not come up with enough unique descriptions.
+        :param key_manager: An optional key manager to use.
 
         :return: A list of strings of size <= `num_results` corresponding to generated candidate description.
         """
 
     @abstractmethod
-    def parallel_get_nl(self, tasks: List[CodeToNatLangTask], num_results: int = 1) -> List[str]:
+    def parallel_get_nl(
+            self,
+            tasks: List[CodeToNatLangTask],
+            num_results: int = 1,
+            key_manager: Optional[langmodels.OpenAIKeyManager] = None
+    ) -> List[str]:
         """
         A parallel version of get_nl.
 
@@ -45,17 +55,23 @@ class BaseCodeToNatLang(ABC):
         :param num_results: An integer representing the number of NL descriptions to generate. Note that the number
                             of descriptions actually returned *may be less* than `num_results`. This can happen if the
                             language model does not come up with enough unique descriptions.
+        :param key_manager: An optional key manager to use.
 
         :return: A list of strings of size <= `num_results` corresponding to generated candidate description.
         """
 
-    def get_nl_bullets(self, task: CodeToNatLangTask) -> Iterator[str]:
+    def get_nl_bullets(
+            self,
+            task: CodeToNatLangTask,
+            key_manager: Optional[langmodels.OpenAIKeyManager] = None
+    ) -> Iterator[str]:
         """
         Generates natural language description as a sequence of bullet points. This method should return an iterator.
         This helps the client consume as much as they need. However, the iterator will stop as soon as the model
         starts repeating itself.
 
         :param task: A code-to-natural-language task.
+        :param key_manager: An optional key manager to use.
 
         :return: An iterator of strings where each string corresponds to a single bullet point description.
         """
@@ -126,7 +142,12 @@ class SimpleCodeToNatLang(BaseCodeToNatLang):
 
         return "\n".join(prompt_strs)
 
-    def get_nl(self, task: CodeToNatLangTask, num_results: int = 1) -> List[str]:
+    def get_nl(
+            self,
+            task: CodeToNatLangTask,
+            num_results: int = 1,
+            key_manager: Optional[langmodels.OpenAIKeyManager] = None,
+    ) -> List[str]:
         """
         Creates a simple prompt stringing examples together and uses it to generate the descriptions.
 
@@ -149,6 +170,7 @@ class SimpleCodeToNatLang(BaseCodeToNatLang):
             retry_wait_duration=60,
             max_retries=5,
             return_logprobs=False,
+            key_manager=key_manager,
         )
 
         descriptions = list(set(
@@ -157,7 +179,12 @@ class SimpleCodeToNatLang(BaseCodeToNatLang):
 
         return descriptions
 
-    def parallel_get_nl(self, tasks: List[CodeToNatLangTask], num_results: int = 1) -> List[List[str]]:
+    def parallel_get_nl(
+            self,
+            tasks: List[CodeToNatLangTask],
+            num_results: int = 1,
+            key_manager: Optional[langmodels.OpenAIKeyManager] = None,
+    ) -> List[List[str]]:
         """
         Creates a simple prompt stringing examples together and uses it to generate the descriptions.
         This is a parallel version of get_nl that supports doing multiple tasks at once using openai parallelism
@@ -182,11 +209,16 @@ class SimpleCodeToNatLang(BaseCodeToNatLang):
             retry_wait_duration=60,
             max_retries=5,
             return_logprobs=False,
+            key_manager=key_manager,
         )
 
         return [list({c.text.strip() for c in resp.completions}) for resp in resps]
 
-    def get_nl_bullets(self, task: CodeToNatLangTask) -> Iterator[str]:
+    def get_nl_bullets(
+            self,
+            task: CodeToNatLangTask,
+            key_manager: Optional[langmodels.OpenAIKeyManager] = None,
+    ) -> Iterator[str]:
         """
         Simply invokes the model as long as it produces a new bullet-point.
 
@@ -215,6 +247,7 @@ class SimpleCodeToNatLang(BaseCodeToNatLang):
                 retry_wait_duration=60,
                 max_retries=5,
                 return_logprobs=False,
+                key_manager=key_manager,
             )
 
             new_bullet = resp.completions[0].text.strip()

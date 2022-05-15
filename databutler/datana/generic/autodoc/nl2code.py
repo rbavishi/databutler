@@ -110,13 +110,15 @@ class SimpleNatLangToCode(BaseNatLangToCode):
 
         return self._newline_token_id
 
-    def get_code(self, task: NatLangToCodeTask,
-                 allowed_tokens: Optional[Union[str, List[int]]] = None,
-                 allowed_tokens_bias: int = 100) -> str:
+    def get_code(
+            self,
+            task: NatLangToCodeTask,
+            allowed_tokens: Optional[Union[str, List[int]]] = None,
+            allowed_tokens_bias: int = 100,
+            key_manager: Optional[langmodels.OpenAIKeyManager] = None,
+    ) -> str:
         """
         Creates a simple prompt stringing examples together and uses it to generate the code.
-
-        See base method for a description of the arguments and return value.
         """
         completion_prompt = self._create_completion_prompt(task)
 
@@ -144,6 +146,7 @@ class SimpleNatLangToCode(BaseNatLangToCode):
             max_retries=5,
             return_logprobs=False,
             logit_bias=logit_bias,
+            key_manager=key_manager,
         )
 
         text = resp.completions[0].text
@@ -154,9 +157,13 @@ class SimpleNatLangToCode(BaseNatLangToCode):
 
         return text
 
-    def parallel_get_code(self, tasks: List[NatLangToCodeTask],
-                          allowed_tokens: Optional[Union[str, List[int]]] = None,
-                          allowed_tokens_bias: int = 100) -> List[str]:
+    def parallel_get_code(
+            self,
+            tasks: List[NatLangToCodeTask],
+            allowed_tokens: Optional[Union[str, List[int]]] = None,
+            allowed_tokens_bias: int = 100,
+            key_manager: Optional[langmodels.OpenAIKeyManager] = None,
+    ) -> List[str]:
         """
         Like get_code, but handles multiple tasks in parallel.
         """
@@ -189,6 +196,7 @@ class SimpleNatLangToCode(BaseNatLangToCode):
             max_retries=5,
             return_logprobs=False,
             logit_bias=logit_bias,
+            key_manager=key_manager,
         )
 
         results: List[str] = []
