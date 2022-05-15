@@ -266,7 +266,7 @@ def start_mining_campaign(
         os.unlink(outfile_path)
 
     with nb_utils.get_local_nb_data_storage_reader() as reader, \
-            pickleutils.PickledCollectionWriter(outfile_path, overwrite_existing=(not append)) as writer:
+            pickleutils.PickledMapWriter(outfile_path, overwrite_existing=(not append)) as writer:
         #  Fetch all notebook (owner, slug) pairs
         all_keys: List[Tuple[str, str]] = list(reader.keys())
         print(f"Found {len(all_keys)} notebooks in total")
@@ -308,7 +308,7 @@ def start_mining_campaign(
                         if result.is_success() and isinstance(result.result, list) and len(result.result) > 0:
                             num_snippets_found += len(result.result)
                             for snippet in result.result:
-                                writer.append(snippet)
+                                writer[snippet.uid] = snippet
 
                         if result.is_success():
                             succ += 1
