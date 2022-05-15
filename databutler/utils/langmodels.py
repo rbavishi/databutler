@@ -13,23 +13,27 @@ from databutler.utils import paths
 
 
 @attrs.define(eq=False, repr=False)
-class _KeyManager:
+class OpenAIKeyManager:
     """
     An internal manager that cycles between OPENAI keys to enable a net-increase in rate=limits.
     """
     keys: List[str]
-    _cur_key_idx: int = attrs.field(init=False, default=0)
+    _next_key_idx: int = attrs.field(init=False, default=0)
+
+    def __attrs_post_init__(self):
+        #  Setup the first key so it's ready to use.
+        self.set_next_key()
 
     def set_next_key(self) -> None:
         """
         Cycles between available API keys. This method should be called before any request.
         """
-        cur_key = self.keys[self._cur_key_idx]
-        self._cur_key_idx = (self._cur_key_idx + 1) % len(self.keys)
+        cur_key = self.keys[self._next_key_idx]
+        self._next_key_idx = (self._next_key_idx + 1) % len(self.keys)
         openai.api_key = cur_key
 
 
-_OPENAI_KEY_MGR: Optional[_KeyManager] = None
+_DEFAULT_KEY_MANAGER: Optional[OpenAIKeyManager] = None
 
 
 def _setup_openai_key() -> None:
@@ -38,9 +42,9 @@ def _setup_openai_key() -> None:
 
     :raises RuntimeError: if neither the path exists, nor the environment variable is supplied.
     """
-    global _OPENAI_KEY_MGR
+    global _DEFAULT_KEY_MANAGER
 
-    if _OPENAI_KEY_MGR is not None:
+    if _DEFAULT_KEY_MANAGER is not None:
         return
 
     path_key = os.path.join(paths.get_user_home_dir_path(), ".databutler", "openai_key.txt")
@@ -54,7 +58,7 @@ def _setup_openai_key() -> None:
         else:
             keys = [key_text]
 
-        _OPENAI_KEY_MGR = _KeyManager(keys=keys)
+        _DEFAULT_KEY_MANAGER = OpenAIKeyManager(keys=keys)
 
     else:
         #  Check if the environment variable OPENAI_KEY is set.
@@ -79,12 +83,33 @@ def _setup_openai_key() -> None:
             with open(path_key, "w") as f:
                 f.write("\n".join(keys))
 
-            _OPENAI_KEY_MGR = _KeyManager(keys=keys)
+            _DEFAULT_KEY_MANAGER = OpenAIKeyManager(keys=keys)
 
         else:
             raise RuntimeError(
                 f"Neither the environment variable OPENAI_KEY is set, nor the file {path_key} exists."
             )
+
+
+def _get_default_key_manager() -> OpenAIKeyManager:
+    """
+    Sets up the default key manager if necessary, and returns it.
+    """
+    if _DEFAULT_KEY_MANAGER is None:
+        _setup_openai_key()
+
+    return _DEFAULT_KEY_MANAGER
+
+
+def get_available_keys() -> List[str]:
+    """
+    Returns:
+        (List[str]): A list of strings corresponding to available keys
+    """
+    if _DEFAULT_KEY_MANAGER is None:
+        _setup_openai_key()
+
+    return _DEFAULT_KEY_MANAGER.keys
 
 
 @attrs.define
@@ -148,6 +173,7 @@ def openai_completion(engine: str,
                       *,
                       retry_wait_duration: int = 60,
                       max_retries: int = 5,
+                      key_manager: Optional[OpenAIKeyManager] = None,
                       **completion_kwargs,
                       ) -> Union[OpenAICompletionResponse, List[OpenAICompletionResponse]]:
     """
@@ -170,6 +196,8 @@ def openai_completion(engine: str,
     :param return_logprobs: A boolean for whether to include the log-probability of the overall completion(s).
     :param retry_wait_duration: An integer representing the time in seconds between retry attempts.
     :param max_retries: An integer representing the maximum number of retries.
+    :param key_manager: A key manager to use instead of the default one. Useful for limiting keys or using a specific
+        key.
     :param completion_kwargs: Other keyword arguments accepted by openai.Completion.create.
                               See https://beta.openai.com/docs/api-reference/completions/create for a full list.
 
@@ -183,10 +211,9 @@ def openai_completion(engine: str,
     if prompts is not None and return_logprobs:
         raise NotImplementedError("Logprobs not supported for multiple prompts currently")
 
-    #  Ensure the API-key is set up.
-    _setup_openai_key()
-    #  Set up the key, using load-balancing if multiple keys are available.
-    _OPENAI_KEY_MGR.set_next_key()
+    if key_manager is None:
+        #  If the default is initialized, the API key is guaranteed to be assigned as well.
+        key_manager = _get_default_key_manager()
 
     num_keys_tried = 0
     num_retries = 0
@@ -211,17 +238,15 @@ def openai_completion(engine: str,
             raise
 
         except openai.error.OpenAIError:
-            if num_keys_tried < len(_OPENAI_KEY_MGR.keys):
-                #  Try with another key before sleeping.
+            if num_keys_tried < len(key_manager.keys):
+                #  Try with another key first.
                 num_keys_tried += 1
+                key_manager.set_next_key()
 
             else:
                 time.sleep(retry_wait_duration)
                 num_keys_tried = 0
                 num_retries += 1
-
-            #  Use the next key for the next request.
-            _OPENAI_KEY_MGR.set_next_key()
 
         else:
             if is_parallel:
