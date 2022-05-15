@@ -383,7 +383,7 @@ class PickledMapReader(Mapping):
         #  We also do NOT utilize the cache.
         for key, offset in sorted(self._keys_offset_map.items(), key=lambda x: x[1]):
             self._file_obj.seek(offset)
-            yield pickle.load(self._file_obj)
+            yield key, pickle.load(self._file_obj)
 
     def __contains__(self, item):
         return item in self._keys_offset_map
