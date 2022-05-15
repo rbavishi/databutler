@@ -1,6 +1,6 @@
 import os
 import pickle
-from typing import Any, Sequence, List, Union, Optional, BinaryIO, Dict, Mapping, Iterator, Hashable
+from typing import Any, Sequence, List, Union, Optional, BinaryIO, Dict, Mapping, Iterator, Hashable, Tuple
 
 import attrs
 
@@ -373,6 +373,17 @@ class PickledMapReader(Mapping):
 
     def keys(self) -> Iterator[Hashable]:
         yield from self._keys_offset_map.keys()
+
+    def values(self) -> Iterator[Any]:
+        for _, value in self.items():
+            yield value
+
+    def items(self) -> Iterator[Tuple[Hashable, Any]]:
+        #  We sort to avoid the pointer bouncing around to improve page utilization.
+        #  We also do NOT utilize the cache.
+        for key, offset in sorted(self._keys_offset_map.items(), key=lambda x: x[1]):
+            self._file_obj.seek(offset)
+            yield pickle.load(self._file_obj)
 
     def __contains__(self, item):
         return item in self._keys_offset_map
