@@ -37,6 +37,12 @@ class BaseNatLangToCode(ABC):
             it is included in the output.
         """
 
+    @abstractmethod
+    def parallel_get_code(self, tasks: List[NatLangToCodeTask], *args, **kwargs) -> str:
+        """
+        Like get_code, but supports multiple tasks in parallel.
+        """
+
 
 @attrs.define(eq=False)
 class SimpleNatLangToCode(BaseNatLangToCode):
@@ -147,3 +153,53 @@ class SimpleNatLangToCode(BaseNatLangToCode):
             text = f"{task.output_prefix.rstrip()}{text}"
 
         return text
+
+    def parallel_get_code(self, tasks: List[NatLangToCodeTask],
+                          allowed_tokens: Optional[Union[str, List[int]]] = None,
+                          allowed_tokens_bias: int = 100) -> List[str]:
+        """
+        Like get_code, but handles multiple tasks in parallel.
+        """
+        completion_prompts = [
+            self._create_completion_prompt(task)
+            for task in tasks
+        ]
+
+        logit_bias = {}
+        max_tokens = self.max_tokens
+        if allowed_tokens is not None:
+            if isinstance(allowed_tokens, str):
+                allowed_token_ids = langmodels.tokenize(allowed_tokens, engine=self.engine)['token_ids']
+                max_tokens = len(allowed_token_ids) + 64
+            else:
+                allowed_token_ids = allowed_tokens
+
+            logit_bias = {str(i): allowed_tokens_bias for i in allowed_token_ids}
+            logit_bias[str(self._get_stop_token_id())] = allowed_tokens_bias
+            logit_bias[self._get_newline_token_id()] = allowed_tokens_bias
+
+        responses = langmodels.openai_completion(
+            engine=self.engine,
+            prompts=completion_prompts,
+            temperature=self.temperature,
+            num_completions=1,
+            max_tokens=max_tokens,
+            stop=[self.stop_token],
+            retry_wait_duration=60,
+            max_retries=5,
+            return_logprobs=False,
+            logit_bias=logit_bias,
+        )
+
+        results: List[str] = []
+        for resp, task in zip(responses, tasks):
+
+            text = resp.completions[0].text
+            if task.output_prefix is not None:
+                #  We need to add the output prefix back.
+                #  Note we remove trailing whitespace in the prompt generation, so need to do the same thing here.
+                text = f"{task.output_prefix.rstrip()}{text}"
+
+            results.append(text)
+
+        return results
