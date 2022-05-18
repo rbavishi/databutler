@@ -100,7 +100,6 @@ class SimpleNatLangToCode(BaseNatLangToCode):
 
     def _get_stop_token_id(self) -> int:
         if self._stop_token_id is None:
-            print(langmodels.tokenize(self.stop_token, engine=self.engine))
             self._stop_token_id = langmodels.tokenize(self.stop_token, engine=self.engine)['token_ids'][0]
 
         return self._stop_token_id
