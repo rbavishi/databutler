@@ -472,6 +472,9 @@ def is_constant(node: AstNode):
             (isinstance(node, Name) and (node.value == 'True' or node.value == 'False')):
         return True
 
+    if isinstance(node, cst.UnaryOperation) and is_constant(node.expression):
+        return True
+
     if isinstance(node, (cst.BaseList, cst.Tuple, cst.BaseDict, cst.BaseSet)):
         is_const, _ = _try_eval(node)
         return is_const
