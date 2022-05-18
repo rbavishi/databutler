@@ -1,9 +1,11 @@
 """
 A collection of wrapper utilities around language model APIs like the one offered by OpenAI.
 """
+import collections
+import datetime
 import os
 import time
-from typing import Optional, List, Union, Dict
+from typing import Optional, List, Union, Dict, Deque
 
 import attrs
 import openai
@@ -18,6 +20,7 @@ class OpenAIKeyManager:
     An internal manager that cycles between OPENAI keys to enable a net-increase in rate=limits.
     """
     keys: List[str]
+    _cur_key: str = attrs.field(init=False, default=None)
     _next_key_idx: int = attrs.field(init=False, default=0)
 
     def __attrs_post_init__(self):
@@ -28,9 +31,12 @@ class OpenAIKeyManager:
         """
         Cycles between available API keys. This method should be called before any request.
         """
-        cur_key = self.keys[self._next_key_idx]
-        self._next_key_idx = (self._next_key_idx + 1) % len(self.keys)
+        self._cur_key = cur_key = self.keys[self._next_key_idx]
         openai.api_key = cur_key
+        self._next_key_idx = (self._next_key_idx + 1) % len(self.keys)
+
+    def get_current_key(self) -> str:
+        return self._cur_key
 
 
 _DEFAULT_KEY_MANAGER: Optional[OpenAIKeyManager] = None
@@ -112,6 +118,58 @@ def get_available_keys() -> List[str]:
     return _DEFAULT_KEY_MANAGER.keys
 
 
+@attrs.define(eq=False, repr=False)
+class RateLimiter:
+    tokens_per_min: int = 150000
+    req_per_min: int = 20
+
+    _window: Deque[Dict] = attrs.field(init=False, default=None)
+    _num_tokens_rolling_sum: int = attrs.field(init=False, default=0)
+
+    def __attrs_post_init__(self):
+        self._window = collections.deque()
+        self._num_tokens_rolling_sum = 0
+
+    def _update_window(self):
+        cur_time = datetime.datetime.now()
+
+        while len(self._window) > 0 and (cur_time - self._window[0]["time"]).total_seconds() > 60:
+            item = self._window.popleft()
+            self._num_tokens_rolling_sum -= item["num_tokens"]
+
+    def record_request(self, num_tokens: int):
+        cur_time = datetime.datetime.now()
+        self._num_tokens_rolling_sum += num_tokens
+        self._window.append({"num_tokens": num_tokens, "time": cur_time})
+
+        self._update_window()
+
+    def get_wait_time(self, num_tokens: int) -> int:
+        if num_tokens > self.tokens_per_min:
+            raise ValueError(f"Number of tokens cannot exceed {self.tokens_per_min}")
+        if len(self._window) == 0:
+            return 0
+
+        self._update_window()
+        cur_time = datetime.datetime.now()
+
+        in_conflict_items: List[Dict] = []
+        total_tokens_so_far = self._num_tokens_rolling_sum
+        while ((total_tokens_so_far + num_tokens) / 60) > (self.tokens_per_min / 60):
+            item = self._window[len(in_conflict_items)]
+            in_conflict_items.append(item)
+            total_tokens_so_far -= item["num_tokens"]
+
+        if len(in_conflict_items) == 0 and len(self._window) == self.req_per_min:
+            in_conflict_items.append(self._window[0])
+
+        if len(in_conflict_items) == 0:
+            return 0
+
+        latest_in_conflict_time: datetime.datetime = in_conflict_items[-1]["time"]
+        return int(max(((latest_in_conflict_time + datetime.timedelta(seconds=60)) - cur_time).total_seconds(), 0))
+
+
 @attrs.define
 class OpenAICompletion:
     text: str
@@ -160,6 +218,16 @@ def tokenize(text: str, engine: str) -> Dict[str, Union[List[int], List[str]]]:
         return codex_tokenize(text)
     else:
         return gpt3_tokenize(text)
+
+
+_RATE_LIMITERS_DICT: Dict[str, RateLimiter] = {}
+
+
+def _get_rate_limiter_for_api_key(api_key: str):
+    if api_key not in _RATE_LIMITERS_DICT:
+        _RATE_LIMITERS_DICT[api_key] = RateLimiter()
+
+    return _RATE_LIMITERS_DICT[api_key]
 
 
 def openai_completion(engine: str,
@@ -223,12 +291,26 @@ def openai_completion(engine: str,
     num_retries = 0
 
     is_parallel = (prompts is not None)
-    req_prompt = prompt if prompt is not None else prompts
+    if prompt is not None:
+        req_prompt = prompt
+        num_tokens = (len(tokenize(prompt, engine=engine)["token_ids"]) + max_tokens) * num_completions
+    else:
+        assert prompts is not None
+        req_prompt = prompts
+        num_tokens = sum((len(tokenize(prompt, engine=engine)["token_ids"]) + max_tokens) * num_completions
+                         for prompt in prompts)
 
     start_time = time.time()
 
     while num_retries <= max_retries:
         try:
+            cur_key = key_manager.get_current_key()
+            rate_limiter = _get_rate_limiter_for_api_key(cur_key)
+            wait_time = rate_limiter.get_wait_time(num_tokens)
+            if wait_time > 0:
+                # print(f"Waiting for {wait_time} seconds")
+                time.sleep(wait_time)
+
             response = openai.Completion.create(
                 engine=engine,
                 prompt=req_prompt,
@@ -255,6 +337,7 @@ def openai_completion(engine: str,
                 num_retries += 1
 
         else:
+            rate_limiter.record_request(num_tokens)
             if is_parallel:
                 assert prompts is not None
                 #  Currently log prob not supported for multiple prompts
