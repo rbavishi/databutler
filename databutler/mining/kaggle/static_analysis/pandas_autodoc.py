@@ -276,8 +276,14 @@ def run_autodoc(
                   f"Delete file at {autodoc_results_path} and/or {autodoc_failures_path} to reset.")
         uid_processing_order: List[str] = []
         for template, values in sorted(templates_to_snippet_dict.items(), key=lambda x: -len(x[1])):
-            uid_processing_order.extend(uid for uid, _ in sorted(values, key=lambda x: len(x[1]))
-                                        if uid not in already_processed)
+            uid_processing_order.append(random.choice(values)[0])
+
+        added: Set[str] = set(uid_processing_order)
+        for uid in uids_to_process:
+            if uid not in added:
+                uid_processing_order.append(uid)
+            # uid_processing_order.extend(uid for uid, _ in sorted(values, key=lambda x: len(x[1]))
+            #                             if uid not in already_processed)
         # uids_to_process = [uid for uid in uid_processing_order
         #                    if len(templates_to_snippet_dict[reader[uid].template]) >= 3]
         uids_to_process = uid_processing_order
@@ -303,7 +309,8 @@ def run_autodoc(
                                                             temperature=0.8, num_nl_per_query=10)
                     chunk_uids: Set[str] = {snippet.uid for snippet in chunk}
                     new_autodoc_descriptions: Dict[str, List[AutodocDescription]] = collections.defaultdict(list)
-                    for snippet, autodoc_result in zip(chunk, autodoc_results):
+                    for snippet, autodoc_result in zip(tqdm.tqdm(chunk, desc="Attempting propagation", position=1),
+                                                       autodoc_results):
                         if not autodoc_result.success:
                             failure_uids.add(snippet.uid)
                             writer_failures[snippet.uid] = autodoc_result
@@ -312,16 +319,17 @@ def run_autodoc(
                         success_uids.add(snippet.uid)
                         writer_success[snippet.uid] = autodoc_result
 
-                        todo_snippets: List[MinedResult] = [
-                            reader[u] for (u, _) in templates_to_snippet_dict[snippet.template]
+                        todo_snippet_uids: List[MinedResult] = [
+                            u for (u, _) in templates_to_snippet_dict[snippet.template]
                             if u not in chunk_uids and u not in success_uids
                         ]
 
-                        if len(todo_snippets) == 0:
+                        if len(todo_snippet_uids) == 0:
                             continue
 
                         #  Try to reuse the results if possible.
-                        for todo_snippet in todo_snippets:
+                        for todo_snippet_uid in tqdm.tqdm(todo_snippet_uids, position=2):
+                            todo_snippet = reader[todo_snippet_uid]
                             descs = try_transferring_autodoc_result(snippet, todo_snippet, autodoc_result)
                             if len(descs) > 0:
                                 new_autodoc_descriptions[todo_snippet.uid].extend(descs)
