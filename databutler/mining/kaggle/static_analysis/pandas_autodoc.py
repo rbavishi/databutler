@@ -196,9 +196,9 @@ def try_transferring_autodoc_result(
                     is_derived=True,
                 )
             )
-            print("GOT", new_snippet.code, new_parameterization.instantiation)
-        else:
-            print("FAILED FOR", new_snippet.code, "FROM", orig_snippet.code)
+            # print("GOT", new_snippet.code, new_parameterization.instantiation)
+        # else:
+        #     print("FAILED FOR", new_snippet.code, "FROM", orig_snippet.code)
         pass
 
     return transferred_correct_descs
