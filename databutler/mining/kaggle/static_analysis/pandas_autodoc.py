@@ -335,6 +335,7 @@ def run_autodoc(
                                 new_autodoc_descriptions[todo_snippet.uid].extend(descs)
 
                     #  Collect the ones where it actually worked
+                    num_prop_success = 0
                     for todo_uid, descs in new_autodoc_descriptions.items():
                         if len(descs) > 0:
                             success_uids.add(todo_uid)
@@ -346,8 +347,9 @@ def run_autodoc(
                                 correct_descriptions=descs,
                                 incorrect_descriptions=[],
                             )
-                            print("ALSO SATISFIED", todo_uid)
+                            num_prop_success += 1
 
+                    print("Additionally satisfied", num_prop_success)
                     chunk.clear()
                     writer_success.flush()
                     writer_failures.flush()
