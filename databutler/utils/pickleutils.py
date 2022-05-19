@@ -293,6 +293,9 @@ class PickledMapWriter:
         self.flush()
         self._file_obj.close()
 
+    def keys(self) -> Iterator[Hashable]:
+        yield from self._keys_offset_map.keys()
+
     def __setitem__(self, key, value):
         if key in self._keys_offset_map:
             raise ValueError(f"Key {key} already exists")
