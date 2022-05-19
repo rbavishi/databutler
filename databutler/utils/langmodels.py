@@ -5,7 +5,7 @@ import collections
 import datetime
 import os
 import time
-from typing import Optional, List, Union, Dict, Deque
+from typing import Optional, List, Union, Dict, Deque, Tuple
 
 import attrs
 import openai
@@ -34,6 +34,14 @@ class OpenAIKeyManager:
         self._cur_key = cur_key = self.keys[self._next_key_idx]
         openai.api_key = cur_key
         self._next_key_idx = (self._next_key_idx + 1) % len(self.keys)
+
+    def set_key(self, key: str) -> None:
+        """
+        Set the key to the provided key.
+        """
+        self._cur_key = key
+        openai.api_key = key
+        self._next_key_idx = (self.keys.index(key) + 1) % len(self.keys)
 
     def get_current_key(self) -> str:
         return self._cur_key
@@ -239,7 +247,7 @@ def openai_completion(engine: str,
                       stop: Optional[Union[str, List[str]]] = None,
                       return_logprobs: bool = False,
                       *,
-                      retry_wait_duration: int = 60,
+                      retry_wait_duration: int = 30,
                       max_retries: int = 5,
                       key_manager: Optional[OpenAIKeyManager] = None,
                       min_latency: Optional[int] = None,
@@ -301,6 +309,18 @@ def openai_completion(engine: str,
                          for prompt in prompts)
 
     start_time = time.time()
+    cur_best = (None, None)
+    for key in key_manager.keys:
+        rl = _get_rate_limiter_for_api_key(key)
+        wait_time = rl.get_wait_time(num_tokens)
+        if cur_best[1] is None:
+            cur_best = (key, wait_time)
+        elif wait_time < cur_best[1]:
+            cur_best = (key, wait_time)
+
+    key_to_use, wait_time = cur_best
+    # print("KEY", key_to_use)
+    key_manager.set_key(key_to_use)
 
     while num_retries <= max_retries:
         try:
