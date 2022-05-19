@@ -1,97 +1,27 @@
 import collections
 import itertools
 import os
-from typing import Optional, List, Dict, Any, Tuple, Set
+import random
+from typing import Optional, List, Dict, Tuple, Set
 
-import attrs
 import fire
-import pandas as pd
 import tqdm
 import yaml
 
 from databutler.datana.generic.autodoc import code2nl, nl2code
 from databutler.datana.generic.autodoc.few_shot import FewShotExampleCodeAndNL
-from databutler.mining.kaggle.static_analysis.pandas_autodoc_utils import find_instantiation_map
+from databutler.mining.kaggle.static_analysis.pandas_autodoc_utils import AutodocFewShotExample, \
+    AutodocDescription, AutodocResult, normalize_code_for_comparison, get_few_shot_example_path, \
+    parameterize_snippet, apply_parameterization
 from databutler.mining.kaggle.static_analysis.pandas_mining import MINING_RESULTS_FILE
 from databutler.mining.kaggle.static_analysis.pandas_mining_utils import MinedResult
 from databutler.pat import astlib
-from databutler.utils import pickleutils, langmodels, code as codeutils
+from databutler.utils import pickleutils, langmodels
 
 ENGINE = 'code-davinci-002'
 PREPROCESSING_RESULTS_FILE = "pandas_mining_preprocessed.pkl"
-
-
-@attrs.define(eq=False, repr=False)
-class AutodocFewShotExample:
-    code: str
-    nl: str
-
-    @classmethod
-    def from_json(cls, val_json: Dict) -> 'AutodocFewShotExample':
-        return AutodocFewShotExample(code=val_json['code'], nl=val_json['nl'])
-
-    def to_json(self) -> Dict[str, Any]:
-        return {
-            "code": self.code,
-            "nl": self.nl,
-        }
-
-
-@attrs.define(eq=False, repr=False)
-class AutodocDescription:
-    success: bool
-    nl: str
-    generated_code: str
-    code_parseable: bool
-    assistance_level: int
-
-    parameterized_nl: Optional[str] = attrs.field(default=None)
-    parameterized_code: Optional[str] = attrs.field(default=None)
-
-
-@attrs.define(eq=False, repr=False)
-class AutodocResult:
-    uid: str
-    success: bool
-    ground_truth_code: str
-
-    correct_descriptions: List[AutodocDescription]
-    incorrect_descriptions: List[AutodocDescription]
-
-
-def normalize_code_for_comparison(code: str, df_args: Set[str]):
-    code_ast = astlib.parse(code)
-    #  Normalize keyword argument order
-    node_repl = {}
-    for node in astlib.walk(code_ast):
-        if isinstance(node, astlib.Call):
-            pos_args = [arg for arg in node.args if arg.keyword is None]
-            kw_args = sorted([
-                astlib.with_changes(arg, comma=astlib.cst.MaybeSentinel.DEFAULT)
-                for arg in node.args if arg.keyword is not None
-            ], key=lambda x: x.keyword.value)
-            if len(kw_args) > 0:
-                node_repl[node] = astlib.with_changes(node, args=pos_args + kw_args)
-
-    if len(node_repl) > 0:
-        code_ast = astlib.with_deep_replacements(code_ast, node_repl)
-
-    #  Replace attribute-based column access to the best of our ability
-    attr_repl = {}
-    for node in astlib.walk(code_ast):
-        if isinstance(node, astlib.Attribute) and isinstance(node.value, astlib.Name) and node.value.value in df_args:
-            if not hasattr(pd.DataFrame, node.attr.value):
-                new_node = astlib.parse_expr(f"{node.value.value}[\"{node.attr.value}\"]")
-                attr_repl[node] = new_node
-
-    if len(attr_repl) > 0:
-        code_ast = astlib.with_deep_replacements(code_ast, attr_repl)
-
-    return codeutils.normalize_code_fast(astlib.to_code(code_ast))
-
-
-def get_few_shot_example_path(campaign_dir: str, version: int) -> str:
-    return os.path.join(campaign_dir, f"few_shot_{version}.yaml")
+AUTODOC_RESULTS_FILE = "autodoc_results.pkl"
+AUTODOC_FAILURES_FILE = "autodoc_failures.pkl"
 
 
 def get_nl_descriptions_for_batch(
@@ -121,100 +51,6 @@ def get_nl_descriptions_for_batch(
 
     return c2nl_engine.parallel_get_nl(c2nl_tasks, num_results=1 if temperature == 0.0 else num_nl_per_query,
                                        key_manager=key_manager)
-
-
-def validate_nl_descriptions2(
-        batch: List[MinedResult],
-        few_shot_examples: List[AutodocFewShotExample],
-        batch_candidates: List[List[str]],
-        key_manager: Optional[langmodels.OpenAIKeyManager] = None,
-) -> List[AutodocResult]:
-    few_shot_nl2c: List[FewShotExampleCodeAndNL] = [
-        FewShotExampleCodeAndNL(code=ex.code, nl=ex.nl)
-        for ex in few_shot_examples
-    ]
-
-    df_arg_names_list: List[Set[str]] = [set(snippet.df_vars) for snippet in batch]
-    gts = [normalize_code_for_comparison(snippet.code, df_arg_names)
-           for snippet, df_arg_names in zip(batch, df_arg_names_list)]
-
-    gt_tokens_list: List[List[int]] = [langmodels.codex_tokenize(snippet.code)["token_ids"]
-                                       for snippet in batch]
-
-    nl2c_engine = nl2code.SimpleNatLangToCode(temperature=0.0, engine=ENGINE,
-                                              max_tokens=max(len(v) for v in gt_tokens_list) + 64)
-
-    #  First try without logit biasing
-    nl2c_tasks = [
-        nl2code.NatLangToCodeTask(
-            few_shot_examples=few_shot_nl2c,
-            target_nl=candidate,
-            task_description="Generate a Python pandas code snippet given the english description",
-        ) for candidates in batch_candidates for candidate in candidates
-    ]
-
-    code_results_batch: List[str] = nl2c_engine.parallel_get_code(nl2c_tasks, key_manager=key_manager)
-    start_idx: int = 0
-    autodoc_results: List[AutodocResult] = []
-
-    for snippet, candidates, gt, gt_tokens, df_arg_names in zip(
-            batch, batch_candidates, gts, gt_tokens_list, df_arg_names_list
-    ):
-        correct: List[AutodocDescription] = []
-        incorrect: List[AutodocDescription] = []
-
-        code_results: List[str] = code_results_batch[start_idx: start_idx + len(candidates)]
-        for assistance_level in [0, 1]:
-            for nl, code_result in zip(candidates, code_results):
-                try:
-                    code_result = normalize_code_for_comparison(code_result, df_arg_names)
-                except (astlib.cst.ParserSyntaxError, SyntaxError):
-                    is_equiv = False
-                    parseable = False
-                else:
-                    parseable = True
-                    is_equiv = gt == code_result
-
-                desc = AutodocDescription(
-                    success=is_equiv,
-                    nl=nl,
-                    generated_code=code_result,
-                    assistance_level=assistance_level,
-                    code_parseable=parseable,
-                )
-                (correct if is_equiv else incorrect).append(desc)
-
-            if len(correct) > 0:
-                break
-            else:
-                #  If it failed, we will try logit-biasing
-                nl2c_engine = nl2code.SimpleNatLangToCode(temperature=0.0, engine=ENGINE,
-                                                          max_tokens=len(gt_tokens) + 64)
-                code_results: List[str] = nl2c_engine.parallel_get_code(
-                    nl2c_tasks,
-                    allowed_tokens=gt_tokens,
-                    key_manager=key_manager,
-                )
-
-        print(f"Code: {gt}")
-        print("Correct:")
-        for desc in correct:
-            print(f"NL: {desc.nl} || Generated Code: {desc.generated_code}")
-        print("---")
-        print("Incorrect:")
-        for desc in incorrect:
-            print(f"NL: {desc.nl} || Generated Code: {desc.generated_code}")
-        print("---")
-
-        autodoc_results.append(AutodocResult(
-            uid=snippet.uid,
-            success=len(correct) > 0,
-            ground_truth_code=gt,
-            correct_descriptions=correct,
-            incorrect_descriptions=incorrect,
-        ))
-
-    return autodoc_results
 
 
 def validate_nl_descriptions(
@@ -250,24 +86,34 @@ def validate_nl_descriptions(
             allowed_tokens=allowed_tokens,
             key_manager=key_manager,
         )
-        for nl, code_result in zip(candidates, code_results):
+        for idx, nl, code_result in zip(range(len(candidates)), candidates, code_results):
             try:
                 code_result = normalize_code_for_comparison(code_result, df_arg_names)
             except (astlib.cst.ParserSyntaxError, SyntaxError):
                 is_equiv = False
                 parseable = False
+                parameterization = None
             else:
                 parseable = True
                 is_equiv = gt == code_result
+                parameterization = None
+                try:
+                    if is_equiv:
+                        parameterization = parameterize_snippet(snippet, nl)
+                except:
+                    pass
 
+            success = is_equiv and parameterization is not None
             desc = AutodocDescription(
-                success=is_equiv,
+                uid=f"{snippet.uid}:{idx}",
+                success=success,
                 nl=nl,
                 generated_code=code_result,
                 assistance_level=assistance_level,
                 code_parseable=parseable,
+                parameterization=parameterization,
             )
-            (correct if is_equiv else incorrect).append(desc)
+            (correct if success else incorrect).append(desc)
 
         if len(correct) > 0:
             break
@@ -302,14 +148,15 @@ def run_autodoc_for_batch(
         print("WARNING: At least two keys are recommended")
         available_keys = available_keys * 2
 
-    c2nl_key_manager = langmodels.OpenAIKeyManager(keys=available_keys[:1])
-    nl2c_key_manager = langmodels.OpenAIKeyManager(keys=available_keys[1:])
+    c2nl_key_manager = langmodels.OpenAIKeyManager(keys=available_keys)
+    nl2c_key_manager = langmodels.OpenAIKeyManager(keys=available_keys)
 
     #  Get NL for each in one shot using parallel prompts
     nl_descriptions = get_nl_descriptions_for_batch(
         batch, few_shot_examples, temperature, num_nl_per_query, key_manager=c2nl_key_manager
     )
     num_success = 0
+    autodoc_results: List[AutodocResult] = []
     for desc_candidates, snippet in zip(nl_descriptions, batch):
         print("Code:", snippet.code)
         for k in desc_candidates:
@@ -322,21 +169,47 @@ def run_autodoc_for_batch(
         if autodoc_res.success:
             num_success += 1
 
-    all_lengths = []
-    for j in nl_descriptions:
-        for desc_candidates in j:
-            all_lengths.append(len(langmodels.codex_tokenize(desc_candidates)["token_ids"]))
+        autodoc_results.append(autodoc_res)
 
-    print(min(all_lengths), max(all_lengths), sum(all_lengths) / len(all_lengths))
-    print(num_success)
-    return []
+    return autodoc_results
+
+
+def try_transferring_autodoc_result(
+        orig_snippet: MinedResult, new_snippet: MinedResult, autodoc_result: AutodocResult
+) -> List[AutodocDescription]:
+    assert autodoc_result.success
+    transferred_correct_descs: List[AutodocDescription] = []
+
+    for desc in autodoc_result.correct_descriptions:
+        assert desc.parameterization is not None
+        new_parameterization = apply_parameterization(desc.parameterization, new_snippet)
+        if new_parameterization is not None:
+            transferred_correct_descs.append(
+                AutodocDescription(
+                    uid=desc.uid,
+                    success=True,
+                    nl=desc.nl,
+                    generated_code=desc.generated_code,
+                    code_parseable=desc.code_parseable,
+                    assistance_level=desc.assistance_level,
+                    parameterization=new_parameterization,
+                    is_derived=True,
+                )
+            )
+            print("GOT", new_snippet.code, new_parameterization.instantiation)
+        else:
+            print("FAILED FOR", new_snippet.code, "FROM", orig_snippet.code)
+        pass
+
+    return transferred_correct_descs
 
 
 def run_autodoc(
         campaign_dir: str,
         few_shot_version: int = 1,
-        batch_size: int = 20,
+        batch_size: int = 10,
         num_results: Optional[int] = None,
+        retry_failures: bool = False,
 ) -> None:
     """Run autodoc for a campaign assuming the few-shot examples have been set up."""
     mining_results_path = os.path.join(campaign_dir, MINING_RESULTS_FILE)
@@ -384,26 +257,112 @@ def run_autodoc(
 
     few_shot_examples = [AutodocFewShotExample.from_json(ex) for ex in few_shot_dicts]
 
-    num_col_accesses = len(templates_to_snippet_dict["DF1[STR1]"])
-    print(f"Found {num_col_accesses} col-access representations")
+    success_uids: Set[str] = set()
+    failure_uids: Set[str] = set()
+    autodoc_results_path = os.path.join(campaign_dir, AUTODOC_RESULTS_FILE)
+    autodoc_failures_path = os.path.join(campaign_dir, AUTODOC_FAILURES_FILE)
 
-    import random
-    random.shuffle(uids_to_process)
-    with pickleutils.PickledMapReader(mining_results_path) as reader:
-        # for uid in uids_to_process:
-        #     t_ast = astlib.parse(reader[uid].template)
-        #     c_ast = astlib.parse(reader[uid].code)
-        #     print(f"Code: {reader[uid].code}")
-        #     print(f"Template: {reader[uid].template}")
-        #     find_instantiation_map(t_ast, c_ast)
-        #
-        # return
-        chunk = [reader[key] for key in uids_to_process][:batch_size]
-        # chunk = [reader[key] for key in uids_to_process if "read_csv" in reader[key].code and "=" in reader[key].code][:batch_size]
-        run_autodoc_for_batch(chunk, few_shot_examples, temperature=0.8, num_nl_per_query=10)
+    with pickleutils.PickledMapReader(mining_results_path) as reader, \
+            pickleutils.PickledMapWriter(autodoc_results_path, overwrite_existing=False) as writer_success, \
+            pickleutils.PickledMapWriter(autodoc_failures_path, overwrite_existing=False) as writer_failures:
+        already_processed: Set[str] = set(writer_success.keys())
+        success_uids.update(already_processed)
+        if not retry_failures:
+            failure_uids.update(writer_failures.keys())
+            already_processed.update(failure_uids)
+
+        if len(already_processed) > 0:
+            print(f"Already processed {len(already_processed)} snippets. "
+                  f"Delete file at {autodoc_results_path} and/or {autodoc_failures_path} to reset.")
+        uid_processing_order: List[str] = []
+        for template, values in sorted(templates_to_snippet_dict.items(), key=lambda x: -len(x[1])):
+            uid_processing_order.extend(uid for uid, _ in sorted(values, key=lambda x: len(x[1]))
+                                        if uid not in already_processed)
+        # uids_to_process = [uid for uid in uid_processing_order
+        #                    if len(templates_to_snippet_dict[reader[uid].template]) >= 3]
+        uids_to_process = uid_processing_order
+
+        def _update_stats(_pbar):
+            _pbar.set_postfix(success=len(success_uids), failures=len(failure_uids))
+
+        # random.shuffle(uids_to_process)
+        chunk: List[MinedResult] = []
+        with tqdm.tqdm(uids_to_process, dynamic_ncols=True, desc="Running Autodoc") as pbar:
+            for uid in pbar:
+                if uid in success_uids:
+                    _update_stats(pbar)
+                    continue
+
+                chunk.append(reader[uid])
+
+                if len(chunk) < batch_size and uid != uids_to_process[-1]:
+                    _update_stats(pbar)
+                    continue
+                elif len(chunk) > 0:
+                    autodoc_results = run_autodoc_for_batch(chunk, few_shot_examples,
+                                                            temperature=0.8, num_nl_per_query=10)
+                    chunk_uids: Set[str] = {snippet.uid for snippet in chunk}
+                    new_autodoc_descriptions: Dict[str, List[AutodocDescription]] = collections.defaultdict(list)
+                    for snippet, autodoc_result in zip(chunk, autodoc_results):
+                        if not autodoc_result.success:
+                            failure_uids.add(snippet.uid)
+                            writer_failures[snippet.uid] = autodoc_result
+                            continue
+
+                        success_uids.add(snippet.uid)
+                        writer_success[snippet.uid] = autodoc_result
+
+                        todo_snippets: List[MinedResult] = [
+                            reader[u] for (u, _) in templates_to_snippet_dict[snippet.template]
+                            if u not in chunk_uids and u not in success_uids
+                        ]
+
+                        if len(todo_snippets) == 0:
+                            continue
+
+                        #  Try to reuse the results if possible.
+                        for todo_snippet in todo_snippets:
+                            descs = try_transferring_autodoc_result(snippet, todo_snippet, autodoc_result)
+                            if len(descs) > 0:
+                                new_autodoc_descriptions[todo_snippet.uid].extend(descs)
+
+                    #  Collect the ones where it actually worked
+                    for todo_uid, descs in new_autodoc_descriptions.items():
+                        if len(descs) > 0:
+                            success_uids.add(todo_uid)
+                            failure_uids.discard(todo_uid)
+                            writer_success[todo_uid] = AutodocResult(
+                                uid=todo_uid,
+                                success=True,
+                                ground_truth_code=reader[todo_uid].code,
+                                correct_descriptions=descs,
+                                incorrect_descriptions=[],
+                            )
+                            print("ALSO SATISFIED", todo_uid)
+
+                    chunk.clear()
+                    writer_success.flush()
+                    writer_failures.flush()
+                    _update_stats(pbar)
+
+
+def analyze(campaign_dir: str):
+    autodoc_results_path = os.path.join(campaign_dir, AUTODOC_RESULTS_FILE)
+    autodoc_failures_path = os.path.join(campaign_dir, AUTODOC_FAILURES_FILE)
+
+    with pickleutils.PickledMapReader(autodoc_results_path) as reader:
+        for uid, res in reader.items():
+            assert isinstance(res, AutodocResult)
+            print("UID", uid, res.success)
+            print("CODE:", res.ground_truth_code)
+            for desc in res.correct_descriptions:
+                print(desc.nl, " ||| ", desc.parameterization.nl, "|||", desc.parameterization.code)
+
+            print("---")
 
 
 if __name__ == "__main__":
     fire.Fire({
         "run_autodoc": run_autodoc,
+        "analyze": analyze,
     })
