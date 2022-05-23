@@ -43,10 +43,11 @@ def prepare_mined_result(
     # import time
     # s = time.time()
     expr_type = inferred_types.get(target, None)
-    true_exprs: Set[astlib.BaseExpression] = set(astlib.iter_true_exprs(target, code_ast))
+    true_exprs: List[astlib.BaseExpression] = list(astlib.iter_true_exprs(target, code_ast))
     target_nodes = set(astlib.walk(target))
     free_vars: Set[astlib.Name] = {a.node for a in astlib.get_definitions_and_accesses(code_ast)[1]
-                                   if all(d.enclosing_node not in target_nodes for d in a.definitions)} & true_exprs
+                                   if all(d.enclosing_node not in target_nodes for d in a.definitions)
+                                   }.intersection(true_exprs)
 
     def _fixup_metadata(node_mapping, _target):
         nonlocal inferred_types, lib_usages, true_exprs, free_vars
@@ -78,11 +79,14 @@ def prepare_mined_result(
 
     #  Convert attribute-based column accesses to subscript-based accesses.
     target, repl_map = normalize_col_accesses(target, true_exprs, inferred_types)
+    for expr in astlib.walk(target):
+        if isinstance(expr, astlib.SimpleString):
+            true_exprs.append(expr)
     _fixup_metadata(repl_map, target)
 
     #  Create templates for clustering
     template, template_vars_map = templatize(target, true_exprs, free_vars, inferred_types, lib_usages)
-    # print("TEMPLATIZED", astlib.to_code(target))
+    # print("TEMPLATIZED", astlib.to_code(template), len(true_exprs))
 
     res = MinedResult(
         code=codeutils.normalize_code_fast(astlib.to_code(target)),
