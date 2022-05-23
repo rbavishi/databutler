@@ -48,6 +48,8 @@ class MinedResult:
     series_vars: List[str]
     template_vars: Dict[str, List[str]]
 
+    lib_usages: Dict[str, str] = attrs.field(factory=dict)
+
     def to_json(self) -> JsonDict:
         pass
 

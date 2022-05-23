@@ -100,6 +100,7 @@ def prepare_mined_result(
         df_vars=df_vars,
         series_vars=series_vars,
         template_vars=template_vars_map,
+        lib_usages={k.value: v for k, v in lib_usages.items()}
     )
     # print("-----", id(code_ast), time.time() - s)
     return res
