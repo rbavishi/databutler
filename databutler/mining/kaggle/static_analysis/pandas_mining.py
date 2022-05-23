@@ -19,7 +19,7 @@ from databutler.mining.kaggle.static_analysis.pandas_mining_utils import (
     normalize_col_accesses,
     templatize,
     get_mypy_cache_dir_path,
-    MinedResult,
+    MinedResult, get_created_mypy_cache_dir_paths,
 )
 from databutler.pat import astlib
 from databutler.pat.analysis.type_analysis.inference import run_mypy
@@ -341,10 +341,11 @@ def start_mining_campaign(
                     writer.flush()
                     print("Cleaning up...")
                     #  Remove the non-og mypy cache paths
-                    cache_paths: Set[str] = set()
                     while not available_mypy_cache_paths.empty():
-                        cache_paths.add(available_mypy_cache_paths.get())
-                    for path in cache_paths - og_cache_dirs:
+                        available_mypy_cache_paths.get()
+
+                    created_cache_dirs = set(get_created_mypy_cache_dir_paths())
+                    for path in created_cache_dirs - og_cache_dirs:
                         _remove_mypy_cache_path(path)
 
                     #  Requeue the og cache paths
@@ -353,7 +354,7 @@ def start_mining_campaign(
 
         finally:
             #  Remove the og mypy cache paths
-            for path in og_cache_dirs:
+            for path in get_created_mypy_cache_dir_paths():
                 _remove_mypy_cache_path(path)
 
     print("----------------------")

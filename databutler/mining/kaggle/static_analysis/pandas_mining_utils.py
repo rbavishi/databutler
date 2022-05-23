@@ -1,6 +1,7 @@
 import builtins
 import collections
 import contextlib
+import glob
 import io
 import os
 import string
@@ -407,3 +408,9 @@ def get_mypy_cache_dir_path(uid: int) -> str:
     """Returns a cache dir to use for mypy based on a UID. Useful for multiprocess safety."""
     script_dir = os.path.abspath(os.path.dirname(__file__))
     return os.path.join(script_dir, f".mypy_cache{uid}")
+
+
+def get_created_mypy_cache_dir_paths() -> List[str]:
+    """Returns all the created mypy cache dirs"""
+    script_dir = os.path.abspath(os.path.dirname(__file__))
+    return glob.glob(os.path.join(script_dir, ".mypy_cache*"))
