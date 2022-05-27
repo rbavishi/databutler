@@ -232,10 +232,10 @@ def normalize_df_series_vars(
 
     if len({i.value for i in series_repl_map.keys()}) <= 1:
         def series_arg_creator(ctr: int):
-            return "ss"
+            return "series"
     else:
         def series_arg_creator(ctr: int):
-            return f"ss{ctr}"
+            return f"series{ctr}"
 
     for node in df_repl_map.keys():
         df_repl_map[node] = astlib.create_name_expr(df_arg_creator(seen_dfs[node.value]))
