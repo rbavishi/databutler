@@ -6,6 +6,7 @@ import click
 import fire
 import tqdm
 
+import pandas as pd
 from databutler.mining.kaggle.notebooks import utils as nb_utils
 from databutler.mining.kaggle.notebooks.notebook import KaggleNotebook
 from databutler.mining.kaggle.static_analysis.pandas_mining_utils import (
@@ -129,6 +130,12 @@ def mine_code(
                 df_exprs.add(node)
                 # print("DF", astlib.to_code(node))
             elif inferred_types[node].equals(SERIES_TYPE):
+                #  Check if it is an attribute and we have erroneously identified a column
+                if isinstance(node, astlib.Attribute) and node.value in inferred_types and inferred_types[node.value].equals(DF_TYPE):
+                    if hasattr(pd.DataFrame, node.attr.value):
+                        continue
+                    # print("DF", astlib.to_code(node))
+
                 series_exprs.add(node)
                 # print("SERIES", astlib.to_code(node))
             elif any(inferred_types[node].equals(i) for i in GROUPBY_TYPES):
