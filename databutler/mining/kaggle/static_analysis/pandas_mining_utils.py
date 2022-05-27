@@ -223,14 +223,14 @@ def normalize_df_series_vars(
 
             series_repl_map[node] = node  # Will update later
 
-    if len(df_repl_map) <= 1:
+    if len({i.value for i in df_repl_map.keys()}) <= 1:
         def df_arg_creator(ctr: int):
             return "df"
     else:
         def df_arg_creator(ctr: int):
             return f"df{ctr}"
 
-    if len(series_repl_map) <= 1:
+    if len({i.value for i in series_repl_map.keys()}) <= 1:
         def series_arg_creator(ctr: int):
             return "ss"
     else:
