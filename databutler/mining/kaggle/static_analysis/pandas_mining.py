@@ -20,7 +20,7 @@ from databutler.mining.kaggle.static_analysis.pandas_mining_utils import (
     normalize_col_accesses,
     templatize,
     get_mypy_cache_dir_path,
-    MinedResult, get_created_mypy_cache_dir_paths,
+    MinedResult, get_created_mypy_cache_dir_paths, is_purely_df_or_series_like,
 )
 from databutler.pat import astlib
 from databutler.pat.analysis.type_analysis.inference import run_mypy
@@ -126,18 +126,21 @@ def mine_code(
     groupby_exprs: Set[astlib.BaseExpression] = set()
     for node in astlib.iter_true_exprs(code_ast, context=code_ast):
         if node in inferred_types:
-            if inferred_types[node].equals(DF_TYPE):
-                df_exprs.add(node)
-                # print("DF", astlib.to_code(node))
-            elif inferred_types[node].equals(SERIES_TYPE):
-                #  Check if it is an attribute and we have erroneously identified a column
-                if isinstance(node, astlib.Attribute) and node.value in inferred_types and inferred_types[node.value].equals(DF_TYPE):
-                    if hasattr(pd.DataFrame, node.attr.value):
-                        continue
+            if is_purely_df_or_series_like(inferred_types[node]):
+                if inferred_types[node].equals(DF_TYPE):
+                    df_exprs.add(node)
                     # print("DF", astlib.to_code(node))
+                elif inferred_types[node].equals(SERIES_TYPE):
+                    #  Check if it is an attribute and we have erroneously identified a column
+                    if (isinstance(node, astlib.Attribute) and
+                            node.value in inferred_types and
+                            inferred_types[node.value].equals(DF_TYPE)):
+                        if hasattr(pd.DataFrame, node.attr.value):
+                            continue
+                        # print("DF", astlib.to_code(node))
 
-                series_exprs.add(node)
-                # print("SERIES", astlib.to_code(node))
+                    series_exprs.add(node)
+                    # print("SERIES", astlib.to_code(node))
             elif any(inferred_types[node].equals(i) for i in GROUPBY_TYPES):
                 groupby_exprs.add(node)
                 # print("GROUPBY", astlib.to_code(node))
@@ -167,6 +170,10 @@ def mine_code(
         if isinstance(node, astlib.Call) and node not in all_found_exprs:
             #  We do not want print statements
             if isinstance(node.func, astlib.Name) and node.func.value == 'print':
+                continue
+
+            #  Do not want expressions whose parents were found in the previous step
+            if any(n in all_found_exprs for n in astlib.iter_parents(node.func, code_ast)):
                 continue
 
             if any(arg.value in df_series_gpby_exprs for arg in node.args):

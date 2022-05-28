@@ -66,7 +66,7 @@ class MinedResult:
             print("----------")
             print(f"Templatized:\n{self.template}")
             print("----------")
-            print(f"Value Type: {'Any' if self.expr_type is None else self.expr_type.to_string()}")
+            print(f"Value Type: {'Any' if self.expr_type is None else self.expr_type.type_json}")
             print("==========")
 
         return f_out.getvalue()
@@ -76,6 +76,16 @@ class MinedResult:
 
     def __str__(self):
         return self.prettify()
+
+
+def is_purely_df_or_series_like(expr_type: SerializedMypyType):
+    if not (expr_type.equals(DF_TYPE) or expr_type.equals(SERIES_TYPE)):
+        return False
+
+    if expr_type.is_union_type():
+        return all(is_purely_df_or_series_like(i) or i.is_any_type() for i in expr_type.unpack_union_type())
+    else:
+        return True
 
 
 def find_library_usages(
@@ -309,7 +319,7 @@ def normalize_col_accesses(
             # print("GOT HERE", val_typ, expr_typ)
             if val_typ.equals(DF_TYPE) and (expr_typ.equals(DF_TYPE) or expr_typ.equals(SERIES_TYPE)):
                 try:
-                    if not hasattr(pd.DataFrame, expr.attr.value):
+                    if (not hasattr(pd.DataFrame, expr.attr.value)) and (not hasattr(pd.Series, expr.attr.value)):
                         okay = True
                 except:
                     pass
