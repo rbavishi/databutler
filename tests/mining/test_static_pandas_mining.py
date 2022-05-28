@@ -73,10 +73,17 @@ class StaticPandasMiningTests(unittest.TestCase):
     def test_mine_code_2(self):
         code = textwrap.dedent("""
         import pandas as pd
+        import seaborn as sns
         df = pd.read_csv("titanic.csv")
-        df[df.Survived == 0]
+        df1 = pd.read_csv("test.csv")
+        df1[df.Survived == 0]
         a = df["Survived"]
         a.str.count("a")
+        df.isnull().any()
+        df['Address'].str.split('_', expand=True)
+        df.add_prefix("col_")
+        df['Address'].str.split(' ').str[-1]
+        sns.distplot(df['Age'])
         """)
 
         for res in mining.mine_code(code):
