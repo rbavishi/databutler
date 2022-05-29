@@ -154,7 +154,7 @@ class FullCodeChangeToNatLang(BaseCodeChangeToNatLang):
             stop=["\n"],  # Use new-line as the stop-token for single-line descriptions.
             retry_wait_duration=60,
             max_retries=5,
-            return_logprobs=False,
+            retrieve_top_tokens=False,
         )
 
         descriptions = list(set(
@@ -191,7 +191,7 @@ class FullCodeChangeToNatLang(BaseCodeChangeToNatLang):
                 stop=["\n"],  # Use new-line as the stop-token for single-line descriptions.
                 retry_wait_duration=60,
                 max_retries=5,
-                return_logprobs=False,
+                retrieve_top_tokens=False,
             )
 
             new_bullet = resp.completions[0].text.strip()

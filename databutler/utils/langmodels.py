@@ -12,6 +12,7 @@ import openai
 import transformers
 
 from databutler.utils import paths
+from databutler.utils.logging import logger
 
 
 @attrs.define(eq=False, repr=False)
@@ -181,7 +182,7 @@ class RateLimiter:
 @attrs.define
 class OpenAICompletion:
     text: str
-    logprob: Optional[float]
+    top_logprobs: Optional[List[Dict[str, float]]]
     finish_reason: str
 
 
@@ -203,7 +204,7 @@ def codex_tokenize(text: str) -> Dict[str, Union[List[int], List[str]]]:
 
     return {
         "token_ids": _CODEX_TOKENIZER(text)['input_ids'],
-        "token_strs": _CODEX_TOKENIZER.tokenize(text)
+        "token_strs": [_CODEX_TOKENIZER.convert_tokens_to_string([i]) for i in _CODEX_TOKENIZER.tokenize(text)]
     }
 
 
@@ -238,6 +239,39 @@ def _get_rate_limiter_for_api_key(api_key: str):
     return _RATE_LIMITERS_DICT[api_key]
 
 
+def _retrieve_top_tokens(completion_resp: Dict) -> Optional[List[Dict[str, float]]]:
+    if len(completion_resp['logprobs']['top_logprobs']) != len(completion_resp['logprobs']['tokens']):
+        logger.warning(f"Unexpected top_logprobs value in response: {completion_resp}")
+        return None
+
+    logprob_tokens = completion_resp['logprobs']['tokens']
+    text = completion_resp['text']
+
+    start_idx: int = 0
+    while start_idx < len(logprob_tokens):
+        if text not in "".join(logprob_tokens[start_idx:]):
+            start_idx -= 1
+            break
+        start_idx += 1
+
+    if start_idx < 0:
+        logger.warning(f"Could not retrieve top tokens for response: {completion_resp}")
+        return None
+
+    end_idx: int = len(logprob_tokens)
+    while end_idx > start_idx:
+        if "".join(logprob_tokens[start_idx: end_idx]).endswith(text):
+            break
+
+        end_idx -= 1
+
+    if end_idx < start_idx:
+        logger.warning(f"Could not retrieve top tokens for response: {completion_resp}")
+        return None
+
+    return completion_resp['logprobs']['top_logprobs'][start_idx: end_idx]
+
+
 def openai_completion(engine: str,
                       prompt: Optional[str] = None,
                       prompts: Optional[List[str]] = None,
@@ -245,7 +279,7 @@ def openai_completion(engine: str,
                       num_completions: int = 1,
                       max_tokens: int = 64,
                       stop: Optional[Union[str, List[str]]] = None,
-                      return_logprobs: bool = False,
+                      retrieve_top_tokens: bool = False,
                       *,
                       retry_wait_duration: int = 30,
                       max_retries: int = 5,
@@ -270,7 +304,8 @@ def openai_completion(engine: str,
                             only when the temperature is non-zero, as duplicates will be returned otherwise.
     :param max_tokens: An integer representing the maximum number of tokens in a valid completion.
     :param stop: An optional string or list of strings corresponding to the stop token(s) for a completion.
-    :param return_logprobs: A boolean for whether to include the log-probability of the overall completion(s).
+    :param retrieve_top_tokens: Whether to retrieve the most likely tokens for every token chosen. The result, if any,
+        will be stored in the `top_logprobs` field of the completion object.
     :param retry_wait_duration: An integer representing the time in seconds between retry attempts.
     :param max_retries: An integer representing the maximum number of retries.
     :param key_manager: A key manager to use instead of the default one. Useful for limiting keys or using a specific
@@ -288,8 +323,13 @@ def openai_completion(engine: str,
     if (prompt is None and prompts is None) or (prompt is not None and prompts is not None):
         raise ValueError("Exactly one of prompt and prompts must be specified")
 
-    if prompts is not None and return_logprobs:
-        raise NotImplementedError("Logprobs not supported for multiple prompts currently")
+    if prompts is None:
+        #  Satisfy the type checker.
+        assert prompt is not None
+        is_parallel = False
+        prompts = [prompt]
+    else:
+        is_parallel = True
 
     if key_manager is None:
         #  If the default is initialized, the API key is guaranteed to be assigned as well.
@@ -298,15 +338,8 @@ def openai_completion(engine: str,
     num_keys_tried = 0
     num_retries = 0
 
-    is_parallel = (prompts is not None)
-    if prompt is not None:
-        req_prompt = prompt
-        num_tokens = (len(tokenize(prompt, engine=engine)["token_ids"]) + max_tokens) * num_completions
-    else:
-        assert prompts is not None
-        req_prompt = prompts
-        num_tokens = sum((len(tokenize(prompt, engine=engine)["token_ids"]) + max_tokens) * num_completions
-                         for prompt in prompts)
+    num_tokens = sum((len(tokenize(prompt, engine=engine)["token_ids"]) + max_tokens) * num_completions
+                     for prompt in prompts)
 
     start_time = time.time()
     cur_best = (None, None)
@@ -331,14 +364,14 @@ def openai_completion(engine: str,
                 # print(f"Waiting for {wait_time} seconds")
                 time.sleep(wait_time)
 
-            response = openai.Completion.create(
+            openai_response = openai.Completion.create(
                 engine=engine,
-                prompt=req_prompt,
+                prompt=prompts,
                 temperature=temperature,
                 n=num_completions,
                 max_tokens=max_tokens,
                 stop=stop,
-                logprobs=0 if return_logprobs else None,
+                logprobs=5 if retrieve_top_tokens else None,
                 **completion_kwargs,
             )
 
@@ -352,68 +385,45 @@ def openai_completion(engine: str,
                 key_manager.set_next_key()
 
             else:
+                logger.warning(f"Forced to sleep for {retry_wait_duration} seconds")
                 time.sleep(retry_wait_duration)
                 num_keys_tried = 0
                 num_retries += 1
 
         else:
             rate_limiter.record_request(num_tokens)
-            if is_parallel:
-                assert prompts is not None
-                #  Currently log prob not supported for multiple prompts
-                responses = [OpenAICompletionResponse(
-                    completions=[
-                        OpenAICompletion(
-                            text=c['text'],
-                            logprob=None,
-                            finish_reason=c['finish_reason']
-                        ) for c in response['choices'][idx * num_completions: (idx + 1) * num_completions]
-                    ],
-                    timestamp=response['created'],
-                    model=response['model'],
-                    id=response['id'],
-                ) for idx in range(0, len(prompts))]
+            processed_responses: List[OpenAICompletionResponse] = []
+            timestamp = openai_response['created']
+            model = openai_response['model']
+            resp_id = openai_response['id']
+            for idx in range(0, len(prompts)):
+                choices = openai_response['choices'][idx * num_completions: (idx + 1) * num_completions]
+                completions = [
+                    OpenAICompletion(
+                        text=choice['text'],
+                        top_logprobs=None,
+                        finish_reason=choice['finish_reason']
+                    ) for choice in choices
+                ]
 
-                cur_time = time.time()
-                if min_latency is not None and cur_time - start_time < min_latency:
-                    time.sleep(min_latency - (cur_time - start_time))
+                if retrieve_top_tokens and all('logprobs' in choice for choice in choices):
+                    for completion, choice in zip(completions, choices):
+                        completion.top_logprobs = _retrieve_top_tokens(choice)
 
-                return responses
-
-            else:
-                response = OpenAICompletionResponse(
-                    completions=[
-                        OpenAICompletion(
-                            text=c['text'],
-                            logprob=None,
-                            finish_reason=c['finish_reason']
-                        ) for c in response['choices']
-                    ],
-                    timestamp=response['created'],
-                    model=response['model'],
-                    id=response['id'],
+                processed_responses.append(
+                    OpenAICompletionResponse(
+                        timestamp=timestamp,
+                        model=model,
+                        id=resp_id,
+                        completions=completions,
+                    )
                 )
 
-                if return_logprobs:
-                    #  We need to compute log-probability of the completion(s).
-                    for c, orig_c in zip(response.completions, response['choices']):
-                        if orig_c['finish_reason'] == "stop":
-                            stop_set = {stop} if isinstance(stop, str) else set(stop)
-                            logprob_sum = 0
-                            logprobs_entry = orig_c["logprobs"]
-                            for token, log_prob in zip(logprobs_entry["tokens"], logprobs_entry["token_logprobs"]):
-                                if token in stop_set:
-                                    break
+            cur_time = time.time()
+            if min_latency is not None and cur_time - start_time < min_latency:
+                time.sleep(min_latency - (cur_time - start_time))
 
-                                logprob_sum += log_prob
+            if not is_parallel:
+                return processed_responses[0]
 
-                            c.logprob = logprob_sum
-
-                        else:
-                            c.logprob = sum(orig_c["token_logprobs"])
-
-                cur_time = time.time()
-                if min_latency is not None and cur_time - start_time < min_latency:
-                    time.sleep(min_latency - (cur_time - start_time))
-
-                return response
+            return processed_responses

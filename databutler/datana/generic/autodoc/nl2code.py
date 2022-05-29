@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import List, Optional, Union
+from typing import List, Optional, Union, Dict
 
 import attrs
 
@@ -91,10 +91,12 @@ class SimpleNatLangToCode(BaseNatLangToCode):
             nl_str = task.target_nl
 
         prompt_strs.append(f"Description:\n{nl_str}")
-        prompt_strs.append(f"\nPython Code:")
         if task.output_prefix is not None:
-            #  OpenAI lang. models do not work well with trailing whitespace.
+            assert not task.output_prefix.startswith("\n")
+            prompt_strs.append(f"\nPython Code:")
             prompt_strs.append(task.output_prefix.rstrip())
+        else:
+            prompt_strs.append(f"\nPython Code:\n")
 
         return "\n".join(prompt_strs)
 
@@ -142,9 +144,8 @@ class SimpleNatLangToCode(BaseNatLangToCode):
             num_completions=1,
             max_tokens=max_tokens,
             stop=[self.stop_token],
-            retry_wait_duration=60,
             max_retries=5,
-            return_logprobs=False,
+            retrieve_top_tokens=False,
             logit_bias=logit_bias,
             key_manager=key_manager,
             min_latency=self.min_latency,
@@ -164,6 +165,7 @@ class SimpleNatLangToCode(BaseNatLangToCode):
             allowed_tokens: Optional[Union[str, List[int]]] = None,
             allowed_tokens_bias: int = 100,
             key_manager: Optional[langmodels.OpenAIKeyManager] = None,
+            top_logprobs: Optional[List[List[Dict[str, float]]]] = None,
     ) -> List[str]:
         """
         Like get_code, but handles multiple tasks in parallel.
@@ -193,13 +195,15 @@ class SimpleNatLangToCode(BaseNatLangToCode):
             num_completions=1,
             max_tokens=max_tokens,
             stop=[self.stop_token],
-            retry_wait_duration=60,
             max_retries=5,
-            return_logprobs=False,
+            retrieve_top_tokens=top_logprobs is not None,
             logit_bias=logit_bias,
             key_manager=key_manager,
             min_latency=self.min_latency,
         )
+
+        if top_logprobs is not None:
+            top_logprobs.clear()
 
         results: List[str] = []
         for resp, task in zip(responses, tasks):
@@ -209,6 +213,9 @@ class SimpleNatLangToCode(BaseNatLangToCode):
                 #  We need to add the output prefix back.
                 #  Note we remove trailing whitespace in the prompt generation, so need to do the same thing here.
                 text = f"{task.output_prefix.rstrip()}{text}"
+
+            if top_logprobs is not None:
+                top_logprobs.append(resp.completions[0].top_logprobs)
 
             results.append(text)
 

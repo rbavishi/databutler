@@ -122,7 +122,7 @@ class NatLangToNewCode(BaseNatLangToCodeChange):
             stop=[self.stop_token],
             retry_wait_duration=60,
             max_retries=5,
-            return_logprobs=False,
+            retrieve_top_tokens=False,
         )
 
         text = resp.completions[0].text
@@ -284,7 +284,7 @@ class NatLangToStmtBlanks(BaseNatLangToCodeChange):
                 stop=[self.stop_token],
                 retry_wait_duration=60,
                 max_retries=5,
-                return_logprobs=False,
+                retrieve_top_tokens=False,
             )
 
             text = resp.completions[0].text
@@ -320,7 +320,7 @@ class NatLangToStmtBlanks(BaseNatLangToCodeChange):
                     stop=[self.stop_token],  # Use new-line as the stop-token for single-line descriptions.
                     retry_wait_duration=60,
                     max_retries=5,
-                    return_logprobs=False,
+                    retrieve_top_tokens=False,
                 )
 
                 generated_blanks.append(resp.completions[0].text.strip())
