@@ -476,7 +476,10 @@ def run_preprocessing(campaign_dir: str, rerun_preprocessing: bool = False) -> N
     simplified_entries: List[Dict] = []
     with pickleutils.PickledMapReader(mining_results_path) as reader:
         print(f"Found {len(reader)} mining results")
-        for idx, mining_result in enumerate(reader.values()):
+        for idx, mining_result in enumerate(tqdm.tqdm(reader.values(),
+                                                      desc="Running Preprocessing",
+                                                      dynamic_ncols=True,
+                                                      total=len(reader))):
             assert isinstance(mining_result, MinedResult)
             simplified_entries.append({
                 "uid": mining_result.uid,
