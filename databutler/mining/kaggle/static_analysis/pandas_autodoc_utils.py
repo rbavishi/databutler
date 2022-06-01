@@ -15,20 +15,29 @@ from databutler.utils import code as codeutils
 class AutodocFewShotExample:
     code: str
     nl: str
+    param_nl: str
+    param_code: str
 
     @classmethod
     def from_json(cls, val_json: Dict) -> 'AutodocFewShotExample':
-        return AutodocFewShotExample(code=val_json['code'], nl=val_json['nl'])
+        return AutodocFewShotExample(
+            code=val_json['code'],
+            nl=val_json['nl'],
+            param_nl=val_json['param_nl'],
+            param_code=val_json['param_code'],
+        )
 
     def to_json(self) -> Dict[str, Any]:
         return {
             "code": self.code,
             "nl": self.nl,
+            "param_nl": self.param_nl,
+            "param_code": self.param_code,
         }
 
 
 @attrs.define(eq=False, repr=False)
-class NLBasedParameterization:
+class Parameterization:
     nl: str
     code: str
 
@@ -36,9 +45,22 @@ class NLBasedParameterization:
     df_params: List[str]
     series_params: List[str]
     col_params: List[str]
-    const_params: Dict[str, Type]
 
     instantiation: Dict[str, str]
+
+    def get_instantiated_nl(self) -> str:
+        nl = self.nl
+        for k, v in self.instantiation.items():
+            nl = nl.replace(f"[{k}]", v)
+
+        return nl
+
+    def get_instantiated_code(self) -> str:
+        code = self.code
+        for k, v in sorted(self.instantiation.items(), key=lambda x: len(x[0]), reverse=True):
+            code = code.replace(f"{k}", v)
+
+        return code
 
 
 @attrs.define(eq=False, repr=False)
@@ -50,7 +72,8 @@ class AutodocDescription:
     code_parseable: bool
     assistance_level: int
 
-    parameterization: NLBasedParameterization = None
+    nl_based_parameterization: Parameterization = None
+    llm_based_parameterization: Parameterization = None
     is_derived: bool = False
 
 
@@ -64,7 +87,7 @@ class AutodocResult:
     incorrect_descriptions: List[AutodocDescription]
 
 
-def normalize_code_for_comparison(code: str, df_args: Set[str]):
+def normalize_keyword_argument_order(code: str):
     code_ast = astlib.parse(code)
     #  Normalize keyword argument order
     node_repl = {}
@@ -80,8 +103,19 @@ def normalize_code_for_comparison(code: str, df_args: Set[str]):
 
     if len(node_repl) > 0:
         code_ast = astlib.with_deep_replacements(code_ast, node_repl)
+        return codeutils.normalize_code_fast(astlib.to_code(code_ast))
+    else:
+        return codeutils.normalize_code_fast(code)
+
+
+def normalize_code_for_comparison(code: str, df_args: Set[str]):
+    code = normalize_keyword_argument_order(code)
+    code_ast = astlib.parse(code)
 
     #  Replace attribute-based column access to the best of our ability
+    if len(df_args) == 0:
+        return code
+
     attr_repl = {}
     for node in astlib.walk(code_ast):
         if isinstance(node, astlib.Attribute) and isinstance(node.value, astlib.Name) and node.value.value in df_args:
@@ -125,7 +159,88 @@ def quotes_aware_split_with_whitespace(text: str) -> List[str]:
     return text_tokens_with_whitespace
 
 
-def parameterize_snippet(snippet: MinedResult, generated_nl: str) -> Optional[NLBasedParameterization]:
+def find_instantiation_map(template_ast: astlib.AstNode, code_ast: astlib.AstNode):
+    worklist: Deque[Tuple[astlib.AstNode, astlib.AstNode]] = collections.deque()
+    worklist.append((template_ast, code_ast))
+
+    req_mapping = {}
+
+    while len(worklist) > 0:
+        t_node, c_node = worklist.popleft()
+
+        if not isinstance(t_node, type(c_node)):
+            req_mapping[t_node] = c_node
+            continue
+
+        t_children = t_node.children
+        c_children = c_node.children
+
+        if len(t_children) != len(c_children):
+            req_mapping[t_node] = c_node
+            continue
+
+        if len(t_children) == 0 and not t_node.deep_equals(c_node):
+            # if astlib.to_code(t_node) != "":
+            req_mapping[t_node] = c_node
+            continue
+
+        for t_c, c_c in zip(t_children, c_children):
+            worklist.append((t_c, c_c))
+
+    return req_mapping
+
+
+def generate_llm_based_parameterization(
+        desc: AutodocDescription, param_nl: str, param_code: str, orig_code: str,
+) -> Optional[Parameterization]:
+    try:
+        #  It must be parseable
+        code_ast = astlib.parse(param_code)
+    except:
+        return None
+
+    first_mod_stmt = next(iter(astlib.iter_body_stmts(code_ast)))
+    #  It should be a function
+    if not isinstance(first_mod_stmt, astlib.FunctionDef):
+        return None
+
+    #  With a single statement as the body
+    if len(list(astlib.iter_body_stmts(first_mod_stmt))) != 1:
+        return None
+
+    first_func_stmt = next(iter(astlib.iter_body_stmts(first_mod_stmt)))
+    #  It should be a return statement or a single expression statement
+    if not isinstance(first_func_stmt, astlib.Return) and not isinstance(first_func_stmt, astlib.Expr):
+        return None
+    else:
+        param_expr = first_func_stmt.value
+
+    params: List[str] = [param.name.value for param in first_mod_stmt.params.params]
+    if not all(f"[{p}]" in param_nl for p in params):
+        #  Every parameter must be mentioned explicitly in the parameterized description
+        return None
+
+    #  There must be a valid instantiation to the original code
+    param_expr = astlib.parse_expr(normalize_keyword_argument_order(astlib.to_code(param_expr)))
+    orig_code = normalize_keyword_argument_order(orig_code)
+    inst_map = find_instantiation_map(param_expr, astlib.parse_expr(orig_code))
+    if not all(isinstance(k, astlib.Name) and k.value in params for k in inst_map.keys()):
+        return None
+    else:
+        instantiation = {k.value: astlib.to_code(v) for k, v in inst_map.items() if isinstance(k, astlib.Name)}
+
+    return Parameterization(
+        nl=param_nl,
+        code=param_code,
+        df_params=[p for p in params if p.startswith("df")],
+        series_params=[p for p in params if p.startswith("series")],
+        col_params=[p for p in params if p.startswith("col")],
+        all_params=params,
+        instantiation=instantiation,
+    )
+
+
+def generate_nl_based_parameterization(snippet: MinedResult, generated_nl: str) -> Optional[Parameterization]:
     try:
         nl_tokens = quotes_aware_split_with_whitespace(generated_nl)
     except:
@@ -222,23 +337,36 @@ def parameterize_snippet(snippet: MinedResult, generated_nl: str) -> Optional[NL
     # print("NEW GENERATED PARAMETERIZATION", new_nl, "||", new_code)
     print(instantiation)
 
-    return NLBasedParameterization(
+    return Parameterization(
         nl=new_nl,
         code=new_code,
         df_params=df_params,
         series_params=series_params,
         col_params=col_params,
-        const_params=const_params,
         all_params=list(set(df_params) | set(series_params) | set(const_params.keys())),
         instantiation=instantiation,
     )
 
 
-def apply_parameterization(
-        parameterization: NLBasedParameterization, snippet: MinedResult
-) -> Optional[NLBasedParameterization]:
-    template_ast = astlib.parse(parameterization.code)
-    code_ast = astlib.parse(snippet.code)
+def attempt_parameterization_application(
+        parameterization: Parameterization, snippet: MinedResult
+) -> Optional[Parameterization]:
+    if parameterization.code.strip().startswith("def code"):
+        #  The template is in function form. Extract the return value or last expression statement value.
+        template_ast = astlib.parse(parameterization.code)
+        first_stmt = next(astlib.iter_body_stmts(template_ast))
+        if not isinstance(first_stmt, astlib.FunctionDef):
+            return None
+        first_func_stmt = next(astlib.iter_body_stmts(first_stmt))
+        if not (isinstance(first_func_stmt, astlib.Expr) or isinstance(first_func_stmt, astlib.Return)):
+            return None
+
+        template_ast = first_func_stmt.value
+    else:
+        template_ast = astlib.parse_expr(parameterization.code)
+
+    template_ast = astlib.parse_expr(normalize_keyword_argument_order(astlib.to_code(template_ast)))
+    code_ast = astlib.parse_expr(normalize_keyword_argument_order(snippet.code))
 
     worklist: Deque[Tuple[astlib.AstNode, astlib.AstNode]] = collections.deque()
     worklist.append((template_ast, code_ast))
@@ -263,16 +391,21 @@ def apply_parameterization(
                     return None
 
             elif astlib.is_constant(c_node):
-                val = astlib.get_constant_value(c_node)
-                if type(val) == parameterization.const_params[t_node.value]:
-                    val_repr = astlib.to_code(c_node)
-                    if t_node.value in instantiation:
-                        if instantiation[t_node.value] != val_repr:
-                            return None
-                    else:
-                        instantiation[t_node.value] = val_repr
-                else:
+                try:
+                    t_val = eval(parameterization.instantiation[t_node.value])
+                except:
                     return None
+                else:
+                    val = astlib.get_constant_value(c_node)
+                    if type(val) == type(t_val):
+                        val_repr = astlib.to_code(c_node)
+                        if t_node.value in instantiation:
+                            if instantiation[t_node.value] != val_repr:
+                                return None
+                        else:
+                            instantiation[t_node.value] = val_repr
+                    else:
+                        return None
             else:
                 return None
 
@@ -295,45 +428,12 @@ def apply_parameterization(
     if set(instantiation.keys()) != all_params:
         return None
 
-    return NLBasedParameterization(
+    return Parameterization(
         nl=parameterization.nl,
         code=parameterization.code,
         df_params=parameterization.df_params,
         series_params=parameterization.series_params,
         col_params=parameterization.col_params,
-        const_params=parameterization.const_params,
         all_params=parameterization.all_params,
         instantiation=instantiation,
     )
-
-
-def find_instantiation_map(template_ast: astlib.AstNode, code_ast: astlib.AstNode):
-    worklist: Deque[Tuple[astlib.AstNode, astlib.AstNode]] = collections.deque()
-    worklist.append((template_ast, code_ast))
-
-    req_mapping = {}
-
-    while len(worklist) > 0:
-        t_node, c_node = worklist.popleft()
-
-        if not isinstance(t_node, type(c_node)):
-            req_mapping[t_node] = c_node
-            continue
-
-        t_children = t_node.children
-        c_children = c_node.children
-
-        if len(t_children) != len(c_children):
-            req_mapping[t_node] = c_node
-            continue
-
-        if len(t_children) == 0 and not t_node.deep_equals(c_node):
-            # if astlib.to_code(t_node) != "":
-            req_mapping[t_node] = c_node
-            continue
-
-        for t_c, c_c in zip(t_children, c_children):
-            worklist.append((t_c, c_c))
-
-    for k, v in req_mapping.items():
-        print(f"{astlib.to_code(k)} maps to {astlib.to_code(v)}")
