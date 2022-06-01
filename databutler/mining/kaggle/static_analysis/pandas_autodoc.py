@@ -493,8 +493,6 @@ def run_preprocessing(campaign_dir: str, rerun_preprocessing: bool = False) -> N
     simplified_entries = list({entry['code']: {**entry, "support": code_counter[entry['code']]}
                                for entry in simplified_entries}.values())
     print(f"Found {len(simplified_entries)} code-unique mining results")
-    for entry in simplified_entries:
-        print(entry["code"], entry["support"])
 
     #  Save to disk
     pickleutils.smart_dump(simplified_entries, preprocessing_path)
