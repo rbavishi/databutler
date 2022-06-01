@@ -545,6 +545,8 @@ def run_autodoc_new(
     preprocessing_path = os.path.join(campaign_dir, PREPROCESSING_RESULTS_FILE)
     simplified_entries: List[Dict] = pickleutils.smart_load(preprocessing_path)
 
+    print(f"Found {len(simplified_entries)} entries")
+
     mining_results_path = os.path.join(campaign_dir, MINING_RESULTS_FILE)
     if not os.path.exists(mining_results_path):
         raise FileNotFoundError(f"Could not find mining results at {mining_results_path}")
