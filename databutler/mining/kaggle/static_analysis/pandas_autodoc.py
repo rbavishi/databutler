@@ -619,7 +619,7 @@ def run_autodoc_new(
             pickleutils.PickledMapWriter(autodoc_successes_path, overwrite_existing=False) as writer_success, \
             pickleutils.PickledMapWriter(autodoc_failures_path, overwrite_existing=False) as writer_failures:
 
-        while len(finished) < len(simplified_entries):
+        while len(finished) < len(finished) + len(simplified_entries):
             num_finished_start = len(finished)
 
             #  Build the next chunk of entries to process
