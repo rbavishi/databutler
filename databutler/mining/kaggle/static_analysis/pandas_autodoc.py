@@ -1,5 +1,5 @@
+import ast
 import collections
-import itertools
 import os
 import random
 from typing import Optional, List, Dict, Tuple, Set, Deque, Iterator
@@ -60,6 +60,8 @@ def normalize_code_results(code_results: List[str], df_arg_names: Set[str]) -> L
     normalized = []
     for code_result in code_results:
         try:
+            #  Sometimes libcst messes up.
+            ast.parse(code_result)
             code_result = normalize_code_for_comparison(code_result, df_arg_names)
         except (astlib.cst.ParserSyntaxError, SyntaxError):
             normalized.append(None)
@@ -536,7 +538,7 @@ def build_next_chunk(
 def run_autodoc_new(
         campaign_dir: str,
         few_shot_version: int = 1,
-        batch_size: int = 5,
+        batch_size: int = 10,
         rerun_preprocessing: bool = False,
 ) -> None:
     """Run autodoc for a campaign assuming the few-shot examples have been set up."""
