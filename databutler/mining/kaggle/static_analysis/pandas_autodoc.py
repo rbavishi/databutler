@@ -590,6 +590,7 @@ def run_autodoc_new(
         print(f"Already found {len(unsuccessful_uids)} unsuccessful autodoc results")
         print(f"Already found {len(successful_uids)} successful autodoc results")
 
+    seen_templates: Set[str] = {e["template"] for e in simplified_entries if e["uid"] in finished}
     simplified_entries = [e for e in simplified_entries if e["uid"] not in finished]
 
     #  Collect entries for each template
@@ -640,6 +641,7 @@ def run_autodoc_new(
                     continue
                 else:
                     writer_success[entry["uid"]] = autodoc_res
+                    seen_templates.add(entry["template"])
                     #  Try transferring the result to other results with the same template.
                     unprocessed_entries = [e for e in entries_by_template[entry["template"]]
                                            if e["uid"] not in finished]
@@ -674,7 +676,9 @@ def run_autodoc_new(
                 template_failure_counts[entry["template"]] = 0
 
             pbar.update(len(finished) - num_finished_start)
-            pbar.set_postfix(successes=len(successful_uids), failures=len(unsuccessful_uids))
+            pbar.set_postfix(
+                successes=len(successful_uids), failures=len(unsuccessful_uids), templates=len(seen_templates)
+            )
 
             #  Demote a template if too many errors
             for idx, (template, iter_) in enumerate(active_iters, start=0):
