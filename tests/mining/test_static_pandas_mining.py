@@ -65,10 +65,13 @@ class StaticPandasMiningTests(unittest.TestCase):
         data2 = data2.replace(lambda x: x)
         df = pd.read_csv("unittesting.csv")
         df['State'].apply((lambda state: (state[0] == 'W')))
+        df[df['state_name'].isin(('Florida', 'Texas', 'Louisiana', 'Alabama'))]
 
+        df.iloc[:, 0:2]
         """)
 
-        mining.mine_code(code)
+        for res in mining.mine_code(code):
+            print(res)
 
     def test_mine_code_2(self):
         code = textwrap.dedent("""

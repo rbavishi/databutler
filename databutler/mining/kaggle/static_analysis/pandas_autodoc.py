@@ -28,6 +28,9 @@ from databutler.mining.kaggle.static_analysis.pandas_mining_utils import MinedRe
 from databutler.pat import astlib
 from databutler.utils import pickleutils, langmodels
 
+from sentence_transformers import SentenceTransformer, LoggingHandler, losses, InputExample, evaluation
+from torch.utils.data import DataLoader
+
 ENGINE = 'code-davinci-002'
 PREPROCESSING_RESULTS_FILE = "pandas_mining_preprocessed.pkl"
 AUTODOC_SUCCESSES_PATH = "autodoc_results.pkl"
@@ -785,6 +788,77 @@ def train_generational_model(campaign_dir: str, model_name: str, max_epochs: int
     simplet5_model.tokenizer.save_pretrained(os.path.join(campaign_dir, prefix + "_trained"))
 
 
+def prepare_dataset_for_training_embeddings(campaign_dir: str, per_equiv_class: int = 5):
+    autodoc_successes_path = os.path.join(campaign_dir, AUTODOC_SUCCESSES_PATH)
+    with pickleutils.PickledMapReader(autodoc_successes_path) as autodoc_reader:
+        all_autodoc_results: List[AutodocResult] = list(tqdm.tqdm(autodoc_reader.values(), total=len(autodoc_reader)))
+
+    non_derived_results: List[AutodocResult] = [res for res in all_autodoc_results
+                                                if all(not desc.is_derived for desc in res.correct_descriptions)]
+    print(f"Found {len(non_derived_results)} non-derived autodoc results")
+
+    equiv_classes: List[List[str]] = []
+    for res in non_derived_results:
+        unique_nls = set(desc.nl for desc in res.correct_descriptions)
+        unique_nls.update(desc.nl for desc in res.incorrect_descriptions)
+        equiv_classes.append(list(unique_nls))
+
+    all_indices: List[int] = list(range(len(equiv_classes)))
+    correct_pairs: List[Tuple[str, str]] = []
+    incorrect_pairs: List[Tuple[str, str]] = []
+    for idx, equiv_class in enumerate(tqdm.tqdm(equiv_classes, desc="Preparing data")):
+        candidates = list(itertools.combinations(equiv_class, 2))
+        random.shuffle(candidates)
+
+        for s1, s2 in candidates[:per_equiv_class]:
+            correct_pairs.append((s1, s2))
+
+        other_sample = random.sample(all_indices, per_equiv_class)
+        while idx in other_sample:
+            other_sample = random.sample(all_indices, per_equiv_class)
+
+        for other_idx in other_sample:
+            s1 = random.choice(equiv_class)
+            s2 = random.choice(equiv_classes[other_idx])
+            incorrect_pairs.append((s1, s2))
+
+    print("SIZES", len(correct_pairs), len(incorrect_pairs))
+    pickleutils.smart_dump([correct_pairs, incorrect_pairs], os.path.join(campaign_dir, "embedding_train_data.pkl"))
+
+
+def train_embeddings(campaign_dir: str):
+    correct_pairs, incorrect_pairs = pickleutils.smart_load(os.path.join(campaign_dir, "embedding_train_data.pkl"))
+    random.shuffle(correct_pairs)
+    random.shuffle(incorrect_pairs)
+
+    model = SentenceTransformer('all-MiniLM-L6-v2')
+    train_examples = [
+        *(InputExample(texts=[s1, s2], label=1) for s1, s2 in correct_pairs[:int(len(correct_pairs) * 0.8)]),
+        *(InputExample(texts=[s1, s2], label=0) for s1, s2 in incorrect_pairs[:int(len(incorrect_pairs) * 0.8)]),
+    ]
+
+    test_examples = [
+        *(InputExample(texts=[s1, s2], label=1) for s1, s2 in correct_pairs[int(len(correct_pairs) * 0.8):]),
+        *(InputExample(texts=[s1, s2], label=0) for s1, s2 in incorrect_pairs[int(len(incorrect_pairs) * 0.8):]),
+    ]
+
+    evaluator = evaluation.EmbeddingSimilarityEvaluator.from_input_examples(test_examples, show_progress_bar=True)
+
+    train_dataloader = DataLoader(train_examples, shuffle=True, batch_size=8)
+    train_loss = losses.ContrastiveLoss(model=model)
+
+    output_path = os.path.join(campaign_dir, "embedding_model")
+    model.fit(
+        [(train_dataloader, train_loss)],
+        evaluator=evaluator,
+        epochs=5,
+        evaluation_steps=10000,
+        show_progress_bar=True,
+        save_best_model=True,
+        output_path=output_path
+    )
+
+
 def analyze(campaign_dir: str):
     autodoc_results_path = os.path.join(campaign_dir, AUTODOC_SUCCESSES_PATH)
     autodoc_failures_path = os.path.join(campaign_dir, AUTODOC_FAILURES_FILE)
@@ -801,9 +875,14 @@ def analyze(campaign_dir: str):
 
 
 if __name__ == "__main__":
+    import logging
+    logging.basicConfig(level=logging.INFO)
+
     fire.Fire({
         "run_autodoc": run_autodoc_new,
         "analyze": analyze,
         "prepare_dataset_for_generational_model": prepare_dataset_for_generational_model,
-        "train_generational_model": train_generational_model
+        "train_generational_model": train_generational_model,
+        "prepare_dataset_for_training_embeddings": prepare_dataset_for_training_embeddings,
+        "train_embeddings": train_embeddings,
     })

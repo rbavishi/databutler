@@ -164,7 +164,8 @@ def mine_code(
 
     all_found_exprs = df_series_gpby_exprs | api_usage_exprs
 
-    #  3. Find function calls that take dataframe / series / groupby arguments that were not identified previously
+    #  3. Find function calls / subscript accesses that take dataframe / series / groupby arguments that were not
+    #  identified previously
     call_exprs_with_df_series_gpby_args = set()
     for node in astlib.iter_true_exprs(code_ast, context=code_ast):
         if isinstance(node, astlib.Call) and node not in all_found_exprs:
@@ -178,6 +179,18 @@ def mine_code(
 
             if any(arg.value in df_series_gpby_exprs for arg in node.args):
                 call_exprs_with_df_series_gpby_args.add(node)
+
+    all_found_exprs.update(call_exprs_with_df_series_gpby_args)
+    subscript_exprs_with_df_series_gpby_values = set()
+    for node in astlib.iter_true_exprs(code_ast, context=code_ast):
+        if isinstance(node, astlib.Subscript) and node not in all_found_exprs:
+            #  Do not want expressions whose parents were found in the previous step
+            if any(n in all_found_exprs for n in astlib.iter_parents(node.value, code_ast)):
+                continue
+
+            print("CONSIDERING", astlib.to_code(node))
+            if any(child in all_found_exprs for child in astlib.iter_children(node)):
+                subscript_exprs_with_df_series_gpby_values.add(node)
 
     #  Eliminate accessor expressions.
     #  For example, do not count df['A'] > 10, when it is part of df[df['A'] > 10]
@@ -205,6 +218,10 @@ def mine_code(
 
     for expr in call_exprs_with_df_series_gpby_args:
         result.append(prepare_mined_result(expr, code_ast, inferred_types, lib_usages, constants, "CALLED_W_PD_ARGS",
+                                           nb_owner, nb_slug))
+
+    for expr in subscript_exprs_with_df_series_gpby_values:
+        result.append(prepare_mined_result(expr, code_ast, inferred_types, lib_usages, constants, "SUBSCRIPT_W_PD_ARGS",
                                            nb_owner, nb_slug))
 
     result = [res for res in result if res is not None]
