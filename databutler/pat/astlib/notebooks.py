@@ -172,7 +172,7 @@ def _remove_magics_from_cell_code(code: str) -> str:
     new_lines = []
     for line in code.split('\n'):
         line_s = line.lstrip()
-        if line_s.startswith("%") or line_s.startswith("!"):
+        if line_s.startswith("%") or line_s.startswith("!") or line_s.startswith("?"):
             continue
 
         line_s_split = line_s.split()
