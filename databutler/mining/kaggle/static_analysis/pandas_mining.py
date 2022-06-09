@@ -188,7 +188,6 @@ def mine_code(
             if any(n in all_found_exprs for n in astlib.iter_parents(node.value, code_ast)):
                 continue
 
-            print("CONSIDERING", astlib.to_code(node))
             if any(child in all_found_exprs for child in astlib.iter_children(node)):
                 subscript_exprs_with_df_series_gpby_values.add(node)
 
