@@ -1,13 +1,20 @@
 import ast
 import collections
+import itertools
 import os
 import random
+import shutil
 from typing import Optional, List, Dict, Tuple, Set, Deque, Iterator
 
 import fire
 import tqdm
 import yaml
+import numpy as np
+from simplet5 import SimpleT5
+from sklearn.model_selection import train_test_split
+from transformers import RobertaTokenizer, T5Tokenizer, T5ForConditionalGeneration
 
+import pandas as pd
 from databutler.datana.generic.autodoc import code2nl, nl2code
 from databutler.datana.generic.autodoc.few_shot import FewShotExampleCodeAndNL
 from databutler.datana.generic.autoparameterization.few_shot import FewShotExampleParameterization
@@ -690,6 +697,94 @@ def run_autodoc_new(
             writer_failures.flush()
 
 
+def prepare_dataset_for_generational_model(campaign_dir: str, num_per_desc_uid: int = 10):
+    """Prepare a dataset out of the autodoc results to be used for training a small model like CodeBERT or CodeT5"""
+    autodoc_successes_path = os.path.join(campaign_dir, AUTODOC_SUCCESSES_PATH)
+    with pickleutils.PickledMapReader(autodoc_successes_path) as autodoc_reader:
+        all_autodoc_results: List[AutodocResult] = list(tqdm.tqdm(autodoc_reader.values(), total=len(autodoc_reader)))
+
+    print(f"Found {len(all_autodoc_results)} autodoc results")
+    descriptions_by_uid: Dict[str, List[AutodocDescription]] = collections.defaultdict(list)
+    for res in all_autodoc_results:
+        for desc in res.correct_descriptions:
+            descriptions_by_uid[desc.uid].append(desc)
+
+    #  Shuffle each array
+    for descs in descriptions_by_uid.values():
+        random.shuffle(descs)
+
+    print(f"Found {len(descriptions_by_uid)} unique descriptions")
+
+    iter_dict: Dict[str, Iterator[AutodocDescription]] = {k: itertools.cycle(v) for k, v in descriptions_by_uid.items()}
+
+    records = []
+    for loop_no in range(0, num_per_desc_uid):
+        for iter_ in iter_dict.values():
+            desc = next(iter_)
+            nl = desc.nl
+            code = desc.generated_code
+            if code.startswith("def "):
+                code = "\n".join(code.split("\n")[1:])
+            if code.startswith("return "):
+                code = code[len("return "):]
+
+            source_text = f"generate-code: {nl}"
+            target_text = code
+
+            records.append({"source_text": source_text, "target_text": target_text})
+
+    df = pd.DataFrame.from_records(records)
+    print(df)
+    pickleutils.smart_dump(df, os.path.join(campaign_dir, "t5_code_data.pkl"))
+
+
+def get_max_tokens(tokenizer, strings: List[str]) -> int:
+    lengths = []
+    for idx in range(0, len(strings), 32):
+        batch = strings[idx: idx + 32]
+        lengths.extend(len(i) for i in tokenizer(batch)["input_ids"])
+
+    print(np.mean(lengths), np.median(lengths), np.max(lengths), np.min(lengths),
+          np.percentile(lengths, 50), np.percentile(lengths, 75), np.percentile(lengths, 90),
+          np.percentile(lengths, 99))
+    return max(lengths)
+
+
+def train_generational_model(campaign_dir: str, model_name: str, max_epochs: int = 10):
+    df = pickleutils.smart_load(os.path.join(campaign_dir, "t5_code_data.pkl"))
+    train_df, test_df = train_test_split(df, test_size=0.2)
+
+    if model_name.startswith("Salesforce/codet5"):
+        tokenizer = RobertaTokenizer.from_pretrained(model_name)
+    else:
+        tokenizer = T5Tokenizer.from_pretrained(model_name)
+
+    model = T5ForConditionalGeneration.from_pretrained(model_name, return_dict=True)
+
+    simplet5_model = SimpleT5()
+    simplet5_model.tokenizer = tokenizer
+    simplet5_model.model = model
+
+    prefix = model_name.replace("/", "_")
+
+    output_dir = os.path.join(campaign_dir, prefix + "_model_outputs")
+    if os.path.exists(output_dir):
+        shutil.rmtree(output_dir, ignore_errors=True)
+
+    simplet5_model.train(train_df=train_df,
+                         eval_df=test_df,
+                         source_max_token_len=128,
+                         target_max_token_len=128,
+                         outputdir=output_dir,
+                         early_stopping_patience_epochs=3,
+                         batch_size=8,
+                         max_epochs=max_epochs,
+                         use_gpu=True)
+
+    simplet5_model.model.save_pretrained(os.path.join(campaign_dir, prefix + "_trained"))
+    simplet5_model.tokenizer.save_pretrained(os.path.join(campaign_dir, prefix + "_trained"))
+
+
 def analyze(campaign_dir: str):
     autodoc_results_path = os.path.join(campaign_dir, AUTODOC_SUCCESSES_PATH)
     autodoc_failures_path = os.path.join(campaign_dir, AUTODOC_FAILURES_FILE)
@@ -709,4 +804,6 @@ if __name__ == "__main__":
     fire.Fire({
         "run_autodoc": run_autodoc_new,
         "analyze": analyze,
+        "prepare_dataset_for_generational_model": prepare_dataset_for_generational_model,
+        "train_generational_model": train_generational_model
     })
