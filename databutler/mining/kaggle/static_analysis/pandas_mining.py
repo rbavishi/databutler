@@ -1,4 +1,5 @@
 import os
+import random
 import shutil
 from typing import Dict, Any, List, Set, Optional, Tuple
 
@@ -310,6 +311,14 @@ def start_mining_campaign(
             start_idx = start_idx or 0
             all_keys = all_keys[start_idx:start_idx + num_notebooks]
             print(f"Only considering {len(all_keys)} notebooks")
+
+        if append and os.path.exists(outfile_path):
+            finished_keys = {tuple(key.split(':')[0].split('/')) for key in writer.keys()}
+            print(f"Already mined {len(finished_keys)} notebooks")
+            all_keys = [key for key in all_keys if key not in finished_keys]
+            print(f"Only considering {len(all_keys)} notebooks")
+
+        random.shuffle(all_keys)
 
         num_snippets_found = 0
         succ = exceptions = timeouts = other = 0
