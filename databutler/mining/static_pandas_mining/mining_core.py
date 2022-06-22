@@ -8,9 +8,9 @@ import fire
 import tqdm
 
 import pandas as pd
-from databutler.mining.kaggle.notebooks import utils as nb_utils
-from databutler.mining.kaggle.notebooks.notebook import KaggleNotebook
-from databutler.mining.kaggle.static_analysis.pandas_mining_utils import (
+from databutler.mining.kaggle_tools.notebooks import utils as nb_utils
+from databutler.mining.kaggle_tools.notebooks.notebook import KaggleNotebook
+from databutler.mining.static_pandas_mining.mining_utils import (
     find_library_usages,
     find_constants,
     replace_constants,

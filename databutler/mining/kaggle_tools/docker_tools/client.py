@@ -9,11 +9,11 @@ import docker
 import docker.models.containers
 from docker.errors import ImageNotFound
 
-from databutler.mining.kaggle.docker_tools.exceptions import (
+from databutler.mining.kaggle_tools.docker_tools.exceptions import (
     ContainerStartError,
     CommandFailedError,
 )
-from databutler.mining.kaggle.docker_tools.utils import _tarify_contents, _tarify_path
+from databutler.mining.kaggle_tools.docker_tools.utils import _tarify_contents, _tarify_path
 from databutler.utils.logging import logger
 
 

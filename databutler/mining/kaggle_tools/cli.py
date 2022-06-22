@@ -7,19 +7,19 @@ import fire
 import tqdm
 
 from databutler.utils.logging import logger
-from databutler.mining.kaggle import utils
-from databutler.mining.kaggle.execution.result import NotebookExecStatus
-from databutler.mining.kaggle.notebooks import utils as nb_utils
-from databutler.mining.kaggle.notebooks.download import (
+from databutler.mining.kaggle_tools import utils
+from databutler.mining.kaggle_tools.execution.result import NotebookExecStatus
+from databutler.mining.kaggle_tools.notebooks import utils as nb_utils
+from databutler.mining.kaggle_tools.notebooks.download import (
     get_notebooks_using_meta_kaggle,
     download_notebooks,
     download_notebooks_gdrive,
 )
-from databutler.mining.kaggle.notebooks.notebook import (
+from databutler.mining.kaggle_tools.notebooks.notebook import (
     KaggleNotebook,
     KaggleNotebookSourceType,
 )
-from databutler.mining.kaggle.utils import fire_command
+from databutler.mining.kaggle_tools.utils import fire_command
 
 
 @fire_command(name="MetaKaggleNotebooks", collection=__file__)
@@ -172,7 +172,7 @@ def view_notebook(owner: str, slug: str):
     """
     nb_data = nb_utils.retrieve_notebook_data(owner, slug)
     print(json.dumps(nb_data, indent=2))
-    from databutler.mining.kaggle.notebooks.notebook import KaggleNotebook
+    from databutler.mining.kaggle_tools.notebooks.notebook import KaggleNotebook
 
     nb = KaggleNotebook(owner, slug)
     print(nb.associated_competition)
@@ -300,26 +300,26 @@ def run_notebook(
         )
 
     if executor_name == "simple_executor":
-        from databutler.mining.kaggle.execution.simple_executor import SimpleExecutor
+        from databutler.mining.kaggle_tools.execution.simple_executor import SimpleExecutor
 
         executor = SimpleExecutor
 
     elif executor_name == "pandas_miner":
-        from databutler.mining.kaggle.dynamic_analysis.pandas_mining.miner import (
+        from databutler.mining.kaggle_tools.dynamic_analysis.pandas_mining.miner import (
             PandasMiner,
         )
 
         executor = PandasMiner
 
     elif executor_name == "plotly_miner":
-        from databutler.mining.kaggle.dynamic_analysis.plotly_mining.miner import (
+        from databutler.mining.kaggle_tools.dynamic_analysis.plotly_mining.miner import (
             PlotlyMiner,
         )
 
         executor = PlotlyMiner
 
     elif executor_name == "mpl_seaborn_viz_miner":
-        from databutler.mining.kaggle.dynamic_analysis.mpl_seaborn_mining.miner import (
+        from databutler.mining.kaggle_tools.dynamic_analysis.mpl_seaborn_mining.miner import (
             MplSeabornVizMiner,
         )
 

@@ -3,13 +3,12 @@ import unittest
 
 import pytest
 
-import databutler.mining.kaggle.static_analysis.pandas_mining_utils
-from databutler.mining.kaggle.static_analysis import pandas_mining as mining
+from databutler.mining.static_pandas_mining import mining_utils
+from databutler.mining.static_pandas_mining import mining
 from databutler.pat import astlib
 
 
 class StaticPandasMiningTests(unittest.TestCase):
-    @pytest.mark.xfail(reason="This test is flaky due to mypy.")
     def test_find_library_usages_1(self):
         code = textwrap.dedent(
             """
@@ -29,13 +28,12 @@ class StaticPandasMiningTests(unittest.TestCase):
         )
 
         code_ast = astlib.parse(code)
-        result = databutler.mining.kaggle.static_analysis.pandas_mining_utils.find_library_usages(
+        result = mining_utils.find_library_usages(
             code_ast
         )
         print(result)
         self.assertEquals(5, len(result))
 
-    @pytest.mark.xfail(reason="This test is flaky due to mypy.")
     def test_find_constants_1(self):
         code = textwrap.dedent(
             """
@@ -53,7 +51,7 @@ class StaticPandasMiningTests(unittest.TestCase):
 
         code_ast = astlib.parse(code)
         result = (
-            databutler.mining.kaggle.static_analysis.pandas_mining_utils.find_constants(
+            mining_utils.find_constants(
                 code_ast
             )
         )
@@ -61,6 +59,34 @@ class StaticPandasMiningTests(unittest.TestCase):
         self.assertSetEqual(
             {int, dict, set, list, tuple}, {type(i) for i in result.values()}
         )
+
+    def test_find_constants_2(self):
+        code = textwrap.dedent(
+            """
+        import pandas as pd
+        a = []
+        for i in range(10):
+            a.append(i)
+
+        pd.DataFrame(a)
+        
+        b = {}
+        for i in range(10):
+            b[i] = i
+            
+        pd.DataFrame(b)
+        """
+        )
+
+        code_ast = astlib.parse(code)
+        result = (
+            mining_utils.find_constants(
+                code_ast
+            )
+        )
+
+        print(result)
+        self.assertEqual(0, len(result))
 
     @pytest.mark.xfail(reason="This test is flaky due to mypy.")
     def test_mine_code_1(self):

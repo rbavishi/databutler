@@ -30,17 +30,17 @@ from databutler.pat.analysis.instrumentation import (
     ExprWrapper,
 )
 from databutler.utils.logging import logger
-from databutler.mining.kaggle.execution.base import BaseExecutor, register_runner
-from databutler.mining.kaggle.dynamic_analysis.instrumentation_utils import (
+from databutler.mining.kaggle_tools.execution.base import BaseExecutor, register_runner
+from databutler.mining.kaggle_tools.dynamic_analysis.instrumentation_utils import (
     IPythonMagicBlocker,
 )
-from databutler.mining.kaggle.dynamic_analysis.mpl_seaborn_mining.minimization import (
+from databutler.mining.kaggle_tools.dynamic_analysis.mpl_seaborn_mining.minimization import (
     minimize_code,
 )
-from databutler.mining.kaggle.dynamic_analysis.mpl_seaborn_mining.var_optimization import (
+from databutler.mining.kaggle_tools.dynamic_analysis.mpl_seaborn_mining.var_optimization import (
     optimize_vars,
 )
-from databutler.mining.kaggle.notebooks.notebook import KaggleNotebookSourceType
+from databutler.mining.kaggle_tools.notebooks.notebook import KaggleNotebookSourceType
 
 _MAX_VIZ_FUNC_EXEC_TIME = 5
 

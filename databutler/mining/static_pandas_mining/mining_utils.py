@@ -5,7 +5,7 @@ import glob
 import io
 import os
 import string
-from typing import Dict, Any, Tuple, List, Collection, Optional
+from typing import Dict, Any, Tuple, List, Collection, Optional, Set
 
 import attrs
 
@@ -152,6 +152,31 @@ def find_constants(code_ast: astlib.AstNode) -> Dict[astlib.BaseExpression, Any]
         for node in astlib.walk(stmt):
             numbering[node] = idx
 
+    forbidden_access_nodes: Set[astlib.Name] = set()
+    for node in astlib.walk(code_ast):
+        #  Do not want even a hint of an update.
+        if isinstance(node, (astlib.Assign, astlib.AugAssign, astlib.AnnAssign)):
+            targets: List[astlib.AstNode] = []
+            if isinstance(node, astlib.Assign):
+                targets = list(node.targets)
+            elif isinstance(node, astlib.AugAssign):
+                targets = [node.target]
+            elif isinstance(node, astlib.AnnAssign):
+                targets = [node.target]
+
+            for target in targets:
+                for c_node in astlib.walk(target):
+                    if isinstance(c_node, astlib.Name):
+                        # print(f"Adding {astlib.to_code(c_node)} for {astlib.to_code(node)}")
+                        forbidden_access_nodes.add(c_node)
+
+        #  Any sort of call on a name could mean a side-effect. Just avoid.
+        elif isinstance(node, astlib.Call):
+            for c_node in astlib.walk(node.func):
+                if isinstance(c_node, astlib.Name):
+                    # print(f"Adding {astlib.to_code(c_node)} for {astlib.to_code(node)}")
+                    forbidden_access_nodes.add(c_node)
+
     for access in accesses:
         num = numbering[access.node]
         #  Find the closest top-level def
@@ -165,6 +190,9 @@ def find_constants(code_ast: astlib.AstNode) -> Dict[astlib.BaseExpression, Any]
             continue
 
         if not isinstance(cur.enclosing_node, (astlib.AnnAssign, astlib.Assign)):
+            continue
+
+        if any(acc.node in forbidden_access_nodes for acc in cur.accesses):
             continue
 
         if astlib.is_constant(cur.enclosing_node.value):

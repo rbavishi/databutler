@@ -6,7 +6,7 @@ from typing import Deque, Tuple, Dict, Any, Optional, List, Set, Type
 import attrs
 
 import pandas as pd
-from databutler.mining.kaggle.static_analysis.pandas_mining_utils import MinedResult
+from databutler.mining.static_pandas_mining.mining_utils import MinedResult
 from databutler.pat import astlib
 from databutler.utils import code as codeutils
 

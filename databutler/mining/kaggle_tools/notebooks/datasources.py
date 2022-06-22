@@ -4,8 +4,8 @@ from enum import Enum
 
 import attrs
 
-from databutler.mining.kaggle import utils
-from databutler.mining.kaggle.notebooks import utils as nb_utils
+from databutler.mining.kaggle_tools import utils
+from databutler.mining.kaggle_tools.notebooks import utils as nb_utils
 
 
 class KaggleDataSourceType(Enum):

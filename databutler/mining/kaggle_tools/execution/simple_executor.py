@@ -1,7 +1,7 @@
 import os
 
-from databutler.mining.kaggle.execution.base import BaseExecutor, register_runner
-from databutler.mining.kaggle.notebooks.notebook import KaggleNotebookSourceType
+from databutler.mining.kaggle_tools.execution.base import BaseExecutor, register_runner
+from databutler.mining.kaggle_tools.notebooks.notebook import KaggleNotebookSourceType
 
 from databutler.pat import astlib
 

@@ -11,12 +11,12 @@ from typing import Optional, Dict, Set, Callable, List, Any
 
 import git
 
-from databutler.mining.kaggle.docker_tools.client import DockerShellClient
-from databutler.mining.kaggle.execution.result import (
+from databutler.mining.kaggle_tools.docker_tools.client import DockerShellClient
+from databutler.mining.kaggle_tools.execution.result import (
     NotebookExecResult,
     NotebookExecStatus,
 )
-from databutler.mining.kaggle.notebooks.notebook import (
+from databutler.mining.kaggle_tools.notebooks.notebook import (
     KaggleNotebook,
     KaggleNotebookSourceType,
 )

@@ -24,7 +24,7 @@ from databutler.datana.generic.autoparameterization.parameterizers import (
     SimpleParameterizer,
     ParameterizationTask,
 )
-from databutler.mining.kaggle.static_analysis.pandas_autodoc_utils import (
+from databutler.mining.static_pandas_mining.autodoc_utils import (
     AutodocFewShotExample,
     AutodocDescription,
     AutodocResult,
@@ -35,8 +35,8 @@ from databutler.mining.kaggle.static_analysis.pandas_autodoc_utils import (
     Parameterization,
     generate_llm_based_parameterization,
 )
-from databutler.mining.kaggle.static_analysis.pandas_mining import MINING_RESULTS_FILE
-from databutler.mining.kaggle.static_analysis.pandas_mining_utils import MinedResult
+from databutler.mining.static_pandas_mining.mining import MINING_RESULTS_FILE
+from databutler.mining.static_pandas_mining.mining_utils import MinedResult
 from databutler.pat import astlib
 from databutler.utils import pickleutils, langmodels
 

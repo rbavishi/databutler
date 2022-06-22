@@ -6,11 +6,11 @@ import attrs
 import yaml
 
 import pandas as pd
-from databutler.mining.kaggle.dynamic_analysis.instrumentation_utils import (
+from databutler.mining.kaggle_tools.dynamic_analysis.instrumentation_utils import (
     IPythonMagicBlocker,
 )
-from databutler.mining.kaggle.execution.base import BaseExecutor, register_runner
-from databutler.mining.kaggle.notebooks.notebook import KaggleNotebookSourceType
+from databutler.mining.kaggle_tools.execution.base import BaseExecutor, register_runner
+from databutler.mining.kaggle_tools.notebooks.notebook import KaggleNotebookSourceType
 from databutler.pat import astlib
 from databutler.pat.analysis.clock import LogicalClock
 from databutler.pat.analysis.hierarchical_trace.builder import (

@@ -9,15 +9,15 @@ from libcst import AssignTarget
 from matplotlib import pyplot as plt
 
 import pandas as pd
-from databutler.mining.kaggle.dynamic_analysis.mpl_seaborn_mining.var_optimization import (
+from databutler.mining.kaggle_tools.dynamic_analysis.mpl_seaborn_mining.var_optimization import (
     optimize_vars,
 )
-from databutler.mining.kaggle.dynamic_analysis.plotly_mining import utils
-from databutler.mining.kaggle.dynamic_analysis.plotly_mining.minimizer import (
+from databutler.mining.kaggle_tools.dynamic_analysis.plotly_mining import utils
+from databutler.mining.kaggle_tools.dynamic_analysis.plotly_mining.minimizer import (
     minimize_code,
 )
-from databutler.mining.kaggle.execution.base import BaseExecutor, register_runner
-from databutler.mining.kaggle.notebooks.notebook import KaggleNotebookSourceType
+from databutler.mining.kaggle_tools.execution.base import BaseExecutor, register_runner
+from databutler.mining.kaggle_tools.notebooks.notebook import KaggleNotebookSourceType
 from databutler.pat import astlib
 from databutler.pat.analysis.clock import LogicalClock
 from databutler.pat.analysis.hierarchical_trace.builder import (

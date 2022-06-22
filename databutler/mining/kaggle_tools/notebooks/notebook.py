@@ -6,11 +6,11 @@ import attrs
 
 from databutler.pat import astlib
 from databutler.utils import caching
-from databutler.mining.kaggle.notebooks.datasources import (
+from databutler.mining.kaggle_tools.notebooks.datasources import (
     KaggleDataSource,
     KaggleDataSourceType,
 )
-from databutler.mining.kaggle.notebooks import utils as nb_utils
+from databutler.mining.kaggle_tools.notebooks import utils as nb_utils
 
 
 class KaggleNotebookSourceType(Enum):

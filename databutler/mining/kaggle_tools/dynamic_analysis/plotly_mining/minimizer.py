@@ -6,7 +6,7 @@ import libcst
 
 from databutler.pat import astlib
 from databutler.utils.logging import logger
-from databutler.mining.kaggle.dynamic_analysis.plotly_mining import utils
+from databutler.mining.kaggle_tools.dynamic_analysis.plotly_mining import utils
 
 
 def _is_syntactically_correct(code: str) -> bool:
