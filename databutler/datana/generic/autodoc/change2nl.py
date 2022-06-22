@@ -60,7 +60,7 @@ class FullCodeChangeToNatLang(BaseCodeChangeToNatLang):
     engine: str = "code-davinci-001"
     max_tokens: int = 256
 
-    default_task_description: str = "Describe the difference between the old Python code and new Python code snippets below."
+    default_task_desc: str = "Describe the difference between the old Python code and new Python code snippets below."
 
     def _get_diff_representation(self, old_code: str, new_code: str) -> List[str]:
         prompt_strs: List[str] = [
@@ -90,7 +90,7 @@ class FullCodeChangeToNatLang(BaseCodeChangeToNatLang):
         is_bullet = []
 
         # Adding the additional target description to the prompt strings
-        desc = self.default_task_description
+        desc = self.default_task_desc
         if task.task_description is not None:
             desc = task.task_description
 
@@ -227,7 +227,7 @@ class DiffToNatLang(FullCodeChangeToNatLang):
     engine: str = "code-davinci-001"
     max_tokens: int = 256
 
-    default_task_description: str = (
+    default_task_desc: str = (
         "Describe the given diff for the Python code snippets below."
     )
 

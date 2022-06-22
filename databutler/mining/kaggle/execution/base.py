@@ -460,19 +460,19 @@ class BaseExecutor(ABC):
         **executor_kwargs: Dict[str, Any],
     ) -> str:
         """
-                Returns the entrypoint code to run in the container. This script invokes the `runner_main` method for the
-                target executor class.
+        Returns the entrypoint code to run in the container. This script invokes the `runner_main` method
+        for the target executor class.
 
-                Args:
-                    output_dir_path: A string corresponding to a path on the host filesystem where all the output resulting
-                        from the execution of the Kaggle notebook or the corresponding analyses should be stored.
-                    script_path: A string corresponding to a path on the container filesystem where the contents of the
-                        original Kaggle notebook are stored.
-                    script_src_type: Source type of the original Kaggle notebook.
-                    **executor_kwargs: Additional keyword arguments specific to the executor.
+        Args:
+            output_dir_path: A string corresponding to a path on the host filesystem where all the output resulting
+                from the execution of the Kaggle notebook or the corresponding analyses should be stored.
+            script_path: A string corresponding to a path on the container filesystem where the contents of the
+                original Kaggle notebook are stored.
+            script_src_type: Source type of the original Kaggle notebook.
+            **executor_kwargs: Additional keyword arguments specific to the executor.
 
-                Returns:
-        `           (str): A string corresponding to code to run.
+        Returns:
+           (str): A string corresponding to code to run.
         """
         class_file = inspect.getabsfile(cls)
         cls_import_path = os.path.relpath(

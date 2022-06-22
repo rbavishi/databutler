@@ -157,7 +157,10 @@ class NatLangToStmtBlanks(BaseNatLangToCodeChange):
     all_at_once: bool = True
     stop_token: str = "END"
     default_blank_word: str = "BLANK_STATEMENT"
-    default_task_description: str = f"Replace the blanks with Python code given the description of the change and the original code.\n"
+    default_task_desc: str = (
+        "Replace the blanks with Python code given the description of the change and "
+        "the original code.\n"
+    )
 
     @classmethod
     def create_blanks_and_answers(
@@ -215,7 +218,7 @@ class NatLangToStmtBlanks(BaseNatLangToCodeChange):
         """
         prompt_strs: List[str] = []
 
-        desc = self.default_task_description
+        desc = self.default_task_desc
         if task.task_description is not None:
             desc = task.task_description
 
