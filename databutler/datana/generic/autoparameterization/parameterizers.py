@@ -2,7 +2,9 @@ from typing import Optional, List, Tuple
 
 import attrs
 
-from databutler.datana.generic.autoparameterization.few_shot import FewShotExampleParameterization
+from databutler.datana.generic.autoparameterization.few_shot import (
+    FewShotExampleParameterization,
+)
 from databutler.utils import langmodels, code as codeutils
 
 
@@ -17,7 +19,7 @@ class ParameterizationTask:
 @attrs.define(eq=False, repr=False)
 class SimpleParameterizer:
     temperature: float = 0.0
-    engine: str = 'code-davinci-001'
+    engine: str = "code-davinci-001"
     #  How many maximum additional tokens should be utilized by the parameterized nl and code combined?
     tokens_surplus: int = 96
 
@@ -41,7 +43,9 @@ class SimpleParameterizer:
             prompt_strs.append(f"Original Description:\n{ex.nl}\n")
             prompt_strs.append(f"Original Code:\n{ex.code}\n")
             prompt_strs.append(f"Parameterized Description:\n{ex.param_nl}\n")
-            prompt_strs.append(f"Parameterized Code:\n{ex.param_code}\n{self.stop_token}\n")
+            prompt_strs.append(
+                f"Parameterized Code:\n{ex.param_code}\n{self.stop_token}\n"
+            )
             prompt_strs.append("----")
 
         #  Now add in the targets
@@ -55,21 +59,25 @@ class SimpleParameterizer:
         pass
 
     def parallel_parameterize(
-            self,
-            tasks: List[ParameterizationTask],
-            key_manager: Optional[langmodels.OpenAIKeyManager] = None,
+        self,
+        tasks: List[ParameterizationTask],
+        key_manager: Optional[langmodels.OpenAIKeyManager] = None,
     ) -> List[Optional[Tuple[str, str]]]:
         """Like parameterize, but handles multiple tasks in parallel"""
-        completion_prompts = [
-            self._create_completion_prompt(task)
-            for task in tasks
-        ]
+        completion_prompts = [self._create_completion_prompt(task) for task in tasks]
 
         max_tokens = max(
             (
-                    len(langmodels.tokenize(task.target_nl, engine=self.engine)["token_ids"]) +
-                    len(langmodels.tokenize(task.target_code, engine=self.engine)["token_ids"])
-             ) + self.tokens_surplus
+                len(
+                    langmodels.tokenize(task.target_nl, engine=self.engine)["token_ids"]
+                )
+                + len(
+                    langmodels.tokenize(task.target_code, engine=self.engine)[
+                        "token_ids"
+                    ]
+                )
+            )
+            + self.tokens_surplus
             for task in tasks
         )
 

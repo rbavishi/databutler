@@ -30,7 +30,13 @@ def generate_queue() -> mp.Queue:
 QueueEmptyException = queue.Empty
 
 
-def run_func_in_process(func: Callable, *args, _timeout: Optional[int] = None, _use_spawn: bool = True, **kwargs):
+def run_func_in_process(
+    func: Callable,
+    *args,
+    _timeout: Optional[int] = None,
+    _use_spawn: bool = True,
+    **kwargs,
+):
     """
     Runs the provided function in a separate process with the supplied args and kwargs. The args, kwargs, and
     return values must all be pickle-able.
@@ -45,7 +51,7 @@ def run_func_in_process(func: Callable, *args, _timeout: Optional[int] = None, _
     Returns:
         The result of executing the function.
     """
-    mode = 'spawn' if _use_spawn else 'fork'
+    mode = "spawn" if _use_spawn else "fork"
     c_func = concurrent.process(timeout=_timeout, context=mp.get_context(mode))(func)
     future = c_func(*args, **kwargs)
 
@@ -84,14 +90,16 @@ class TaskResult:
         return self.status == TaskRunStatus.PROCESS_EXPIRED
 
 
-def run_tasks_in_parallel_iter(func: Callable,
-                               tasks: List[Any],
-                               num_workers: int = 2,
-                               timeout_per_task: Optional[int] = None,
-                               use_progress_bar: bool = False,
-                               progress_bar_desc: Optional[str] = None,
-                               max_tasks_per_worker: Optional[int] = None,
-                               use_spawn: bool = True) -> Iterator[TaskResult]:
+def run_tasks_in_parallel_iter(
+    func: Callable,
+    tasks: List[Any],
+    num_workers: int = 2,
+    timeout_per_task: Optional[int] = None,
+    use_progress_bar: bool = False,
+    progress_bar_desc: Optional[str] = None,
+    max_tasks_per_worker: Optional[int] = None,
+    use_spawn: bool = True,
+) -> Iterator[TaskResult]:
     """
     Args:
         func: The function to run. The function must accept a single argument.
@@ -107,16 +115,20 @@ def run_tasks_in_parallel_iter(func: Callable,
         A list of TaskResult objects, one per task.
     """
 
-    mode = 'spawn' if use_spawn else 'fork'
+    mode = "spawn" if use_spawn else "fork"
 
-    with ProcessPool(max_workers=num_workers,
-                     max_tasks=0 if max_tasks_per_worker is None else max_tasks_per_worker,
-                     context=mp.get_context(mode)) as pool:
+    with ProcessPool(
+        max_workers=num_workers,
+        max_tasks=0 if max_tasks_per_worker is None else max_tasks_per_worker,
+        context=mp.get_context(mode),
+    ) as pool:
         future = pool.map(func, tasks, timeout=timeout_per_task)
 
         iterator = future.result()
         if use_progress_bar:
-            pbar = tqdm.tqdm(desc=progress_bar_desc, total=len(tasks), dynamic_ncols=True)
+            pbar = tqdm.tqdm(
+                desc=progress_bar_desc, total=len(tasks), dynamic_ncols=True
+            )
         else:
             pbar = None
 
@@ -138,7 +150,9 @@ def run_tasks_in_parallel_iter(func: Callable,
                 timeouts += 1
 
             except ProcessExpired as error:
-                logger.warning(f"Process exited with code {error.exitcode}: {str(error)}")
+                logger.warning(
+                    f"Process exited with code {error.exitcode}: {str(error)}"
+                )
                 yield TaskResult(
                     status=TaskRunStatus.PROCESS_EXPIRED,
                 )
@@ -164,17 +178,21 @@ def run_tasks_in_parallel_iter(func: Callable,
 
             if pbar is not None:
                 pbar.update(1)
-                pbar.set_postfix(succ=succ, timeouts=timeouts, exc=exceptions, p_exp=expirations)
+                pbar.set_postfix(
+                    succ=succ, timeouts=timeouts, exc=exceptions, p_exp=expirations
+                )
 
 
-def run_tasks_in_parallel(func: Callable,
-                          tasks: List[Any],
-                          num_workers: int = 2,
-                          timeout_per_task: Optional[int] = None,
-                          use_progress_bar: bool = False,
-                          progress_bar_desc: Optional[str] = None,
-                          max_tasks_per_worker: Optional[int] = None,
-                          use_spawn: bool = True) -> List[TaskResult]:
+def run_tasks_in_parallel(
+    func: Callable,
+    tasks: List[Any],
+    num_workers: int = 2,
+    timeout_per_task: Optional[int] = None,
+    use_progress_bar: bool = False,
+    progress_bar_desc: Optional[str] = None,
+    max_tasks_per_worker: Optional[int] = None,
+    use_spawn: bool = True,
+) -> List[TaskResult]:
     """
     Args:
         func: The function to run. The function must accept a single argument.
@@ -190,15 +208,17 @@ def run_tasks_in_parallel(func: Callable,
         A list of TaskResult objects, one per task.
     """
 
-    task_results: List[TaskResult] = list(run_tasks_in_parallel_iter(
-        func=func,
-        tasks=tasks,
-        num_workers=num_workers,
-        timeout_per_task=timeout_per_task,
-        use_progress_bar=use_progress_bar,
-        progress_bar_desc=progress_bar_desc,
-        max_tasks_per_worker=max_tasks_per_worker,
-        use_spawn=use_spawn
-    ))
+    task_results: List[TaskResult] = list(
+        run_tasks_in_parallel_iter(
+            func=func,
+            tasks=tasks,
+            num_workers=num_workers,
+            timeout_per_task=timeout_per_task,
+            use_progress_bar=use_progress_bar,
+            progress_bar_desc=progress_bar_desc,
+            max_tasks_per_worker=max_tasks_per_worker,
+            use_spawn=use_spawn,
+        )
+    )
 
     return task_results

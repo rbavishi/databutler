@@ -54,10 +54,12 @@ class CodeChangeGenTests(unittest.TestCase):
         )
 
         func = multiprocess.run_func_in_process(_seaborn_runner_kw_normalizer, func)
-        func = multiprocess.run_func_in_process(_seaborn_runner_func_name_extractor, func)
+        func = multiprocess.run_func_in_process(
+            _seaborn_runner_func_name_extractor, func
+        )
 
-        eligible_funcs = {('seaborn', 'distplot')}
-        eligible_kws = {('seaborn', 'distplot'): {'kde'}}
+        eligible_funcs = {("seaborn", "distplot")}
+        eligible_kws = {("seaborn", "distplot"): {"kde"}}
 
         c_gen = change_gens.VizMplConstKwArgRemover(eligible_funcs, eligible_kws)
         changes = c_gen.gen_changes(func)
@@ -65,12 +67,13 @@ class CodeChangeGenTests(unittest.TestCase):
         self.assertEqual(1, len(changes))
         gen_code = change.SimpleAstLibRemovalChange.apply_changes(code, changes)
 
-        self.assertEqual(codeutils.normalize_code(target),
-                         codeutils.normalize_code(gen_code))
+        self.assertEqual(
+            codeutils.normalize_code(target), codeutils.normalize_code(gen_code)
+        )
 
         #  Also check that no changes are generated if the eligible dictionaries do not allow it..
-        eligible_funcs = {('seaborn', 'heatmap')}
-        eligible_kws = {('seaborn', 'heatmap'): {'annot'}}
+        eligible_funcs = {("seaborn", "heatmap")}
+        eligible_kws = {("seaborn", "heatmap"): {"annot"}}
 
         c_gen = change_gens.VizMplConstKwArgRemover(eligible_funcs, eligible_kws)
         changes = c_gen.gen_changes(func)
@@ -108,11 +111,13 @@ class CodeChangeGenTests(unittest.TestCase):
         )
 
         func = multiprocess.run_func_in_process(_seaborn_runner_kw_normalizer, func)
-        func = multiprocess.run_func_in_process(_seaborn_runner_func_name_extractor, func)
+        func = multiprocess.run_func_in_process(
+            _seaborn_runner_func_name_extractor, func
+        )
 
-        eligible_funcs = {('seaborn', 'distplot')}
+        eligible_funcs = {("seaborn", "distplot")}
         #  Putting fit in should still not make a difference as it's not a constant.
-        eligible_kws = {('seaborn', 'distplot'): {'kde', 'fit', 'rug'}}
+        eligible_kws = {("seaborn", "distplot"): {"kde", "fit", "rug"}}
 
         c_gen = change_gens.VizMplConstKwArgRemover(eligible_funcs, eligible_kws)
         changes = c_gen.gen_changes(func)

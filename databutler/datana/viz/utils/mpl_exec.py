@@ -3,13 +3,15 @@ from typing import Dict, Any, Optional, Callable, List
 from pebble import concurrent
 
 
-def run_viz_code_matplotlib(code: str,
-                            pos_args: List[Any],
-                            kw_args: Dict[str, Any],
-                            func_name: str = 'visualization',
-                            other_globals: Optional[Dict] = None,
-                            disable_seaborn_randomization: bool = True,
-                            serializer: Callable[['plt.Figure'], Any] = None) -> 'plt.Figure':
+def run_viz_code_matplotlib(
+    code: str,
+    pos_args: List[Any],
+    kw_args: Dict[str, Any],
+    func_name: str = "visualization",
+    other_globals: Optional[Dict] = None,
+    disable_seaborn_randomization: bool = True,
+    serializer: Callable[["plt.Figure"], Any] = None,
+) -> "plt.Figure":
     #  Putting imports inside so we can delay the imports as long as possible.
     #  This is especially helpful when using libversioning to temporarily modify sys.path
     import matplotlib as mpl
@@ -17,7 +19,7 @@ def run_viz_code_matplotlib(code: str,
     import seaborn as sns
 
     try:
-        plt.style.use('default')
+        plt.style.use("default")
     except:
         pass
     try:
@@ -58,7 +60,7 @@ def run_viz_code_matplotlib(code: str,
 
     finally:
         try:
-            plt.style.use('default')
+            plt.style.use("default")
         except:
             pass
         try:
@@ -73,15 +75,24 @@ def run_viz_code_matplotlib(code: str,
                 pass
 
 
-def run_viz_code_matplotlib_mp(code: str, args: Dict[str, Any],
-                               func_name: str = 'visualization',
-                               other_globals: Optional[Dict] = None,
-                               disable_seaborn_randomization: bool = True,
-                               serializer: Callable[['plt.Figure'], Any] = None,
-                               timeout: Optional[int] = None):
+def run_viz_code_matplotlib_mp(
+    code: str,
+    args: Dict[str, Any],
+    func_name: str = "visualization",
+    other_globals: Optional[Dict] = None,
+    disable_seaborn_randomization: bool = True,
+    serializer: Callable[["plt.Figure"], Any] = None,
+    timeout: Optional[int] = None,
+):
     func = concurrent.process(timeout=timeout)(run_viz_code_matplotlib)
-    future = func(code=code, args=args, func_name=func_name, other_globals=other_globals,
-                  disable_seaborn_randomization=disable_seaborn_randomization, serializer=serializer)
+    future = func(
+        code=code,
+        args=args,
+        func_name=func_name,
+        other_globals=other_globals,
+        disable_seaborn_randomization=disable_seaborn_randomization,
+        serializer=serializer,
+    )
 
     try:
         result = future.result()

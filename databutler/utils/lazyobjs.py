@@ -9,6 +9,7 @@ class ObjRef(ABC):
     """
     A wrapper around an object that can be used to retrieve the object on demand.
     """
+
     @abstractmethod
     def resolve(self) -> Any:
         """
@@ -23,6 +24,7 @@ class LazyCollection(ABC):
     """
     Collections over ObjRefs that make it easy to retrieve lists, tuples, sets, and dicts of obj-refs.
     """
+
     @abstractmethod
     def resolve(self) -> Collection:
         """
@@ -37,6 +39,7 @@ class LazyList(LazyCollection):
     """
     A lazy list.
     """
+
     refs: List[ObjRef]
 
     def resolve(self) -> List:
@@ -48,6 +51,7 @@ class LazyTuple(LazyCollection):
     """
     A lazy tuple.
     """
+
     refs: Tuple[ObjRef]
 
     def resolve(self) -> Tuple:
@@ -59,6 +63,7 @@ class LazySet(LazyCollection):
     """
     A lazy set.
     """
+
     refs: Set[ObjRef]
 
     def resolve(self) -> Set:
@@ -70,6 +75,7 @@ class LazyDict(LazyCollection):
     """
     A lazy dictionary. Only the values can be lazy, not the keys.
     """
+
     refs: Dict[Hashable, Union[Any, ObjRef]]
 
     def resolve(self) -> Dict:

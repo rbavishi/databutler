@@ -21,9 +21,10 @@ class CodeToNatLangTask:
 class BaseCodeToNatLang(ABC):
     @abstractmethod
     def get_nl(
-            self,
-            task: CodeToNatLangTask, num_results: int = 1,
-            key_manager: Optional[langmodels.OpenAIKeyManager] = None
+        self,
+        task: CodeToNatLangTask,
+        num_results: int = 1,
+        key_manager: Optional[langmodels.OpenAIKeyManager] = None,
     ) -> List[str]:
         """
         Generates natural language descriptions of code with language-models using the provided few-shot examples.
@@ -41,10 +42,10 @@ class BaseCodeToNatLang(ABC):
 
     @abstractmethod
     def parallel_get_nl(
-            self,
-            tasks: List[CodeToNatLangTask],
-            num_results: int = 1,
-            key_manager: Optional[langmodels.OpenAIKeyManager] = None
+        self,
+        tasks: List[CodeToNatLangTask],
+        num_results: int = 1,
+        key_manager: Optional[langmodels.OpenAIKeyManager] = None,
     ) -> List[str]:
         """
         A parallel version of get_nl.
@@ -61,9 +62,9 @@ class BaseCodeToNatLang(ABC):
         """
 
     def get_nl_bullets(
-            self,
-            task: CodeToNatLangTask,
-            key_manager: Optional[langmodels.OpenAIKeyManager] = None
+        self,
+        task: CodeToNatLangTask,
+        key_manager: Optional[langmodels.OpenAIKeyManager] = None,
     ) -> Iterator[str]:
         """
         Generates natural language description as a sequence of bullet points. This method should return an iterator.
@@ -83,12 +84,14 @@ class BaseCodeToNatLang(ABC):
 @attrs.define(eq=False)
 class SimpleCodeToNatLang(BaseCodeToNatLang):
     temperature: float = 0.0
-    engine: str = 'code-davinci-001'
+    engine: str = "code-davinci-001"
     max_tokens: int = 256
 
     min_latency: Optional[int] = None
 
-    def _create_completion_prompt(self, task: CodeToNatLangTask, generated_bullets: Optional[List[str]] = None) -> str:
+    def _create_completion_prompt(
+        self, task: CodeToNatLangTask, generated_bullets: Optional[List[str]] = None
+    ) -> str:
         """
         Helper method to create the prompt. Strings the few-shot examples together, and adds the target description to
         the beginning of the prompt.
@@ -123,10 +126,14 @@ class SimpleCodeToNatLang(BaseCodeToNatLang):
             prompt_strs.append("----")
 
         if not (all(i for i in is_bullet) or all(not i for i in is_bullet)):
-            raise ValueError("Few-shot examples must not mix the single-line description and the bullet-point format")
+            raise ValueError(
+                "Few-shot examples must not mix the single-line description and the bullet-point format"
+            )
 
         if (not all(is_bullet)) and generated_bullets is not None:
-            raise ValueError("Cannot supply generated bullets for single-line description prompts.")
+            raise ValueError(
+                "Cannot supply generated bullets for single-line description prompts."
+            )
 
         prompt_strs.append(f"Python Code:\n{task.target_code}")
 
@@ -145,10 +152,10 @@ class SimpleCodeToNatLang(BaseCodeToNatLang):
         return "\n".join(prompt_strs)
 
     def get_nl(
-            self,
-            task: CodeToNatLangTask,
-            num_results: int = 1,
-            key_manager: Optional[langmodels.OpenAIKeyManager] = None,
+        self,
+        task: CodeToNatLangTask,
+        num_results: int = 1,
+        key_manager: Optional[langmodels.OpenAIKeyManager] = None,
     ) -> List[str]:
         """
         Creates a simple prompt stringing examples together and uses it to generate the descriptions.
@@ -157,8 +164,10 @@ class SimpleCodeToNatLang(BaseCodeToNatLang):
         """
         #  Ensure that the few-shot examples do not use bullet-points.
         if any(isinstance(ex.nl, list) for ex in task.few_shot_examples):
-            raise ValueError("Few-shot examples cannot contain bullet-point descriptions "
-                             "when generating single-line descriptions.")
+            raise ValueError(
+                "Few-shot examples cannot contain bullet-point descriptions "
+                "when generating single-line descriptions."
+            )
 
         completion_prompt = self._create_completion_prompt(task)
 
@@ -176,17 +185,15 @@ class SimpleCodeToNatLang(BaseCodeToNatLang):
             min_latency=self.min_latency,
         )
 
-        descriptions = list(set(
-            c.text.strip() for c in resp.completions
-        ))
+        descriptions = list(set(c.text.strip() for c in resp.completions))
 
         return descriptions
 
     def parallel_get_nl(
-            self,
-            tasks: List[CodeToNatLangTask],
-            num_results: int = 1,
-            key_manager: Optional[langmodels.OpenAIKeyManager] = None,
+        self,
+        tasks: List[CodeToNatLangTask],
+        num_results: int = 1,
+        key_manager: Optional[langmodels.OpenAIKeyManager] = None,
     ) -> List[List[str]]:
         """
         Creates a simple prompt stringing examples together and uses it to generate the descriptions.
@@ -197,8 +204,10 @@ class SimpleCodeToNatLang(BaseCodeToNatLang):
         #  Ensure that the few-shot examples do not use bullet-points.
         for task in tasks:
             if any(isinstance(ex.nl, list) for ex in task.few_shot_examples):
-                raise ValueError("Few-shot examples cannot contain bullet-point descriptions "
-                                 "when generating single-line descriptions.")
+                raise ValueError(
+                    "Few-shot examples cannot contain bullet-point descriptions "
+                    "when generating single-line descriptions."
+                )
 
         completion_prompts = [self._create_completion_prompt(task) for task in tasks]
 
@@ -219,9 +228,9 @@ class SimpleCodeToNatLang(BaseCodeToNatLang):
         return [list({c.text.strip() for c in resp.completions}) for resp in resps]
 
     def get_nl_bullets(
-            self,
-            task: CodeToNatLangTask,
-            key_manager: Optional[langmodels.OpenAIKeyManager] = None,
+        self,
+        task: CodeToNatLangTask,
+        key_manager: Optional[langmodels.OpenAIKeyManager] = None,
     ) -> Iterator[str]:
         """
         Simply invokes the model as long as it produces a new bullet-point.
@@ -231,8 +240,10 @@ class SimpleCodeToNatLang(BaseCodeToNatLang):
 
         #  Ensure that the few-shot examples all use bullet-points.
         if any(not isinstance(ex.nl, list) for ex in task.few_shot_examples):
-            raise ValueError("Few-shot examples cannot contain single-line descriptions "
-                             "when generating bullet-point descriptions.")
+            raise ValueError(
+                "Few-shot examples cannot contain single-line descriptions "
+                "when generating bullet-point descriptions."
+            )
 
         generated_bullets: List[str] = []
 
@@ -247,7 +258,9 @@ class SimpleCodeToNatLang(BaseCodeToNatLang):
                 temperature=self.temperature,
                 num_completions=1,
                 max_tokens=self.max_tokens,
-                stop=["\n"],  # Use new-line as the stop-token for single-line descriptions.
+                stop=[
+                    "\n"
+                ],  # Use new-line as the stop-token for single-line descriptions.
                 retry_wait_duration=60,
                 max_retries=5,
                 retrieve_top_tokens=False,

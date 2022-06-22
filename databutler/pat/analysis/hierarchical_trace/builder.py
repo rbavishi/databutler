@@ -8,12 +8,29 @@ from typing import Optional, List, Callable, Any, Dict, Type
 
 from databutler.pat import astlib
 from databutler.pat.analysis.clock import LogicalClock
-from databutler.pat.analysis.hierarchical_trace.builder_aux import FuncDefLambdaAuxGenerator, ForLoopAuxGenerator
-from databutler.pat.analysis.hierarchical_trace.builder_basic import BasicDefEventsGenerator, \
-    BasicAccessEventsGenerator, BasicReadEventsGenerator, BasicWriteEventsGenerator, FunctionCallSpecsChecker
-from databutler.pat.analysis.hierarchical_trace.builder_utils import TraceItemsCollector, TraceEventsCollector, \
-    TraceItemGenerator, TemporaryVariablesGenerator, ValueKeepAliveAgent
-from databutler.pat.analysis.hierarchical_trace.core import HierarchicalTrace, TraceItem, TraceEvent
+from databutler.pat.analysis.hierarchical_trace.builder_aux import (
+    FuncDefLambdaAuxGenerator,
+    ForLoopAuxGenerator,
+)
+from databutler.pat.analysis.hierarchical_trace.builder_basic import (
+    BasicDefEventsGenerator,
+    BasicAccessEventsGenerator,
+    BasicReadEventsGenerator,
+    BasicWriteEventsGenerator,
+    FunctionCallSpecsChecker,
+)
+from databutler.pat.analysis.hierarchical_trace.builder_utils import (
+    TraceItemsCollector,
+    TraceEventsCollector,
+    TraceItemGenerator,
+    TemporaryVariablesGenerator,
+    ValueKeepAliveAgent,
+)
+from databutler.pat.analysis.hierarchical_trace.core import (
+    HierarchicalTrace,
+    TraceItem,
+    TraceEvent,
+)
 from databutler.pat.analysis.instrumentation import Instrumentation
 
 
@@ -23,10 +40,13 @@ class HierarchicalTraceInstrumentationHooks:
     Routines to query for live information during execution of the trace instrumentation.
     Allows other instrumentation to peek into the trace instrumentation.
     """
+
     _clock: LogicalClock = attr.ib()
     _trace_items_collector: TraceItemsCollector = attr.ib()
     _trace_events_collector: TraceEventsCollector = attr.ib()
-    _event_handlers: Dict[Type[TraceEvent], List[Callable]] = attr.ib(init=False, default=None)
+    _event_handlers: Dict[Type[TraceEvent], List[Callable]] = attr.ib(
+        init=False, default=None
+    )
 
     def get_latest_item(self, node: astlib.AstNode) -> Optional[TraceItem]:
         """
@@ -66,45 +86,68 @@ class HierarchicalTraceInstrumentation(Instrumentation):
 
         value_keep_alive_agent = ValueKeepAliveAgent()
 
-        trace_items_gen = TraceItemGenerator(clock=clock, collector=trace_items_collector)
+        trace_items_gen = TraceItemGenerator(
+            clock=clock, collector=trace_items_collector
+        )
 
-        access_events_gen = BasicAccessEventsGenerator(clock=clock,
-                                                       trace_events_collector=trace_events_collector,
-                                                       trace_items_collector=trace_items_collector)
-        basic_def_events_gen = BasicDefEventsGenerator(clock=clock,
-                                                       trace_events_collector=trace_events_collector,
-                                                       trace_items_collector=trace_items_collector)
-        basic_read_events_gen = BasicReadEventsGenerator(clock=clock,
-                                                         trace_events_collector=trace_events_collector,
-                                                         trace_items_collector=trace_items_collector)
-        basic_write_events_gen = BasicWriteEventsGenerator(clock=clock,
-                                                           trace_events_collector=trace_events_collector,
-                                                           trace_items_collector=trace_items_collector)
-        func_specs_checker = FunctionCallSpecsChecker(clock=clock,
-                                                      trace_events_collector=trace_events_collector,
-                                                      trace_items_collector=trace_items_collector)
+        access_events_gen = BasicAccessEventsGenerator(
+            clock=clock,
+            trace_events_collector=trace_events_collector,
+            trace_items_collector=trace_items_collector,
+        )
+        basic_def_events_gen = BasicDefEventsGenerator(
+            clock=clock,
+            trace_events_collector=trace_events_collector,
+            trace_items_collector=trace_items_collector,
+        )
+        basic_read_events_gen = BasicReadEventsGenerator(
+            clock=clock,
+            trace_events_collector=trace_events_collector,
+            trace_items_collector=trace_items_collector,
+        )
+        basic_write_events_gen = BasicWriteEventsGenerator(
+            clock=clock,
+            trace_events_collector=trace_events_collector,
+            trace_items_collector=trace_items_collector,
+        )
+        func_specs_checker = FunctionCallSpecsChecker(
+            clock=clock,
+            trace_events_collector=trace_events_collector,
+            trace_items_collector=trace_items_collector,
+        )
 
-        func_lambda_aux_gen = FuncDefLambdaAuxGenerator(clock=clock,
-                                                        trace_events_collector=trace_events_collector,
-                                                        trace_items_collector=trace_items_collector,
-                                                        temp_vars_generator=temp_vars_generator)
-        for_loop_aux_gen = ForLoopAuxGenerator(clock=clock,
-                                               trace_events_collector=trace_events_collector,
-                                               trace_items_collector=trace_items_collector,
-                                               temp_vars_generator=temp_vars_generator)
+        func_lambda_aux_gen = FuncDefLambdaAuxGenerator(
+            clock=clock,
+            trace_events_collector=trace_events_collector,
+            trace_items_collector=trace_items_collector,
+            temp_vars_generator=temp_vars_generator,
+        )
+        for_loop_aux_gen = ForLoopAuxGenerator(
+            clock=clock,
+            trace_events_collector=trace_events_collector,
+            trace_items_collector=trace_items_collector,
+            temp_vars_generator=temp_vars_generator,
+        )
 
-        result = cls.from_generators(value_keep_alive_agent,
-                                     trace_items_gen,
-                                     basic_def_events_gen, access_events_gen,
-                                     basic_read_events_gen, basic_write_events_gen,
-                                     func_specs_checker,
-                                     func_lambda_aux_gen, for_loop_aux_gen)
+        result = cls.from_generators(
+            value_keep_alive_agent,
+            trace_items_gen,
+            basic_def_events_gen,
+            access_events_gen,
+            basic_read_events_gen,
+            basic_write_events_gen,
+            func_specs_checker,
+            func_lambda_aux_gen,
+            for_loop_aux_gen,
+        )
         result._clock = clock
         result._trace_items_collector = trace_items_collector
         result._trace_events_collector = trace_events_collector
-        result._hooks = HierarchicalTraceInstrumentationHooks(clock=clock,
-                                                              trace_items_collector=trace_items_collector,
-                                                              trace_events_collector=trace_events_collector)
+        result._hooks = HierarchicalTraceInstrumentationHooks(
+            clock=clock,
+            trace_items_collector=trace_items_collector,
+            trace_events_collector=trace_events_collector,
+        )
 
         #  We store this in order to clean up later.
         result._value_keep_alive_agent = value_keep_alive_agent

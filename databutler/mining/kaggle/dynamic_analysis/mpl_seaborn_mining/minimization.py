@@ -40,11 +40,13 @@ def _check_statically(code: str) -> bool:
     return True
 
 
-def _get_viz_as_bytes(code: str, args: List[Any], kw_args: Dict[str, Any],
-                      timeout: Optional[int] = None) -> Optional[bytes]:
+def _get_viz_as_bytes(
+    code: str, args: List[Any], kw_args: Dict[str, Any], timeout: Optional[int] = None
+) -> Optional[bytes]:
     try:
-        fig = mpl_exec.run_viz_code_matplotlib_mp(code, pos_args=args, kw_args=kw_args, func_name='viz',
-                                                  timeout=timeout)
+        fig = mpl_exec.run_viz_code_matplotlib_mp(
+            code, pos_args=args, kw_args=kw_args, func_name="viz", timeout=timeout
+        )
         if fig is not None:
             buf = io.BytesIO()
             fig.savefig(buf)
@@ -71,7 +73,9 @@ class Minimizer:
     _num_executions: int = attrs.field(init=False, default=0)
 
     def _create_candidate(self, to_keep: List[astlib.AstStatementT]) -> str:
-        new_candidate = astlib.update_stmt_body(self.code_ast, astlib.prepare_body(to_keep))
+        new_candidate = astlib.update_stmt_body(
+            self.code_ast, astlib.prepare_body(to_keep)
+        )
         new_code = astlib.to_code(new_candidate)
 
         return new_code
@@ -84,8 +88,12 @@ class Minimizer:
             return False
 
         self._num_executions += 1
-        res = self._seen[code] = _get_viz_as_bytes(code, self.args, self.kw_args,
-                                                   timeout=self.timeout_per_run) == self.orig_fig
+        res = self._seen[code] = (
+            _get_viz_as_bytes(
+                code, self.args, self.kw_args, timeout=self.timeout_per_run
+            )
+            == self.orig_fig
+        )
         return res
 
     def _run_delta_debugging(self) -> str:
@@ -101,7 +109,7 @@ class Minimizer:
 
             bins = []
             for i in range(0, len(eligible_stmts), num_per_bin):
-                bins.append(eligible_stmts[i: i + num_per_bin])
+                bins.append(eligible_stmts[i : i + num_per_bin])
 
             for b in bins:
                 new_body = b[:]
@@ -144,7 +152,9 @@ class Minimizer:
         logger.info("Starting Minimization")
         #  Go in reverse to adhere to the topological dependency order.
         for stmt in reversed(self.eligible_stmts):
-            new_body = [s for s in self.eligible_stmts if s is not stmt and s not in removed]
+            new_body = [
+                s for s in self.eligible_stmts if s is not stmt and s not in removed
+            ]
             new_code = self._create_candidate(new_body)
 
             if self._check_candidate(new_code):
@@ -163,7 +173,12 @@ class Minimizer:
             return self._run_delta_debugging()
 
 
-def minimize_code(code: str, args: List[Any], kw_args: Dict[str, Any], timeout_per_run: Optional[int] = 5) -> str:
+def minimize_code(
+    code: str,
+    args: List[Any],
+    kw_args: Dict[str, Any],
+    timeout_per_run: Optional[int] = 5,
+) -> str:
     orig_fig = _get_viz_as_bytes(code, args, kw_args, timeout=timeout_per_run)
     if orig_fig is None:
         return code
@@ -173,10 +188,13 @@ def minimize_code(code: str, args: List[Any], kw_args: Dict[str, Any], timeout_p
     func_def = next(iter(astlib.iter_body_stmts(ast_root)))
     assert isinstance(func_def, astlib.FunctionDef)
 
-    minimizer = Minimizer(func_def,
-                          args=args, kw_args=kw_args,
-                          eligible_stmts=list(astlib.iter_body_stmts(func_def)),
-                          orig_fig=orig_fig,
-                          timeout_per_run=timeout_per_run)
+    minimizer = Minimizer(
+        func_def,
+        args=args,
+        kw_args=kw_args,
+        eligible_stmts=list(astlib.iter_body_stmts(func_def)),
+        orig_fig=orig_fig,
+        timeout_per_run=timeout_per_run,
+    )
 
     return minimizer.run()

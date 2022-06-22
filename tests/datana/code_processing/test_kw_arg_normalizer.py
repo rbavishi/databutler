@@ -3,7 +3,9 @@ import unittest
 from typing import List, Any, Dict
 
 from databutler.datana.generic.corpus.code import DatanaFunction
-from databutler.datana.generic.corpus.processing.keyword_normalization import KeywordArgNormalizer
+from databutler.datana.generic.corpus.processing.keyword_normalization import (
+    KeywordArgNormalizer,
+)
 from databutler.datana.viz.corpus.code_processors import VizMplKeywordArgNormalizer
 from databutler.utils import code as codeutils, multiprocess
 from databutler.utils.libversioning import modified_lib_env
@@ -50,16 +52,24 @@ class KwArgNormalizerTests(unittest.TestCase):
         )
 
         class TestNormalizer(KeywordArgNormalizer):
-            def _run_function_code(self, func_code: str, func_name: str, pos_args: List[Any], kw_args: Dict[str, Any],
-                                   global_ctx: Dict[str, Any]) -> Any:
+            def _run_function_code(
+                self,
+                func_code: str,
+                func_name: str,
+                pos_args: List[Any],
+                kw_args: Dict[str, Any],
+                global_ctx: Dict[str, Any],
+            ) -> Any:
                 ctx = global_ctx.copy()
                 exec(func_code, ctx)
                 ctx[func_name](*pos_args, **kw_args)
 
         normalizer = TestNormalizer()
         new_d_func = normalizer.run(datana_func)
-        self.assertEqual(codeutils.normalize_code(target_code),
-                         codeutils.normalize_code(new_d_func.code_str))
+        self.assertEqual(
+            codeutils.normalize_code(target_code),
+            codeutils.normalize_code(new_d_func.code_str),
+        )
 
     def test_builtin_2(self):
         orig_code = textwrap.dedent(
@@ -86,16 +96,24 @@ class KwArgNormalizerTests(unittest.TestCase):
         )
 
         class TestNormalizer(KeywordArgNormalizer):
-            def _run_function_code(self, func_code: str, func_name: str, pos_args: List[Any], kw_args: Dict[str, Any],
-                                   global_ctx: Dict[str, Any]) -> Any:
+            def _run_function_code(
+                self,
+                func_code: str,
+                func_name: str,
+                pos_args: List[Any],
+                kw_args: Dict[str, Any],
+                global_ctx: Dict[str, Any],
+            ) -> Any:
                 ctx = global_ctx.copy()
                 exec(func_code, ctx)
                 ctx[func_name](*pos_args, **kw_args)
 
         normalizer = TestNormalizer()
         new_d_func = normalizer.run(datana_func)
-        self.assertEqual(codeutils.normalize_code(target_code),
-                         codeutils.normalize_code(new_d_func.code_str))
+        self.assertEqual(
+            codeutils.normalize_code(target_code),
+            codeutils.normalize_code(new_d_func.code_str),
+        )
 
     def test_seaborn_1(self):
         orig_code = textwrap.dedent(
@@ -125,5 +143,7 @@ class KwArgNormalizerTests(unittest.TestCase):
         )
 
         new_d_func = multiprocess.run_func_in_process(_seaborn_runner, datana_func)
-        self.assertEqual(codeutils.normalize_code(target_code),
-                         codeutils.normalize_code(new_d_func.code_str))
+        self.assertEqual(
+            codeutils.normalize_code(target_code),
+            codeutils.normalize_code(new_d_func.code_str),
+        )

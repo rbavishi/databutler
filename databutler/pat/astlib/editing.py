@@ -12,9 +12,9 @@ class ChildReplacementTransformer(cst.CSTTransformer):
         # recurse down it, that would be a waste of time.
         return node not in self.replacements
 
-    def on_leave(self,
-                 original_node: cst.CSTNode,
-                 updated_node: cst.CSTNode) -> Union[cst.CSTNode, cst.RemovalSentinel]:
+    def on_leave(
+        self, original_node: cst.CSTNode, updated_node: cst.CSTNode
+    ) -> Union[cst.CSTNode, cst.RemovalSentinel]:
         if original_node in self.replacements:
             updated_node = self.replacements[original_node]
 
@@ -26,8 +26,9 @@ class NodeRemovalTransformer(cst.CSTTransformer):
     def __init__(self, to_remove: Collection[cst.CSTNode]) -> None:
         self._to_remove = set(to_remove)
 
-    def on_leave(self, original_node: cst.CSTNode, updated_node: cst.CSTNode
-                 ) -> Union[cst.CSTNode, cst.RemovalSentinel]:
+    def on_leave(
+        self, original_node: cst.CSTNode, updated_node: cst.CSTNode
+    ) -> Union[cst.CSTNode, cst.RemovalSentinel]:
 
         if original_node in self._to_remove:
             return cst.RemoveFromParent()
@@ -36,9 +37,11 @@ class NodeRemovalTransformer(cst.CSTTransformer):
 
 
 class StmtRemovalAndSimplificationTransformer(cst.CSTTransformer):
-    def __init__(self,
-                 to_remove: Optional[Set[cst.BaseSmallStatement]],
-                 to_retain: Optional[Set[cst.BaseSmallStatement]]) -> None:
+    def __init__(
+        self,
+        to_remove: Optional[Set[cst.BaseSmallStatement]],
+        to_retain: Optional[Set[cst.BaseSmallStatement]],
+    ) -> None:
         self.to_remove = to_remove
         self.to_retain = to_retain
 
@@ -68,9 +71,11 @@ class StmtRemovalAndSimplificationTransformer(cst.CSTTransformer):
                     if updated_node.orelse is None:
                         return cst.RemoveFromParent()
                 elif isinstance(updated_node, cst.Try):
-                    if len(updated_node.handlers) == 0 and \
-                            updated_node.orelse is None and \
-                            updated_node.finalbody is None:
+                    if (
+                        len(updated_node.handlers) == 0
+                        and updated_node.orelse is None
+                        and updated_node.finalbody is None
+                    ):
                         return cst.RemoveFromParent()
 
                 else:

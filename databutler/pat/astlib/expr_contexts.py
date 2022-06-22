@@ -54,7 +54,7 @@ class ExpressionContextVisitor(cst.CSTVisitor):
     """
 
     def __init__(
-            self, provider: "ExpressionContextProvider", context: ExpressionContext
+        self, provider: "ExpressionContextProvider", context: ExpressionContext
     ) -> None:
         self.provider = provider
         self.context = context
@@ -143,7 +143,9 @@ class ExpressionContextVisitor(cst.CSTVisitor):
                     ExpressionContextVisitor(self.provider, ExpressionContext.LOAD)
                 )
         else:
-            n_slice.visit(ExpressionContextVisitor(self.provider, ExpressionContext.LOAD))
+            n_slice.visit(
+                ExpressionContextVisitor(self.provider, ExpressionContext.LOAD)
+            )
         return False
 
     def visit_Tuple(self, node: cst.Tuple) -> Optional[bool]:

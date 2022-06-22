@@ -6,26 +6,21 @@ from databutler.utils import langmodels
 class CompletionWrapperTests(unittest.TestCase):
     def test_simple_1(self):
         engine = "code-davinci-001"
-        prompt = (
-            "Q: Capital of France?\n"
-            "A: Paris\n"
-            "Q: Capital of Belgium?\n"
-            "A:"
-        )
+        prompt = "Q: Capital of France?\n" "A: Paris\n" "Q: Capital of Belgium?\n" "A:"
 
         resp1 = langmodels.openai_completion(
             engine=engine,
             prompt=prompt,
             max_tokens=5,
-            stop='\n',
+            stop="\n",
         )
 
         resp2 = langmodels.openai_completion(
             engine=engine,
             prompt=prompt,
             max_tokens=5,
-            stop='\n',
-            retrieve_top_tokens=True
+            stop="\n",
+            retrieve_top_tokens=True,
         )
 
         self.assertEqual("Brussels", resp1.completions[0].text.strip())
@@ -36,25 +31,22 @@ class CompletionWrapperTests(unittest.TestCase):
     def test_simple_2(self):
         engine = "code-davinci-001"
         prompt = (
-            "Q: Capital of France?\n"
-            "A: Paris\n"
-            "Q: Capital of Belgium?\n"
-            "A: Bru"
+            "Q: Capital of France?\n" "A: Paris\n" "Q: Capital of Belgium?\n" "A: Bru"
         )
 
         resp1 = langmodels.openai_completion(
             engine=engine,
             prompt=prompt,
             max_tokens=5,
-            stop='\n',
+            stop="\n",
         )
 
         resp2 = langmodels.openai_completion(
             engine=engine,
             prompt=prompt,
             max_tokens=5,
-            stop='\n',
-            retrieve_top_tokens=True
+            stop="\n",
+            retrieve_top_tokens=True,
         )
 
         self.assertEqual("ssels", resp1.completions[0].text.strip())
@@ -76,8 +68,8 @@ class CompletionWrapperTests(unittest.TestCase):
             engine=engine,
             prompt=prompt,
             max_tokens=5,
-            stop='\n',
-            retrieve_top_tokens=True
+            stop="\n",
+            retrieve_top_tokens=True,
         )
 
         self.assertEqual("ssels is the capital", resp.completions[0].text.strip())

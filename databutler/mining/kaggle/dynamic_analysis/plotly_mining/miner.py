@@ -9,16 +9,31 @@ from libcst import AssignTarget
 from matplotlib import pyplot as plt
 
 import pandas as pd
-from databutler.mining.kaggle.dynamic_analysis.mpl_seaborn_mining.var_optimization import optimize_vars
+from databutler.mining.kaggle.dynamic_analysis.mpl_seaborn_mining.var_optimization import (
+    optimize_vars,
+)
 from databutler.mining.kaggle.dynamic_analysis.plotly_mining import utils
-from databutler.mining.kaggle.dynamic_analysis.plotly_mining.minimizer import minimize_code
+from databutler.mining.kaggle.dynamic_analysis.plotly_mining.minimizer import (
+    minimize_code,
+)
 from databutler.mining.kaggle.execution.base import BaseExecutor, register_runner
 from databutler.mining.kaggle.notebooks.notebook import KaggleNotebookSourceType
 from databutler.pat import astlib
 from databutler.pat.analysis.clock import LogicalClock
-from databutler.pat.analysis.hierarchical_trace.builder import get_hierarchical_trace_instrumentation
-from databutler.pat.analysis.hierarchical_trace.core import HierarchicalTrace, ObjWriteEvent, TraceItem
-from databutler.pat.analysis.instrumentation import Instrumentation, Instrumenter, ExprWrappersGenerator, ExprWrapper
+from databutler.pat.analysis.hierarchical_trace.builder import (
+    get_hierarchical_trace_instrumentation,
+)
+from databutler.pat.analysis.hierarchical_trace.core import (
+    HierarchicalTrace,
+    ObjWriteEvent,
+    TraceItem,
+)
+from databutler.pat.analysis.instrumentation import (
+    Instrumentation,
+    Instrumenter,
+    ExprWrappersGenerator,
+    ExprWrapper,
+)
 from databutler.utils.logging import logger
 
 _MAX_VIZ_FUNC_EXEC_TIME = 5
@@ -32,9 +47,14 @@ class PlotlyFigureDetector(ExprWrappersGenerator):
     visualization has been generated. We save these, by using expression callbacks that are
     called after every call expression in the AST is evaluated.
     """
-    _found_figures: Dict[int, plotly.graph_objs.Figure] = attrs.field(init=False, factory=dict)
 
-    def gen_expr_wrappers_simple(self, ast_root: astlib.AstNode) -> Iterator[Tuple[astlib.BaseExpression, ExprWrapper]]:
+    _found_figures: Dict[int, plotly.graph_objs.Figure] = attrs.field(
+        init=False, factory=dict
+    )
+
+    def gen_expr_wrappers_simple(
+        self, ast_root: astlib.AstNode
+    ) -> Iterator[Tuple[astlib.BaseExpression, ExprWrapper]]:
         for expr in self.iter_valid_exprs(ast_root):
             if isinstance(expr, astlib.Call):
                 yield expr, ExprWrapper(
@@ -45,7 +65,7 @@ class PlotlyFigureDetector(ExprWrappersGenerator):
     def gen_plotly_wrapper_expr(self, call_expr: astlib.Call):
         def wrapper(value):
             if isinstance(value, plotly.graph_objs.Figure):
-                print(f'Figure detected: {id(value)}')
+                print(f"Figure detected: {id(value)}")
                 self._found_figures[id(value)] = value
             return value
 
@@ -64,17 +84,22 @@ class PlotlyFigureVariableNameDetector(ExprWrappersGenerator):
     Captures all the variables mapping to plotly objects seen during the execution of
     the program.
     """
-    # mapping from object ids to variable names
-    _found_vars: Dict[int, Sequence[AssignTarget]] = attrs.field(init=False, factory=dict)
 
-    def gen_expr_wrappers_simple(self, ast_root: astlib.AstNode) -> Iterator[Tuple[astlib.BaseExpression, ExprWrapper]]:
+    # mapping from object ids to variable names
+    _found_vars: Dict[int, Sequence[AssignTarget]] = attrs.field(
+        init=False, factory=dict
+    )
+
+    def gen_expr_wrappers_simple(
+        self, ast_root: astlib.AstNode
+    ) -> Iterator[Tuple[astlib.BaseExpression, ExprWrapper]]:
         for node in astlib.walk(ast_root):
             if isinstance(node, astlib.Assign):
                 right_hand_expr = node.value
                 if isinstance(right_hand_expr, astlib.Call):
                     yield right_hand_expr, ExprWrapper(
                         callable=self.gen_plotly_wrapper_expr(node),
-                        name=self.gen_wrapper_id()
+                        name=self.gen_wrapper_id(),
                     )
 
     def gen_plotly_wrapper_expr(self, stmt: astlib.Assign):
@@ -99,11 +124,17 @@ class PlotlyFigureVariableNameDetector(ExprWrappersGenerator):
 @attrs.define(eq=False, repr=False)
 class ReadCsvDfCollector(ExprWrappersGenerator):
     #  Internal
-    _collected_dfs: Dict[astlib.Call, pd.DataFrame] = attrs.field(init=False, factory=dict)
+    _collected_dfs: Dict[astlib.Call, pd.DataFrame] = attrs.field(
+        init=False, factory=dict
+    )
 
-    def gen_expr_wrappers_simple(self, ast_root: astlib.AstNode) -> Iterator[Tuple[astlib.BaseExpression, ExprWrapper]]:
+    def gen_expr_wrappers_simple(
+        self, ast_root: astlib.AstNode
+    ) -> Iterator[Tuple[astlib.BaseExpression, ExprWrapper]]:
         for expr in self.iter_valid_exprs(ast_root):
-            if isinstance(expr, astlib.Call) and "read_csv" in astlib.to_code(expr.func):
+            if isinstance(expr, astlib.Call) and "read_csv" in astlib.to_code(
+                expr.func
+            ):
                 yield expr, ExprWrapper(
                     callable=self._gen_collecting_wrapper(expr),
                     name=self.gen_wrapper_id(),
@@ -127,7 +158,9 @@ class DfStrColumnsCollector(ExprWrappersGenerator):
     #  Internal
     _collected_cols: Set[str] = attrs.field(init=False, factory=set)
 
-    def gen_expr_wrappers_simple(self, ast_root: astlib.AstNode) -> Iterator[Tuple[astlib.BaseExpression, ExprWrapper]]:
+    def gen_expr_wrappers_simple(
+        self, ast_root: astlib.AstNode
+    ) -> Iterator[Tuple[astlib.BaseExpression, ExprWrapper]]:
         for expr in self.iter_valid_exprs(ast_root):
             if not astlib.is_constant(expr):
                 yield expr, ExprWrapper(
@@ -138,7 +171,9 @@ class DfStrColumnsCollector(ExprWrappersGenerator):
     def _collector(self, value):
         if isinstance(value, pd.DataFrame):
             if value.columns.nlevels == 1:
-                self._collected_cols.update(c for c in value.columns if isinstance(c, str))
+                self._collected_cols.update(
+                    c for c in value.columns if isinstance(c, str)
+                )
             else:
                 flattened = sum((list(i) for i in value.columns.levels), [])
                 self._collected_cols.update(c for c in flattened if isinstance(c, str))
@@ -152,10 +187,14 @@ class DfStrColumnsCollector(ExprWrappersGenerator):
 @attrs.define(eq=False, repr=False)
 class DfColAttrAccessCollector(ExprWrappersGenerator):
     #  Internal
-    _collected_accesses: Dict[astlib.Attribute, str] = attrs.field(init=False, factory=dict)
+    _collected_accesses: Dict[astlib.Attribute, str] = attrs.field(
+        init=False, factory=dict
+    )
     _df_exprs: Set[astlib.BaseExpression] = attrs.field(init=False, factory=set)
 
-    def gen_expr_wrappers_simple(self, ast_root: astlib.AstNode) -> Iterator[Tuple[astlib.BaseExpression, ExprWrapper]]:
+    def gen_expr_wrappers_simple(
+        self, ast_root: astlib.AstNode
+    ) -> Iterator[Tuple[astlib.BaseExpression, ExprWrapper]]:
         for expr in self.iter_valid_exprs(ast_root):
             if isinstance(expr, astlib.Attribute):
                 yield expr.value, ExprWrapper(
@@ -195,7 +234,9 @@ class DfColAttrAccessCollector(ExprWrappersGenerator):
 class PlotlyMiner(BaseExecutor):
     @classmethod
     @register_runner(name="plotly_miner")
-    def mining_runner(cls, source: str, source_type: KaggleNotebookSourceType, output_dir_path: str):
+    def mining_runner(
+        cls, source: str, source_type: KaggleNotebookSourceType, output_dir_path: str
+    ):
         #  A clock is critical in identifying dependencies.
         clock = LogicalClock()
         #  Trace instrumentation does the heavy-lifting of recording reads/writes, var. defs and their uses.
@@ -211,20 +252,25 @@ class PlotlyMiner(BaseExecutor):
         col_collector_instrumentation = Instrumentation.from_generators(col_collector)
         var_detection_instrumentation = Instrumentation.from_generators(var_detector)
 
-        instrumentation = (trace_instrumentation | plotly_instrumentation |
-                           df_collector_instrumentation | col_collector_instrumentation |
-                           var_detection_instrumentation
-                           )
+        instrumentation = (
+            trace_instrumentation
+            | plotly_instrumentation
+            | df_collector_instrumentation
+            | col_collector_instrumentation
+            | var_detection_instrumentation
+        )
 
         instrumenter = Instrumenter(instrumentation)
 
         #  Parse the source as an AST.
         if source_type == KaggleNotebookSourceType.IPYTHON_NOTEBOOK:
-            code_ast = astlib.parse(source, extension='.ipynb')
+            code_ast = astlib.parse(source, extension=".ipynb")
         elif source_type == KaggleNotebookSourceType.PYTHON_SOURCE_FILE:
             code_ast = astlib.parse(source)
         else:
-            raise NotImplementedError(f"Could not recognize source of type {source_type}")
+            raise NotImplementedError(
+                f"Could not recognize source of type {source_type}"
+            )
 
         #  Run the instrumenter, and execute.
         new_ast, globs = instrumenter.process(code_ast)
@@ -234,17 +280,27 @@ class PlotlyMiner(BaseExecutor):
         trace = trace_instrumentation.get_hierarchical_trace()
 
         #  Use the trace, matplotlib figure and df detectors to extract visualization code.
-        cls._extract_viz_code(code_ast, trace, df_collector=df_collector, col_collector=col_collector,
-                              fig_detector=plotly_fig_detector, var_detector=var_detector,
-                              output_dir_path=output_dir_path)
+        cls._extract_viz_code(
+            code_ast,
+            trace,
+            df_collector=df_collector,
+            col_collector=col_collector,
+            fig_detector=plotly_fig_detector,
+            var_detector=var_detector,
+            output_dir_path=output_dir_path,
+        )
 
     @classmethod
-    def _extract_viz_code(cls, code_ast: astlib.AstNode, trace: HierarchicalTrace,
-                          df_collector: ReadCsvDfCollector,
-                          col_collector: DfStrColumnsCollector,
-                          fig_detector: PlotlyFigureDetector,
-                          var_detector: PlotlyFigureVariableNameDetector,
-                          output_dir_path: str):
+    def _extract_viz_code(
+        cls,
+        code_ast: astlib.AstNode,
+        trace: HierarchicalTrace,
+        df_collector: ReadCsvDfCollector,
+        col_collector: DfStrColumnsCollector,
+        fig_detector: PlotlyFigureDetector,
+        var_detector: PlotlyFigureVariableNameDetector,
+        output_dir_path: str,
+    ):
 
         id_to_var_names = var_detector.get_found_vars()
 
@@ -263,7 +319,9 @@ class PlotlyMiner(BaseExecutor):
 
         #  For each figure, we collect the body statements (trace items actually) that directly write to the figure.
         #  This set of statements will constitute the slicing criterion.
-        fig_to_slicing_criteria: Dict[int, Set[TraceItem]] = collections.defaultdict(set)
+        fig_to_slicing_criteria: Dict[int, Set[TraceItem]] = collections.defaultdict(
+            set
+        )
         for e in trace.get_events():
             if isinstance(e, ObjWriteEvent) and e.obj_id in obj_id_to_fig:
                 item = e.owner
@@ -290,7 +348,9 @@ class PlotlyMiner(BaseExecutor):
             #  use to build up the body of our visualization.
             criteria = fig_to_slicing_criteria[obj_id]
             viz_slice: List[TraceItem] = cls._get_slice(trace, criteria, body_stmts)
-            viz_body = [item.ast_node for item in sorted(viz_slice, key=lambda x: x.start_time)]
+            viz_body = [
+                item.ast_node for item in sorted(viz_slice, key=lambda x: x.start_time)
+            ]
 
             # We add a return at the end of the body, to return the figure object.
             if obj_id in id_to_var_names:
@@ -304,7 +364,9 @@ class PlotlyMiner(BaseExecutor):
             new_body = astlib.prepare_body(viz_body)
             candidate = astlib.update_stmt_body(code_ast, new_body)
 
-            logger.info(f"Extracted Raw Visualization Slice:\n{astlib.to_code(candidate)}")
+            logger.info(
+                f"Extracted Raw Visualization Slice:\n{astlib.to_code(candidate)}"
+            )
 
             #  We want to tuck the slice under a function that could be used for other data-frames.
             #  First, we replace all the read_csv calls with dataframe arguments.
@@ -323,43 +385,64 @@ class PlotlyMiner(BaseExecutor):
                 df_args = {var_name: to_replace[0][1]}
             else:
                 var_prefix = "_df_"
-                replacements = {node: astlib.create_name_expr(f"{var_prefix}{idx}")
-                                for idx, (node, df) in enumerate(to_replace, 1)}
-                df_args = {f"{var_prefix}{idx}": df for idx, (node, df) in enumerate(to_replace, 1)}
+                replacements = {
+                    node: astlib.create_name_expr(f"{var_prefix}{idx}")
+                    for idx, (node, df) in enumerate(to_replace, 1)
+                }
+                df_args = {
+                    f"{var_prefix}{idx}": df
+                    for idx, (node, df) in enumerate(to_replace, 1)
+                }
 
             #  With the arguments figured out, we can construct the desired function by creating a new function
             #  with the required signature, and making the slice the body of the function.
             candidate = astlib.with_deep_replacements(candidate, replacements)
-            func_def = astlib.parse_stmt(f"def viz({', '.join(i.value for i in replacements.values())}):\n    pass")
+            func_def = astlib.parse_stmt(
+                f"def viz({', '.join(i.value for i in replacements.values())}):\n    pass"
+            )
             func_def = astlib.update_stmt_body(func_def, candidate.body)
             code = astlib.to_code(func_def)
 
             logger.info(f"Extracted Visualization Function:\n{code}")
 
             #  Check if it executes correctly, and finishes under a fixed timeout
-            if not cls._check_execution(code, pos_args=[], kw_args=df_args, timeout=_MAX_VIZ_FUNC_EXEC_TIME):
-                logger.info(f"Discarding function as it did not run correctly or within "
-                            f"{_MAX_VIZ_FUNC_EXEC_TIME} seconds.")
+            if not cls._check_execution(
+                code, pos_args=[], kw_args=df_args, timeout=_MAX_VIZ_FUNC_EXEC_TIME
+            ):
+                logger.info(
+                    f"Discarding function as it did not run correctly or within "
+                    f"{_MAX_VIZ_FUNC_EXEC_TIME} seconds."
+                )
                 continue
 
             #  Run some optimizations
             logger.info("Running Variable Name Optimization")
-            var_optimized_code = optimize_vars(code, [], {arg: df.copy() for arg, df in df_args.items()})
-            logger.info(f"Finished Running Variable Name Optimization:\n{var_optimized_code}")
+            var_optimized_code = optimize_vars(
+                code, [], {arg: df.copy() for arg, df in df_args.items()}
+            )
+            logger.info(
+                f"Finished Running Variable Name Optimization:\n{var_optimized_code}"
+            )
             code = var_optimized_code
 
             #  Remove unnecessary statements that do not affect the visualization.
             #  Currently, the minimization being employed is a simplified version of the one used in VizSmith.
             logger.info("Running Minimization")
-            minimized_code = minimize_code(code, [], df_args, timeout_per_run=_MAX_VIZ_FUNC_EXEC_TIME)
+            minimized_code = minimize_code(
+                code, [], df_args, timeout_per_run=_MAX_VIZ_FUNC_EXEC_TIME
+            )
             logger.info(f"Finished Running Minimization:\n{minimized_code}")
             code = minimized_code
 
             #  We lift the hard-coded column references to column parameters.
             code_ast = astlib.parse(code)
             logger.info("Extracting Column Parameters")
-            code, col_args = cls._create_col_parameters(code_ast, df_args, col_collector=col_collector)
-            logger.info(f"Finished Extracting Column Parameters:\nCode:\n{code}\nArguments:\n{col_args}")
+            code, col_args = cls._create_col_parameters(
+                code_ast, df_args, col_collector=col_collector
+            )
+            logger.info(
+                f"Finished Extracting Column Parameters:\nCode:\n{code}\nArguments:\n{col_args}"
+            )
 
             #  We are all set. Save the output to an appropriate place.
             logger.info(f"Final Processed Visualization Function:\n{code}")
@@ -367,20 +450,29 @@ class PlotlyMiner(BaseExecutor):
             #  Figure out the paths to store the input dataframes at.
             for df in df_args.values():
                 if id(df) not in df_obj_id_to_pkl_paths:
-                    df_obj_id_to_pkl_paths[id(df)] = f"df_{len(df_obj_id_to_pkl_paths) + 1}.pkl"
+                    df_obj_id_to_pkl_paths[
+                        id(df)
+                    ] = f"df_{len(df_obj_id_to_pkl_paths) + 1}.pkl"
                     df_obj_id_to_df[id(df)] = df
 
-            viz_code.append({
-                "code": code,
-                "df_args": {arg: df_obj_id_to_pkl_paths[id(df)] for arg, df in df_args.items()},
-                "col_args": col_args,
-            })
+            viz_code.append(
+                {
+                    "code": code,
+                    "df_args": {
+                        arg: df_obj_id_to_pkl_paths[id(df)]
+                        for arg, df in df_args.items()
+                    },
+                    "col_args": col_args,
+                }
+            )
 
     @classmethod
-    def _get_slice(cls,
-                   trace: HierarchicalTrace,
-                   criteria: Set[TraceItem],
-                   body_stmts: Set[astlib.AstNode]) -> List[TraceItem]:
+    def _get_slice(
+        cls,
+        trace: HierarchicalTrace,
+        criteria: Set[TraceItem],
+        body_stmts: Set[astlib.AstNode],
+    ) -> List[TraceItem]:
         worklist = collections.deque(criteria)
         queued: Set[TraceItem] = set(criteria)
 
@@ -398,34 +490,49 @@ class PlotlyMiner(BaseExecutor):
         return sorted(queued, key=lambda x: x.start_time)
 
     @classmethod
-    def _check_execution(cls, code: str, pos_args: List[Any], kw_args: Dict[str, Any],
-                         timeout: int = _MAX_VIZ_FUNC_EXEC_TIME) -> bool:
+    def _check_execution(
+        cls,
+        code: str,
+        pos_args: List[Any],
+        kw_args: Dict[str, Any],
+        timeout: int = _MAX_VIZ_FUNC_EXEC_TIME,
+    ) -> bool:
         try:
-            fig = utils.run_viz_code_plotly_mp(code, pos_args=pos_args, kw_args=kw_args,
-                                               timeout=timeout, func_name='viz')
+            fig = utils.run_viz_code_plotly_mp(
+                code,
+                pos_args=pos_args,
+                kw_args=kw_args,
+                timeout=timeout,
+                func_name="viz",
+            )
             return fig is not None
         except:
             return False
 
     @classmethod
-    def _collect_col_attribute_access(cls, code_ast: astlib.AstNode, pos_args: List[Any], kw_args: Dict[str, Any]
-                                      ) -> Dict[astlib.Attribute, str]:
+    def _collect_col_attribute_access(
+        cls, code_ast: astlib.AstNode, pos_args: List[Any], kw_args: Dict[str, Any]
+    ) -> Dict[astlib.Attribute, str]:
         attr_access_collector = DfColAttrAccessCollector()
-        instrumenter = Instrumenter(Instrumentation.from_generators(attr_access_collector))
+        instrumenter = Instrumenter(
+            Instrumentation.from_generators(attr_access_collector)
+        )
 
         #  Run the instrumenter, and execute.
         new_ast, globs = instrumenter.process(code_ast)
         new_code = astlib.to_code(new_ast)
         exec(new_code, globs, globs)
-        globs['viz'](*pos_args, **kw_args)
+        globs["viz"](*pos_args, **kw_args)
 
         return attr_access_collector.get_df_col_attr_accesses()
 
     @classmethod
-    def _create_col_parameters(cls,
-                               code_ast: astlib.AstNode,
-                               df_args: Dict[str, pd.DataFrame],
-                               col_collector: DfStrColumnsCollector) -> Tuple[str, Dict[str, str]]:
+    def _create_col_parameters(
+        cls,
+        code_ast: astlib.AstNode,
+        df_args: Dict[str, pd.DataFrame],
+        col_collector: DfStrColumnsCollector,
+    ) -> Tuple[str, Dict[str, str]]:
 
         #  We will differentiate between columns that are present in the input dataframes, versus those
         #  that are created in the visualization
@@ -444,9 +551,11 @@ class PlotlyMiner(BaseExecutor):
         #  Identifying strings is easy, but to know if the column is being referred to using an attribute access,
         #  we need to employ some more instrumentation. So we do that to get all the attribute accesses
         #  that correspond to a column access of a dataframe.
-        attr_accesses = cls._collect_col_attribute_access(code_ast,
-                                                          pos_args=[],
-                                                          kw_args={arg: df.copy() for arg, df in df_args.items()})
+        attr_accesses = cls._collect_col_attribute_access(
+            code_ast,
+            pos_args=[],
+            kw_args={arg: df.copy() for arg, df in df_args.items()},
+        )
 
         #  All set to extract columns
         num_inp_df_cols_found = 0
@@ -471,7 +580,9 @@ class PlotlyMiner(BaseExecutor):
 
                         cols_to_params[col_name] = new_param
 
-                    node_replacement_map[node] = astlib.create_name_expr(cols_to_params[col_name])
+                    node_replacement_map[node] = astlib.create_name_expr(
+                        cols_to_params[col_name]
+                    )
 
             elif isinstance(node, astlib.Attribute) and node in attr_accesses:
                 #  It's an attribute-based column access. We'll replace it with a subscript access i.e. (df["col_name"])
@@ -486,7 +597,9 @@ class PlotlyMiner(BaseExecutor):
 
                     cols_to_params[col_name] = new_param
 
-                node_replacement_map[node] = astlib.create_subscript_expr(node.value, [cols_to_params[col_name]])
+                node_replacement_map[node] = astlib.create_subscript_expr(
+                    node.value, [cols_to_params[col_name]]
+                )
 
         #  Replace the strings and attribute access with the new name accesses and subscript accesses respectively.
         updated_code_ast = astlib.with_deep_replacements(code_ast, node_replacement_map)
@@ -498,10 +611,14 @@ class PlotlyMiner(BaseExecutor):
             assert False
 
         #  Also need to update the signature to reflect the new parameters.
-        new_sig: str = ", ".join(sorted(df_args.keys()) + sorted(cols_to_params.values()))
+        new_sig: str = ", ".join(
+            sorted(df_args.keys()) + sorted(cols_to_params.values())
+        )
         updated_func_def = astlib.parse_stmt(f"def viz({new_sig}):\n    pass")
-        updated_func_def = astlib.update_stmt_body(updated_func_def,
-                                                   list(astlib.prepare_body(list(astlib.iter_body_stmts(func_def)))))
+        updated_func_def = astlib.update_stmt_body(
+            updated_func_def,
+            list(astlib.prepare_body(list(astlib.iter_body_stmts(func_def)))),
+        )
 
         new_code = astlib.to_code(updated_func_def)
         col_arguments = {v: k for k, v in cols_to_params.items()}
@@ -513,7 +630,9 @@ class PlotlyMiner(BaseExecutor):
         result = {}
         for k, v in sys.modules.items():
             if "." not in k and not k.startswith("_"):
-                if hasattr(v, "__version__") and isinstance(getattr(v, "__version__"), str):
+                if hasattr(v, "__version__") and isinstance(
+                    getattr(v, "__version__"), str
+                ):
                     result[k] = getattr(v, "__version__")
 
         return result

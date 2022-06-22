@@ -30,6 +30,7 @@ class TraceItem:
     """
     The basic unit of the hierarchical program trace.
     """
+
     start_time: int = attr.ib()
     end_time: int = attr.ib()
 
@@ -45,7 +46,7 @@ class TraceItem:
     obj_id: int = attr.ib(default=None)
 
     #  The immediate parent item.
-    par_item: Optional['TraceItem'] = attr.ib(default=None)
+    par_item: Optional["TraceItem"] = attr.ib(default=None)
 
     #  Miscellaneous meta-data. Especially useful for auxiliary statements.
     metadata: Dict = attr.ib(default=None)
@@ -77,6 +78,7 @@ class TraceEvent(ABC):
     """
     Base class for a PDG event.
     """
+
     timestamp: int = attr.ib()
     owner: Optional[TraceItem] = attr.ib()
     ast_node: astlib.AstNode = attr.ib()
@@ -108,9 +110,14 @@ class DefEvent(TraceEvent):
     Generated when a variable is assigned to (local variables, function defs, class defs, param definitions).
     Python does not differentiate between declaration and definition, so we do the same.
     """
+
     name: str = attr.ib()
-    scope_id: astlib.ScopeId = attr.ib()  # ID of the scope in which the definition was done.
-    def_key: Hashable = attr.ib()  # A unique object representing the variable this definition is for.
+    scope_id: astlib.ScopeId = (
+        attr.ib()
+    )  # ID of the scope in which the definition was done.
+    def_key: Hashable = (
+        attr.ib()
+    )  # A unique object representing the variable this definition is for.
 
 
 @attr.s(cmp=False, repr=False, slots=True)
@@ -118,9 +125,14 @@ class AccessEvent(TraceEvent):
     """
     Generated when a variable is accessed (local/global variables, functions, classes, params etc.).
     """
+
     name: str = attr.ib()
-    scope_id: astlib.ScopeId = attr.ib()  # ID of the scope in which the variable was accessed.
-    def_event: Optional[DefEvent] = attr.ib()  # The event corresponding to the definition for this variable.
+    scope_id: astlib.ScopeId = (
+        attr.ib()
+    )  # ID of the scope in which the variable was accessed.
+    def_event: Optional[
+        DefEvent
+    ] = attr.ib()  # The event corresponding to the definition for this variable.
 
 
 @attr.s(cmp=False, repr=False, slots=True)
@@ -146,9 +158,9 @@ class HierarchicalTrace:
         """
         return self._default_item_end_time
 
-    def get_events(self,
-                   start_time: Optional[int] = None,
-                   end_time: Optional[int] = None) -> List[TraceEvent]:
+    def get_events(
+        self, start_time: Optional[int] = None, end_time: Optional[int] = None
+    ) -> List[TraceEvent]:
         """
 
         :param start_time:
@@ -162,9 +174,9 @@ class HierarchicalTrace:
         end_time = end_time or self._default_event_end_time
         return list(i.data for i in self._tree_events.envelop(start_time, end_time))
 
-    def get_items(self,
-                  start_time: Optional[int] = None,
-                  end_time: Optional[int] = None) -> List[TraceItem]:
+    def get_items(
+        self, start_time: Optional[int] = None, end_time: Optional[int] = None
+    ) -> List[TraceItem]:
         """
 
         :param start_time:
@@ -178,7 +190,9 @@ class HierarchicalTrace:
         end_time = end_time or self._default_item_end_time
         return list(i.data for i in self._tree_items.envelop(start_time, end_time))
 
-    def get_enveloping_items(self, start_time: int, end_time: int = None) -> List[TraceItem]:
+    def get_enveloping_items(
+        self, start_time: int, end_time: int = None
+    ) -> List[TraceItem]:
         """
 
         :param start_time:
@@ -188,7 +202,10 @@ class HierarchicalTrace:
         if end_time is None:
             return [i.data for i in self._tree_items.at(start_time)]
 
-        return [i.data for i in self._tree_items.at(start_time) & self._tree_items.at(end_time)]
+        return [
+            i.data
+            for i in self._tree_items.at(start_time) & self._tree_items.at(end_time)
+        ]
 
     def get_parent(self, trace_item: TraceItem) -> Optional[TraceItem]:
         """
@@ -245,8 +262,11 @@ class HierarchicalTrace:
         """
         left_index = self._deps_dst_timestamps.bisect_key_left(item.start_time)
         right_index = self._deps_dst_timestamps.bisect_key_left(item.end_time)
-        return [d for d in self._deps_dst_timestamps[left_index:right_index]
-                if d.src.timestamp < item.start_time]
+        return [
+            d
+            for d in self._deps_dst_timestamps[left_index:right_index]
+            if d.src.timestamp < item.start_time
+        ]
 
     @caching.caching_method
     def get_dependencies(self, item: TraceItem) -> List[Dependency]:
@@ -255,7 +275,9 @@ class HierarchicalTrace:
         :param item:
         :return:
         """
-        return self.get_external_dependencies(item) + self.get_internal_dependencies(item)
+        return self.get_external_dependencies(item) + self.get_internal_dependencies(
+            item
+        )
 
     @caching.caching_method
     def get_explicitly_resolving_items(self, dependency: Dependency) -> List[TraceItem]:
@@ -265,13 +287,19 @@ class HierarchicalTrace:
         :return:
         """
         if dependency.type == DependencyType.READ_AFTER_WRITE:
-            return [i for i in self.get_enveloping_items(dependency.src.timestamp)
-                    if i.end_time <= dependency.dst.timestamp]
+            return [
+                i
+                for i in self.get_enveloping_items(dependency.src.timestamp)
+                if i.end_time <= dependency.dst.timestamp
+            ]
 
         elif dependency.type == DependencyType.DEF_ACCESS:
             assert isinstance(dependency.src, DefEvent)
-            return [i for i in self._items_exposing_defs[dependency.src]
-                    if i.end_time <= dependency.dst.timestamp]
+            return [
+                i
+                for i in self._items_exposing_defs[dependency.src]
+                if i.end_time <= dependency.dst.timestamp
+            ]
 
         else:
             raise ValueError(f"Unrecognized dependency of type {dependency.type}")
@@ -283,7 +311,11 @@ class HierarchicalTrace:
         :param dependency:
         :return:
         """
-        return list(self.get_enveloping_items(dependency.src.timestamp, dependency.dst.timestamp))
+        return list(
+            self.get_enveloping_items(
+                dependency.src.timestamp, dependency.dst.timestamp
+            )
+        )
 
     @caching.caching_method
     def get_resolving_items(self, dependency: Dependency) -> List[TraceItem]:
@@ -292,7 +324,9 @@ class HierarchicalTrace:
         :param dependency:
         :return:
         """
-        return self.get_explicitly_resolving_items(dependency) + self.get_implicitly_resolving_items(dependency)
+        return self.get_explicitly_resolving_items(
+            dependency
+        ) + self.get_implicitly_resolving_items(dependency)
 
     @caching.caching_method
     def get_affording_items(self, event: TraceEvent) -> List[TraceItem]:
@@ -321,14 +355,20 @@ class HierarchicalTrace:
         if end_time is None:
             end_time = self.get_end_time()
 
-        return [d for d in self._def_events_by_obj_id[obj_id] if start_time <= d.timestamp < end_time]
+        return [
+            d
+            for d in self._def_events_by_obj_id[obj_id]
+            if start_time <= d.timestamp < end_time
+        ]
 
-    def get_expr_items(self,
-                       obj_id: int,
-                       min_start_time: int = None,
-                       max_start_time: int = None,
-                       min_end_time: int = None,
-                       max_end_time: int = None):
+    def get_expr_items(
+        self,
+        obj_id: int,
+        min_start_time: int = None,
+        max_start_time: int = None,
+        min_end_time: int = None,
+        max_end_time: int = None,
+    ):
         """
 
         :param obj_id:
@@ -347,8 +387,12 @@ class HierarchicalTrace:
         if max_end_time is None:
             max_end_time = self.get_end_time()
 
-        return [d for d in self._expr_items_by_obj_id[obj_id]
-                if min_start_time <= d.start_time < max_start_time and min_end_time <= d.end_time < max_end_time]
+        return [
+            d
+            for d in self._expr_items_by_obj_id[obj_id]
+            if min_start_time <= d.start_time < max_start_time
+            and min_end_time <= d.end_time < max_end_time
+        ]
 
     @caching.caching_method
     def get_objs_item_depends_on(self, item: TraceItem) -> Set[int]:
@@ -358,14 +402,19 @@ class HierarchicalTrace:
         :return:
         """
         res: Set[int] = set()
-        res.update(e.obj_id for e in self.get_events(start_time=item.start_time, end_time=item.end_time)
-                   if isinstance(e, ObjReadEvent))
+        res.update(
+            e.obj_id
+            for e in self.get_events(start_time=item.start_time, end_time=item.end_time)
+            if isinstance(e, ObjReadEvent)
+        )
 
         for dep in self.get_external_dependencies(item):
             if dep.src.owner is not None:
                 resolving_item = dep.src.owner
             else:
-                resolving_items = sorted(self.get_resolving_items(dep), key=lambda x: x.end_time)
+                resolving_items = sorted(
+                    self.get_resolving_items(dep), key=lambda x: x.end_time
+                )
                 if len(resolving_items) > 0:
                     resolving_item = resolving_items[0]
                 else:
@@ -391,13 +440,15 @@ class HierarchicalTrace:
     @caching.cached_property
     def _tree_events(self) -> intervaltree.IntervalTree:
         return intervaltree.IntervalTree(
-            intervaltree.Interval(begin=e.timestamp, end=e.timestamp + 1, data=e) for e in self.events
+            intervaltree.Interval(begin=e.timestamp, end=e.timestamp + 1, data=e)
+            for e in self.events
         )
 
     @caching.cached_property
     def _tree_items(self) -> intervaltree.IntervalTree:
         return intervaltree.IntervalTree(
-            intervaltree.Interval(begin=i.start_time, end=i.end_time, data=i) for i in self.items
+            intervaltree.Interval(begin=i.start_time, end=i.end_time, data=i)
+            for i in self.items
         )
 
     @caching.cached_property
@@ -420,23 +471,33 @@ class HierarchicalTrace:
 
             elif isinstance(e, ObjReadEvent):
                 if e.obj_id in last_write:
-                    dependencies.append(Dependency(src=last_write[e.obj_id],
-                                                   dst=e,
-                                                   type=DependencyType.READ_AFTER_WRITE))
+                    dependencies.append(
+                        Dependency(
+                            src=last_write[e.obj_id],
+                            dst=e,
+                            type=DependencyType.READ_AFTER_WRITE,
+                        )
+                    )
 
             elif isinstance(e, AccessEvent):
                 if e.def_event is not None:
-                    dependencies.append(Dependency(src=e.def_event,
-                                                   dst=e,
-                                                   type=DependencyType.DEF_ACCESS))
+                    dependencies.append(
+                        Dependency(
+                            src=e.def_event, dst=e, type=DependencyType.DEF_ACCESS
+                        )
+                    )
 
         return dependencies
 
     @caching.cached_property
     def _deps_tree(self) -> intervaltree.IntervalTree:
         interval_class = intervaltree.Interval
-        return intervaltree.IntervalTree([interval_class(d.src.timestamp, d.dst.timestamp + 1, data=d)
-                                          for d in self._dependencies])
+        return intervaltree.IntervalTree(
+            [
+                interval_class(d.src.timestamp, d.dst.timestamp + 1, data=d)
+                for d in self._dependencies
+            ]
+        )
 
     @caching.cached_property
     def _deps_src_timestamps(self) -> SortedKeyList:
@@ -448,8 +509,12 @@ class HierarchicalTrace:
 
     @caching.cached_property
     def _items_exposing_defs(self) -> Dict[DefEvent, List[TraceItem]]:
-        last_def_map: Dict[TraceItem, Dict[Hashable, DefEvent]] = collections.defaultdict(dict)
-        items_exposing_defs: Dict[DefEvent, List[TraceItem]] = collections.defaultdict(list)
+        last_def_map: Dict[
+            TraceItem, Dict[Hashable, DefEvent]
+        ] = collections.defaultdict(dict)
+        items_exposing_defs: Dict[DefEvent, List[TraceItem]] = collections.defaultdict(
+            list
+        )
         for e in self.events:
             if isinstance(e, DefEvent):
                 if e.owner is not None:

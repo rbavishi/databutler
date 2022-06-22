@@ -4,7 +4,10 @@ from typing import List
 import attrs
 
 from databutler.datana.generic.corpus.code import DatanaFunction
-from databutler.datana.generic.corpus.code_changes.change import BaseCodeChange, BaseCodeRemovalChange
+from databutler.datana.generic.corpus.code_changes.change import (
+    BaseCodeChange,
+    BaseCodeRemovalChange,
+)
 
 
 @attrs.define(eq=False, repr=False)
@@ -12,6 +15,7 @@ class BaseCodeChangeGen(ABC):
     """
     Base class for all code-change generators for datana functions.
     """
+
     @abstractmethod
     def gen_changes(self, func: DatanaFunction) -> List[BaseCodeChange]:
         """
@@ -29,6 +33,7 @@ class BaseCodeRemovalChangeGen(BaseCodeChangeGen, ABC):
     """
     Base class for all code-removal based change generators for datana functions.
     """
+
     @abstractmethod
     def gen_changes(self, func: DatanaFunction) -> List[BaseCodeRemovalChange]:
         pass

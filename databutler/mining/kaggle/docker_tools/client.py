@@ -9,7 +9,10 @@ import docker
 import docker.models.containers
 from docker.errors import ImageNotFound
 
-from databutler.mining.kaggle.docker_tools.exceptions import ContainerStartError, CommandFailedError
+from databutler.mining.kaggle.docker_tools.exceptions import (
+    ContainerStartError,
+    CommandFailedError,
+)
 from databutler.mining.kaggle.docker_tools.utils import _tarify_contents, _tarify_path
 from databutler.utils.logging import logger
 
@@ -20,14 +23,17 @@ class DockerShellClient:
     A convenient wrapper around the docker library offering a shell (such as /bin/bash) and
     high-level abstractions around file transfer shell command execution etc.
     """
-    shell: str = '/bin/bash'
+
+    shell: str = "/bin/bash"
     timeout: Optional[int] = None
 
     stdout_log_path: Optional[str] = None
     stderr_log_path: Optional[str] = None
 
     _client: docker.DockerClient = attrs.field(init=False, default=None)
-    _ids_to_containers: Dict[str, docker.models.containers.Container] = attrs.field(init=False, factory=dict)
+    _ids_to_containers: Dict[str, docker.models.containers.Container] = attrs.field(
+        init=False, factory=dict
+    )
 
     def __attrs_post_init__(self):
         self._client = docker.from_env(timeout=self.timeout)
@@ -43,8 +49,7 @@ class DockerShellClient:
         """
         self.pull_image(image)
         container = self._client.containers.run(
-            image=image, entrypoint=self.shell, stdin_open=True, detach=True,
-            **kwargs
+            image=image, entrypoint=self.shell, stdin_open=True, detach=True, **kwargs
         )
         self._ids_to_containers[container.id] = container
         return container.id
@@ -118,9 +123,14 @@ class DockerShellClient:
 
                     if "id" in line:
                         if "progress" in line:
-                            active_pulls[line["id"]] = f"{line['status']}: {line['progress']}"
+                            active_pulls[
+                                line["id"]
+                            ] = f"{line['status']}: {line['progress']}"
                         elif "status" in line:
-                            if line["status"] == "Pull complete" or line["status"] == "Already exists":
+                            if (
+                                line["status"] == "Pull complete"
+                                or line["status"] == "Already exists"
+                            ):
                                 if line["id"] in active_pulls:
                                     del active_pulls[line["id"]]
                             else:
@@ -142,8 +152,14 @@ class DockerShellClient:
             logger.exception(e)
             return False
 
-    def exec(self, container_id: str, cmd: str, workdir: Optional[str] = None, timeout: Optional[int] = None,
-             on_error: str = 'ignore'):
+    def exec(
+        self,
+        container_id: str,
+        cmd: str,
+        workdir: Optional[str] = None,
+        timeout: Optional[int] = None,
+        on_error: str = "ignore",
+    ):
         """
         Runs the supplied command in a shell in the provided container.
 
@@ -165,26 +181,30 @@ class DockerShellClient:
             raise KeyError(f"No container found with id {container_id}")
 
         if self.stdout_log_path is not None and self.stderr_log_path is not None:
-            cmd = f"{self.shell} -c \"({cmd}) 1>>{self.stdout_log_path} 2>>{self.stderr_log_path}\""
+            cmd = f'{self.shell} -c "({cmd}) 1>>{self.stdout_log_path} 2>>{self.stderr_log_path}"'
         elif self.stdout_log_path is not None:
-            cmd = f"{self.shell} -c \"({cmd}) 1>>{self.stdout_log_path}\""
+            cmd = f'{self.shell} -c "({cmd}) 1>>{self.stdout_log_path}"'
         elif self.stderr_log_path is not None:
-            cmd = f"{self.shell} -c \"({cmd}) 2>>{self.stderr_log_path}\""
+            cmd = f'{self.shell} -c "({cmd}) 2>>{self.stderr_log_path}"'
 
         container = self._ids_to_containers[container_id]
         if timeout is None:
             start_time = time.time()
-            exit_code, (stdout, stderr) = container.exec_run(cmd, demux=True, workdir=workdir)
+            exit_code, (stdout, stderr) = container.exec_run(
+                cmd, demux=True, workdir=workdir
+            )
             elapsed_time = time.time() - start_time
 
-            if on_error == 'raise' and exit_code != 0:
-                raise CommandFailedError(f"Command {cmd} failed with exit-code {exit_code}")
+            if on_error == "raise" and exit_code != 0:
+                raise CommandFailedError(
+                    f"Command {cmd} failed with exit-code {exit_code}"
+                )
 
             return {
-                'exit_code': exit_code,
-                'stdout': stdout.decode() if stdout else stdout,
-                'stderr': stderr.decode() if stderr else stderr,
-                'elapsed_time': elapsed_time,
+                "exit_code": exit_code,
+                "stdout": stdout.decode() if stdout else stdout,
+                "stderr": stderr.decode() if stderr else stderr,
+                "elapsed_time": elapsed_time,
             }
 
         else:
@@ -205,22 +225,28 @@ class DockerShellClient:
             #  Keep polling every sleep_time seconds.
             #  NOTE : This solution is better than using signal handlers and the likes as this
             #         way we can adhere to the time-limit perfectly, which is crucial for our use-case.
-            exit_code = self._client.api.exec_inspect(handle['Id']).get('ExitCode', None)
+            exit_code = self._client.api.exec_inspect(handle["Id"]).get(
+                "ExitCode", None
+            )
             elapsed_time = time.time() - start_time
             while (exit_code is None) and (elapsed_time < timeout):
                 time.sleep(sleep_time)
-                exit_code = self._client.api.exec_inspect(handle['Id']).get('ExitCode', None)
+                exit_code = self._client.api.exec_inspect(handle["Id"]).get(
+                    "ExitCode", None
+                )
                 elapsed_time = time.time() - start_time
 
-            timeout = (exit_code is None and elapsed_time > timeout)
+            timeout = exit_code is None and elapsed_time > timeout
 
-            if on_error == 'raise' and exit_code is not None and exit_code != 0:
-                raise CommandFailedError(f"Command {cmd} failed with exit-code {exit_code}")
+            if on_error == "raise" and exit_code is not None and exit_code != 0:
+                raise CommandFailedError(
+                    f"Command {cmd} failed with exit-code {exit_code}"
+                )
 
             return {
-                'exit_code': exit_code,
-                'elapsed_time': elapsed_time,
-                'timeout': timeout
+                "exit_code": exit_code,
+                "elapsed_time": elapsed_time,
+                "timeout": timeout,
             }
 
     def save_container_to_image(self, container_id: str, new_image_name: str):
@@ -256,8 +282,14 @@ class DockerShellClient:
         filename = os.path.basename(filepath)
         container.put_archive(dirpath, _tarify_contents(filename, contents))
 
-    def cp_to_remote(self, container_id: str, src_path: str, dst_path: str,
-                     include: Collection[str] = None, exclude: Collection[str] = None):
+    def cp_to_remote(
+        self,
+        container_id: str,
+        src_path: str,
+        dst_path: str,
+        include: Collection[str] = None,
+        exclude: Collection[str] = None,
+    ):
         """
         Copies a file from the host filesystem to the container.
 
@@ -274,8 +306,10 @@ class DockerShellClient:
             raise KeyError(f"No container found with id {container_id}")
 
         container = self._ids_to_containers[container_id]
-        container.put_archive(dst_path, _tarify_path(src_path, root_name='',
-                                                     include=include, exclude=exclude))
+        container.put_archive(
+            dst_path,
+            _tarify_path(src_path, root_name="", include=include, exclude=exclude),
+        )
 
     def remove(self, container_id: str):
         """

@@ -19,12 +19,12 @@ class AutodocFewShotExample:
     param_code: str
 
     @classmethod
-    def from_json(cls, val_json: Dict) -> 'AutodocFewShotExample':
+    def from_json(cls, val_json: Dict) -> "AutodocFewShotExample":
         return AutodocFewShotExample(
-            code=val_json['code'],
-            nl=val_json['nl'],
-            param_nl=val_json['param_nl'],
-            param_code=val_json['param_code'],
+            code=val_json["code"],
+            nl=val_json["nl"],
+            param_nl=val_json["param_nl"],
+            param_code=val_json["param_code"],
         )
 
     def to_json(self) -> Dict[str, Any]:
@@ -57,7 +57,9 @@ class Parameterization:
 
     def get_instantiated_code(self) -> str:
         code = self.code
-        for k, v in sorted(self.instantiation.items(), key=lambda x: len(x[0]), reverse=True):
+        for k, v in sorted(
+            self.instantiation.items(), key=lambda x: len(x[0]), reverse=True
+        ):
             code = code.replace(f"{k}", v)
 
         return code
@@ -94,10 +96,14 @@ def normalize_keyword_argument_order(code: str):
     for node in astlib.walk(code_ast):
         if isinstance(node, astlib.Call):
             pos_args = [arg for arg in node.args if arg.keyword is None]
-            kw_args = sorted([
-                astlib.with_changes(arg, comma=astlib.cst.MaybeSentinel.DEFAULT)
-                for arg in node.args if arg.keyword is not None
-            ], key=lambda x: x.keyword.value)
+            kw_args = sorted(
+                [
+                    astlib.with_changes(arg, comma=astlib.cst.MaybeSentinel.DEFAULT)
+                    for arg in node.args
+                    if arg.keyword is not None
+                ],
+                key=lambda x: x.keyword.value,
+            )
             if len(kw_args) > 0:
                 node_repl[node] = astlib.with_changes(node, args=pos_args + kw_args)
 
@@ -118,9 +124,13 @@ def normalize_code_for_comparison(code: str, df_args: Set[str]):
 
     attr_repl = {}
     for node in astlib.walk(code_ast):
-        if isinstance(node, astlib.Attribute) and isinstance(node.value, astlib.Name) and node.value.value in df_args:
+        if (
+            isinstance(node, astlib.Attribute)
+            and isinstance(node.value, astlib.Name)
+            and node.value.value in df_args
+        ):
             if not hasattr(pd.DataFrame, node.attr.value):
-                new_node = astlib.parse_expr(f"{node.value.value}[\"{node.attr.value}\"]")
+                new_node = astlib.parse_expr(f'{node.value.value}["{node.attr.value}"]')
                 attr_repl[node] = new_node
 
     if len(attr_repl) > 0:
@@ -143,7 +153,7 @@ def quotes_aware_split_with_whitespace(text: str) -> List[str]:
     while idx < len(text):
         if text[idx] == text_tokens[cur_token_idx][0]:
             if len(cur_whitespace_tokens) != 0:
-                text_tokens_with_whitespace.append(''.join(cur_whitespace_tokens))
+                text_tokens_with_whitespace.append("".join(cur_whitespace_tokens))
                 cur_whitespace_tokens.clear()
 
             idx += len(text_tokens[cur_token_idx])
@@ -154,7 +164,7 @@ def quotes_aware_split_with_whitespace(text: str) -> List[str]:
             idx += 1
 
     if len(cur_whitespace_tokens) != 0:
-        text_tokens_with_whitespace.append(''.join(cur_whitespace_tokens))
+        text_tokens_with_whitespace.append("".join(cur_whitespace_tokens))
 
     return text_tokens_with_whitespace
 
@@ -191,7 +201,10 @@ def find_instantiation_map(template_ast: astlib.AstNode, code_ast: astlib.AstNod
 
 
 def generate_llm_based_parameterization(
-        desc: AutodocDescription, param_nl: str, param_code: str, orig_code: str,
+    desc: AutodocDescription,
+    param_nl: str,
+    param_code: str,
+    orig_code: str,
 ) -> Optional[Parameterization]:
     try:
         #  It must be parseable
@@ -210,7 +223,9 @@ def generate_llm_based_parameterization(
 
     first_func_stmt = next(iter(astlib.iter_body_stmts(first_mod_stmt)))
     #  It should be a return statement or a single expression statement
-    if not isinstance(first_func_stmt, astlib.Return) and not isinstance(first_func_stmt, astlib.Expr):
+    if not isinstance(first_func_stmt, astlib.Return) and not isinstance(
+        first_func_stmt, astlib.Expr
+    ):
         return None
     else:
         param_expr = first_func_stmt.value
@@ -221,13 +236,21 @@ def generate_llm_based_parameterization(
         return None
 
     #  There must be a valid instantiation to the original code
-    param_expr = astlib.parse_expr(normalize_keyword_argument_order(astlib.to_code(param_expr)))
+    param_expr = astlib.parse_expr(
+        normalize_keyword_argument_order(astlib.to_code(param_expr))
+    )
     orig_code = normalize_keyword_argument_order(orig_code)
     inst_map = find_instantiation_map(param_expr, astlib.parse_expr(orig_code))
-    if not all(isinstance(k, astlib.Name) and k.value in params for k in inst_map.keys()):
+    if not all(
+        isinstance(k, astlib.Name) and k.value in params for k in inst_map.keys()
+    ):
         return None
     else:
-        instantiation = {k.value: astlib.to_code(v) for k, v in inst_map.items() if isinstance(k, astlib.Name)}
+        instantiation = {
+            k.value: astlib.to_code(v)
+            for k, v in inst_map.items()
+            if isinstance(k, astlib.Name)
+        }
 
     return Parameterization(
         nl=param_nl,
@@ -240,7 +263,9 @@ def generate_llm_based_parameterization(
     )
 
 
-def generate_nl_based_parameterization(snippet: MinedResult, generated_nl: str) -> Optional[Parameterization]:
+def generate_nl_based_parameterization(
+    snippet: MinedResult, generated_nl: str
+) -> Optional[Parameterization]:
     try:
         nl_tokens = quotes_aware_split_with_whitespace(generated_nl)
     except:
@@ -285,14 +310,26 @@ def generate_nl_based_parameterization(snippet: MinedResult, generated_nl: str) 
             elif repr(val) in nl_tokens_set:
                 to_replace = repr(val)
 
-            elif isinstance(val, (int, float)) and val < 0 and f"-{abs(val)}" in nl_tokens_set:
+            elif (
+                isinstance(val, (int, float))
+                and val < 0
+                and f"-{abs(val)}" in nl_tokens_set
+            ):
                 #  Negative numbers are sometimes represented weirdly in normalized code.
                 to_replace = f"-{abs(val)}"
 
-            elif f"'{val!r}'" in nl_tokens_set and f'"{val!r}"' not in code and f"'{val!r}'" not in code:
+            elif (
+                f"'{val!r}'" in nl_tokens_set
+                and f'"{val!r}"' not in code
+                and f"'{val!r}'" not in code
+            ):
                 to_replace = f"'{val!r}'"
 
-            elif f'"{val!r}"' in nl_tokens_set and f'"{val!r}"' not in code and f"'{val!r}'" not in code:
+            elif (
+                f'"{val!r}"' in nl_tokens_set
+                and f'"{val!r}"' not in code
+                and f"'{val!r}'" not in code
+            ):
                 to_replace = f'"{val!r}"'
 
             if to_replace is not None:
@@ -325,11 +362,11 @@ def generate_nl_based_parameterization(snippet: MinedResult, generated_nl: str) 
                 instantiation[new_name] = astlib.to_code(node)
 
     new_tokens = [nl_repl_dict.get(tok, tok) for tok in nl_tokens]
-    new_nl = ''.join(new_tokens)
+    new_nl = "".join(new_tokens)
 
-    new_code = codeutils.normalize_code_fast(astlib.to_code(
-        astlib.with_deep_replacements(code_ast, node_repl_dict)
-    ))
+    new_code = codeutils.normalize_code_fast(
+        astlib.to_code(astlib.with_deep_replacements(code_ast, node_repl_dict))
+    )
 
     if '"COL:' in new_nl or "'COL:" in new_nl:
         return None
@@ -349,7 +386,7 @@ def generate_nl_based_parameterization(snippet: MinedResult, generated_nl: str) 
 
 
 def attempt_parameterization_application(
-        parameterization: Parameterization, snippet: MinedResult
+    parameterization: Parameterization, snippet: MinedResult
 ) -> Optional[Parameterization]:
     if parameterization.code.strip().startswith("def code"):
         #  The template is in function form. Extract the return value or last expression statement value.
@@ -358,21 +395,28 @@ def attempt_parameterization_application(
         if not isinstance(first_stmt, astlib.FunctionDef):
             return None
         first_func_stmt = next(astlib.iter_body_stmts(first_stmt))
-        if not (isinstance(first_func_stmt, astlib.Expr) or isinstance(first_func_stmt, astlib.Return)):
+        if not (
+            isinstance(first_func_stmt, astlib.Expr)
+            or isinstance(first_func_stmt, astlib.Return)
+        ):
             return None
 
         template_ast = first_func_stmt.value
     else:
         template_ast = astlib.parse_expr(parameterization.code)
 
-    template_ast = astlib.parse_expr(normalize_keyword_argument_order(astlib.to_code(template_ast)))
+    template_ast = astlib.parse_expr(
+        normalize_keyword_argument_order(astlib.to_code(template_ast))
+    )
     code_ast = astlib.parse_expr(normalize_keyword_argument_order(snippet.code))
 
     worklist: Deque[Tuple[astlib.AstNode, astlib.AstNode]] = collections.deque()
     worklist.append((template_ast, code_ast))
 
     all_params: Set[str] = set(parameterization.all_params)
-    df_and_series_params: Set[str] = set(parameterization.df_params) | set(parameterization.series_params)
+    df_and_series_params: Set[str] = set(parameterization.df_params) | set(
+        parameterization.series_params
+    )
     df_and_series_vars = set(snippet.df_vars) | set(snippet.series_vars)
     instantiation: Dict[str, str] = {}
 
@@ -381,7 +425,10 @@ def attempt_parameterization_application(
 
         if isinstance(t_node, astlib.Name) and t_node.value in all_params:
             if t_node.value in df_and_series_params:
-                if isinstance(c_node, astlib.Name) and c_node.value in df_and_series_vars:
+                if (
+                    isinstance(c_node, astlib.Name)
+                    and c_node.value in df_and_series_vars
+                ):
                     if t_node.value in instantiation:
                         if instantiation[t_node.value] != c_node.value:
                             return None

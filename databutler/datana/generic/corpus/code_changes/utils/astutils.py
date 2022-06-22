@@ -15,9 +15,13 @@ class _NodeRemovalTransformer(ast.NodeTransformer):
             return self.generic_visit(node)
 
 
-def remove_nodes_from_native_ast(code_ast: ast.AST, to_remove: Collection[ast.AST]) -> ast.AST:
+def remove_nodes_from_native_ast(
+    code_ast: ast.AST, to_remove: Collection[ast.AST]
+) -> ast.AST:
     return _NodeRemovalTransformer(to_remove).visit(code_ast)
 
 
-def remove_nodes_from_astlib_ast(code_ast: astlib.AstNode, to_remove: Collection[astlib.AstNode]) -> astlib.AstNode:
+def remove_nodes_from_astlib_ast(
+    code_ast: astlib.AstNode, to_remove: Collection[astlib.AstNode]
+) -> astlib.AstNode:
     return astlib.remove_nodes_from_ast(code_ast, to_remove)

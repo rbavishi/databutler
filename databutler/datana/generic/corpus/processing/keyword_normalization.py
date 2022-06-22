@@ -6,10 +6,16 @@ from typing import Callable, Optional, Dict, List, Any
 import attrs
 
 from databutler.datana.generic.corpus.code import DatanaFunction
-from databutler.datana.generic.corpus.processing.base_processor import DatanaFunctionProcessor
+from databutler.datana.generic.corpus.processing.base_processor import (
+    DatanaFunctionProcessor,
+)
 from databutler.pat import astlib
-from databutler.pat.analysis.instrumentation import CallDecoratorsGenerator, CallDecorator, Instrumentation, \
-    Instrumenter
+from databutler.pat.analysis.instrumentation import (
+    CallDecoratorsGenerator,
+    CallDecorator,
+    Instrumentation,
+    Instrumenter,
+)
 from databutler.pat.utils import miscutils
 from databutler.utils import inspection, code as codeutils
 
@@ -19,20 +25,27 @@ class _KeywordArgsFinder(CallDecoratorsGenerator):
     """
     Instrumentation generator for intercepting function calls and tracking positional and optional parameters.
     """
+
     label_mappings: Dict[astlib.Call, List[str]] = attrs.Factory(dict)
     args_info_mappings: Dict[astlib.Call, Dict] = attrs.Factory(dict)
 
-    def gen_decorators(self, ast_root: astlib.AstNode) -> Dict[astlib.BaseExpression, List[CallDecorator]]:
-        decorators: Dict[astlib.BaseExpression, List[CallDecorator]] = collections.defaultdict(list)
+    def gen_decorators(
+        self, ast_root: astlib.AstNode
+    ) -> Dict[astlib.BaseExpression, List[CallDecorator]]:
+        decorators: Dict[
+            astlib.BaseExpression, List[CallDecorator]
+        ] = collections.defaultdict(list)
 
         for n in self.iter_calls(ast_root):
-            miscutils.merge_defaultdicts_list(decorators, self.gen_finder(n, ast_root=ast_root))
+            miscutils.merge_defaultdicts_list(
+                decorators, self.gen_finder(n, ast_root=ast_root)
+            )
 
         return decorators
 
-    def gen_finder(self,
-                   call: astlib.Call,
-                   ast_root: astlib.AstNode) -> Dict[astlib.BaseExpression, List[CallDecorator]]:
+    def gen_finder(
+        self, call: astlib.Call, ast_root: astlib.AstNode
+    ) -> Dict[astlib.BaseExpression, List[CallDecorator]]:
         def finder(func, args, kwargs):
             try:
                 sig = inspect.signature(func)
@@ -45,15 +58,23 @@ class _KeywordArgsFinder(CallDecoratorsGenerator):
                 num_pos_args = len(args)
                 dummy_args = [f"my-arg-{idx}" for idx in range(0, num_pos_args)]
                 binding = sig.bind(*dummy_args, **kwargs)
-                rev_mapping = {v: k for k, v in binding.arguments.items() if isinstance(v, str) and v in dummy_args}
+                rev_mapping = {
+                    v: k
+                    for k, v in binding.arguments.items()
+                    if isinstance(v, str) and v in dummy_args
+                }
                 if not all(i in rev_mapping for i in dummy_args):
                     #  There must be starred args. Skip these functions.
                     return
 
                 #  We do not want to make positional-only args keyword args
                 positional_only_args = inspection.get_positional_only_args(sig=sig)
-                pos_kw_labels = [rev_mapping[i] if rev_mapping[i] not in positional_only_args else None
-                                 for i in dummy_args]
+                pos_kw_labels = [
+                    rev_mapping[i]
+                    if rev_mapping[i] not in positional_only_args
+                    else None
+                    for i in dummy_args
+                ]
 
                 #  Everything before the last None also has to be None since we can't mix up positional arguments
                 #  with keywords arguments per Python syntax.
@@ -69,15 +90,21 @@ class _KeywordArgsFinder(CallDecoratorsGenerator):
                 self.label_mappings[call] = pos_kw_labels
                 self.args_info_mappings[call] = {
                     "required_args": inspection.get_required_args(sig=sig),
-                    "optional_args": inspection.get_optional_args(sig=sig)
+                    "optional_args": inspection.get_optional_args(sig=sig),
                 }
 
-        return {call.func: [CallDecorator(callable=finder,
-                                          does_not_return=True,
-                                          needs_return_value=False)]}
+        return {
+            call.func: [
+                CallDecorator(
+                    callable=finder, does_not_return=True, needs_return_value=False
+                )
+            ]
+        }
 
 
-def _convert_pos_args_to_kw_args(code_ast: astlib.AstNode, finder: _KeywordArgsFinder) -> Dict:
+def _convert_pos_args_to_kw_args(
+    code_ast: astlib.AstNode, finder: _KeywordArgsFinder
+) -> Dict:
     """
     Keyword-normalizes the provided code using the dynamic information obtained by the finder.
     """
@@ -92,8 +119,11 @@ def _convert_pos_args_to_kw_args(code_ast: astlib.AstNode, finder: _KeywordArgsF
             else:
                 kw = labels[ctr]
                 if kw is not None:
-                    new_args.append(astlib.with_changes(arg,
-                                                        keyword=astlib.create_name_expr(labels[ctr])))
+                    new_args.append(
+                        astlib.with_changes(
+                            arg, keyword=astlib.create_name_expr(labels[ctr])
+                        )
+                    )
                 else:
                     #  We cannot make this a keyword argument.
                     new_args.append(arg)
@@ -124,6 +154,7 @@ class KeywordArgNormalizer(DatanaFunctionProcessor, ABC):
     a keyword argument. This implementation relies on using instrumentation to dynamically figure out the positional
     argument names of the functions used, and then modifies the code accordingly.
     """
+
     def _process(self, d_func: DatanaFunction) -> DatanaFunction:
         code = d_func.code_str
         #  Set up instrumentation.
@@ -141,16 +172,19 @@ class KeywordArgNormalizer(DatanaFunctionProcessor, ABC):
         #  Execute the code as per the client domain's requirements.
         #  Once the instrumented code is run, the finder should have populated its
         #  internal data-structures for us to use.
-        self._run_function_code(func_code=inst_code, func_name=d_func.func_name,
-                                pos_args=d_func.get_pos_args() or [],
-                                kw_args=d_func.get_kw_args() or {},
-                                global_ctx=global_ctx)
+        self._run_function_code(
+            func_code=inst_code,
+            func_name=d_func.func_name,
+            pos_args=d_func.get_pos_args() or [],
+            kw_args=d_func.get_kw_args() or {},
+            global_ctx=global_ctx,
+        )
 
         #  Get the normalized code
         res = _convert_pos_args_to_kw_args(code_ast, finder)
-        norm_code = res['code']
+        norm_code = res["code"]
         norm_metadata = {  # Additional metadata we would like to store in the result.
-            self.get_arg_infos_metadata_key(): res['arg_infos']
+            self.get_arg_infos_metadata_key(): res["arg_infos"]
         }
 
         #  Assemble the result
@@ -159,7 +193,7 @@ class KeywordArgNormalizer(DatanaFunctionProcessor, ABC):
         new_d_func.metadata = new_d_func.metadata or {}
         new_d_func.metadata[self.get_processor_metadata_key()] = {
             self.get_old_code_metadata_key(): d_func.code_str,
-            **norm_metadata
+            **norm_metadata,
         }
 
         return new_d_func
@@ -177,8 +211,14 @@ class KeywordArgNormalizer(DatanaFunctionProcessor, ABC):
         return "arg_infos"
 
     @abstractmethod
-    def _run_function_code(self, func_code: str, func_name: str, pos_args: List[Any], kw_args: Dict[str, Any],
-                           global_ctx: Dict[str, Any]) -> Any:
+    def _run_function_code(
+        self,
+        func_code: str,
+        func_name: str,
+        pos_args: List[Any],
+        kw_args: Dict[str, Any],
+        global_ctx: Dict[str, Any],
+    ) -> Any:
         """
         Runs the provided function with the given args and global context.
 

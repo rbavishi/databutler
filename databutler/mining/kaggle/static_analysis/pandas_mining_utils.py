@@ -54,7 +54,7 @@ class MinedResult:
         pass
 
     @classmethod
-    def from_json(cls, json_dict: JsonDict) -> 'MinedResult':
+    def from_json(cls, json_dict: JsonDict) -> "MinedResult":
         pass
 
     def prettify(self) -> str:
@@ -66,7 +66,9 @@ class MinedResult:
             print("----------")
             print(f"Templatized:\n{self.template}")
             print("----------")
-            print(f"Value Type: {'Any' if self.expr_type is None else self.expr_type.type_json}")
+            print(
+                f"Value Type: {'Any' if self.expr_type is None else self.expr_type.type_json}"
+            )
             print("==========")
 
         return f_out.getvalue()
@@ -83,25 +85,31 @@ def is_purely_df_or_series_like(expr_type: SerializedMypyType):
         return False
 
     if expr_type.is_union_type():
-        return all(is_purely_df_or_series_like(i) or i.is_any_type() for i in expr_type.unpack_union_type())
+        return all(
+            is_purely_df_or_series_like(i) or i.is_any_type()
+            for i in expr_type.unpack_union_type()
+        )
     else:
         return True
 
 
-def find_library_usages(
-        code_ast: astlib.AstNode
-) -> Dict[astlib.Name, str]:
+def find_library_usages(code_ast: astlib.AstNode) -> Dict[astlib.Name, str]:
     """Finds variable uses that correspond to imports / library usage"""
     #  TODO: Perform proper dataflow analysis (reaching defs)
     result: Dict[astlib.Name, str] = {}
     defs, accesses = astlib.get_definitions_and_accesses(code_ast)
     for def_ in defs:
-        if def_.enclosing_node is not None and isinstance(def_.enclosing_node, (astlib.Import, astlib.ImportFrom)):
+        if def_.enclosing_node is not None and isinstance(
+            def_.enclosing_node, (astlib.Import, astlib.ImportFrom)
+        ):
             key_dict = {}
             if isinstance(def_.enclosing_node, astlib.Import):
                 prefix = ""
 
-            elif isinstance(def_.enclosing_node, astlib.ImportFrom) and def_.enclosing_node.module is not None:
+            elif (
+                isinstance(def_.enclosing_node, astlib.ImportFrom)
+                and def_.enclosing_node.module is not None
+            ):
                 prefix = astlib.to_code(def_.enclosing_node.module).strip() + "."
 
             else:
@@ -112,7 +120,9 @@ def find_library_usages(
                 if alias.asname is None:
                     key_dict[name_str] = f"{prefix}{name_str}"
                 else:
-                    key_dict[astlib.to_code(alias.asname.name).strip()] = f"{prefix}{name_str}"
+                    key_dict[
+                        astlib.to_code(alias.asname.name).strip()
+                    ] = f"{prefix}{name_str}"
 
             for access in accesses:
                 if isinstance(access.node, astlib.Name):
@@ -131,7 +141,11 @@ def find_constants(code_ast: astlib.AstNode) -> Dict[astlib.BaseExpression, Any]
     #  We will only focus on accesses whose defs are top-level statements to avoid
     #  having to bother about loops etc.
     top_level_stmts = set(astlib.iter_body_stmts(code_ast))
-    accesses = [a for a in accesses if all(d.enclosing_node in top_level_stmts for d in a.definitions)]
+    accesses = [
+        a
+        for a in accesses
+        if all(d.enclosing_node in top_level_stmts for d in a.definitions)
+    ]
 
     numbering: Dict[astlib.AstNode, int] = {}
     for idx, stmt in enumerate(astlib.iter_body_stmts(code_ast)):
@@ -161,10 +175,10 @@ def find_constants(code_ast: astlib.AstNode) -> Dict[astlib.BaseExpression, Any]
 
 
 def replace_constants(
-        target: astlib.AstNode,
-        true_exprs: Collection[astlib.BaseExpression],
-        free_vars: Collection[astlib.Name],
-        constants: Dict[astlib.BaseExpression, Any],
+    target: astlib.AstNode,
+    true_exprs: Collection[astlib.BaseExpression],
+    free_vars: Collection[astlib.Name],
+    constants: Dict[astlib.BaseExpression, Any],
 ) -> Tuple[NewTarget, NodeReplMap]:
     """Replace any constant variables with their concrete values, and update the inferred types dict"""
     repl_dict = {}
@@ -184,10 +198,10 @@ def replace_constants(
 
 
 def has_undefined_references(
-        target: astlib.AstNode,
-        free_vars: Collection[astlib.Name],
-        inferred_types: Dict[astlib.BaseExpression, SerializedMypyType],
-        lib_usages: Dict[astlib.Name, str],
+    target: astlib.AstNode,
+    free_vars: Collection[astlib.Name],
+    inferred_types: Dict[astlib.BaseExpression, SerializedMypyType],
+    lib_usages: Dict[astlib.Name, str],
 ) -> bool:
     """Checks if there are any undefined variables that are not library usages and not dfs/series"""
     for node in free_vars:
@@ -197,17 +211,22 @@ def has_undefined_references(
 
             typ = inferred_types[node]
             is_builtin_func = typ.is_callable_type() and node.value in _BUILTIN_FUNCS
-            if not (typ.equals(DF_TYPE) or typ.equals(SERIES_TYPE) or typ.is_bool_type() or is_builtin_func):
+            if not (
+                typ.equals(DF_TYPE)
+                or typ.equals(SERIES_TYPE)
+                or typ.is_bool_type()
+                or is_builtin_func
+            ):
                 return True
 
     return False
 
 
 def normalize_df_series_vars(
-        target: astlib.AstNode,
-        true_exprs: Collection[astlib.BaseExpression],
-        free_vars: Collection[astlib.Name],
-        inferred_types: Dict[astlib.BaseExpression, SerializedMypyType],
+    target: astlib.AstNode,
+    true_exprs: Collection[astlib.BaseExpression],
+    free_vars: Collection[astlib.Name],
+    inferred_types: Dict[astlib.BaseExpression, SerializedMypyType],
 ) -> Tuple[NewTarget, DfArgs, SeriesArgs, NodeReplMap]:
     """Replaces variables corresponding to dataframes or series with standard names"""
     seen_dfs: Dict[str, int] = {}
@@ -217,7 +236,11 @@ def normalize_df_series_vars(
     series_repl_map: Dict[astlib.Name, astlib.Name] = {}
 
     for node in true_exprs:
-        if (not isinstance(node, astlib.Name)) or node not in inferred_types or node not in free_vars:
+        if (
+            (not isinstance(node, astlib.Name))
+            or node not in inferred_types
+            or node not in free_vars
+        ):
             continue
 
         #  NOTE: If there is a union type of DataFrame and Series, DataFrame will be picked.
@@ -234,35 +257,50 @@ def normalize_df_series_vars(
             series_repl_map[node] = node  # Will update later
 
     if len({i.value for i in df_repl_map.keys()}) <= 1:
+
         def df_arg_creator(ctr: int):
             return "df"
+
     else:
+
         def df_arg_creator(ctr: int):
             return f"df{ctr}"
 
     if len({i.value for i in series_repl_map.keys()}) <= 1:
+
         def series_arg_creator(ctr: int):
             return "series"
+
     else:
+
         def series_arg_creator(ctr: int):
             return f"series{ctr}"
 
     for node in df_repl_map.keys():
-        df_repl_map[node] = astlib.create_name_expr(df_arg_creator(seen_dfs[node.value]))
+        df_repl_map[node] = astlib.create_name_expr(
+            df_arg_creator(seen_dfs[node.value])
+        )
 
     for node in series_repl_map.keys():
-        series_repl_map[node] = astlib.create_name_expr(series_arg_creator(seen_series[node.value]))
+        series_repl_map[node] = astlib.create_name_expr(
+            series_arg_creator(seen_series[node.value])
+        )
 
     output_map: NodeReplMap = {}
-    target = astlib.with_deep_replacements(target, {**df_repl_map, **series_repl_map}, output_map)
-    return (target,
-            sorted(i.value for i in df_repl_map.values()),
-            sorted(i.value for i in series_repl_map.values()),
-            output_map)
+    target = astlib.with_deep_replacements(
+        target, {**df_repl_map, **series_repl_map}, output_map
+    )
+    return (
+        target,
+        sorted(i.value for i in df_repl_map.values()),
+        sorted(i.value for i in series_repl_map.values()),
+        output_map,
+    )
 
 
 def normalize_call_args(
-        target: astlib.AstNode, inferred_types: Dict[astlib.BaseExpression, SerializedMypyType]
+    target: astlib.AstNode,
+    inferred_types: Dict[astlib.BaseExpression, SerializedMypyType],
 ) -> Tuple[NewTarget, NodeReplMap]:
     """Normalize order of keyword arguments"""
     repl_map: NodeReplMap = {}
@@ -271,7 +309,9 @@ def normalize_call_args(
             continue
 
         call_expr = node
-        if (call_expr.func not in inferred_types) or (not inferred_types[call_expr.func].is_callable_type()):
+        if (call_expr.func not in inferred_types) or (
+            not inferred_types[call_expr.func].is_callable_type()
+        ):
             continue
 
         if any(arg.star != "" for arg in call_expr.args):
@@ -282,9 +322,13 @@ def normalize_call_args(
         kw_args = [arg for arg in call_expr.args if arg.keyword is not None]
         arg_order = inferred_types[call_expr.func].get_callable_arg_order()
 
-        new_args = [*pos_args] + sorted(kw_args, key=lambda x: arg_order.get(x.keyword.value, 0))
+        new_args = [*pos_args] + sorted(
+            kw_args, key=lambda x: arg_order.get(x.keyword.value, 0)
+        )
         if len(new_args) > 0:
-            new_args[-1] = new_args[-1].with_changes(comma=astlib.cst.MaybeSentinel.DEFAULT)
+            new_args[-1] = new_args[-1].with_changes(
+                comma=astlib.cst.MaybeSentinel.DEFAULT
+            )
 
         if new_args != call_expr.args:
             repl_map[call_expr] = call_expr.with_changes(args=new_args)
@@ -297,9 +341,9 @@ def normalize_call_args(
 
 
 def normalize_col_accesses(
-        target: astlib.AstNode,
-        true_exprs: Collection[astlib.BaseExpression],
-        inferred_types: Dict[astlib.BaseExpression, SerializedMypyType]
+    target: astlib.AstNode,
+    true_exprs: Collection[astlib.BaseExpression],
+    inferred_types: Dict[astlib.BaseExpression, SerializedMypyType],
 ) -> Tuple[NewTarget, NodeReplMap]:
     """Normalizes col accesses by converting attribute-based accesses like df.Price to
     subscript-based such as df['Price']"""
@@ -317,22 +361,31 @@ def normalize_col_accesses(
             val_typ = inferred_types[value]
             okay = False
             # print("GOT HERE", val_typ, expr_typ)
-            if val_typ.equals(DF_TYPE) and (expr_typ.equals(DF_TYPE) or expr_typ.equals(SERIES_TYPE)):
+            if val_typ.equals(DF_TYPE) and (
+                expr_typ.equals(DF_TYPE) or expr_typ.equals(SERIES_TYPE)
+            ):
                 try:
-                    if (not hasattr(pd.DataFrame, expr.attr.value)) and (not hasattr(pd.Series, expr.attr.value)):
+                    if (not hasattr(pd.DataFrame, expr.attr.value)) and (
+                        not hasattr(pd.Series, expr.attr.value)
+                    ):
                         okay = True
                 except:
                     pass
-            elif (val_typ.equals(DF_GROUPBY_TYPE) and
-                  (expr_typ.equals(DF_GROUPBY_TYPE) or expr_typ.equals(SERIES_GROUPBY_TYPE))):
+            elif val_typ.equals(DF_GROUPBY_TYPE) and (
+                expr_typ.equals(DF_GROUPBY_TYPE) or expr_typ.equals(SERIES_GROUPBY_TYPE)
+            ):
                 try:
-                    if not hasattr(pd.core.groupby.generic.DataFrameGroupBy, expr.attr.value):
+                    if not hasattr(
+                        pd.core.groupby.generic.DataFrameGroupBy, expr.attr.value
+                    ):
                         okay = True
                 except:
                     pass
 
             if okay:
-                new_node = astlib.parse_expr(f"dummy[\"{expr.attr.value}\"]").with_changes(value=expr.value)
+                new_node = astlib.parse_expr(
+                    f'dummy["{expr.attr.value}"]'
+                ).with_changes(value=expr.value)
                 repl_map[expr] = new_node
 
     output_mapping: NodeReplMap = {}
@@ -343,20 +396,24 @@ def normalize_col_accesses(
 
 
 def templatize(
-        target: astlib.AstNode,
-        true_exprs: Collection[astlib.BaseExpression],
-        free_vars: Collection[astlib.Name],
-        inferred_types: Dict[astlib.BaseExpression, SerializedMypyType],
-        lib_usages: Dict[astlib.Name, str],
+    target: astlib.AstNode,
+    true_exprs: Collection[astlib.BaseExpression],
+    free_vars: Collection[astlib.Name],
+    inferred_types: Dict[astlib.BaseExpression, SerializedMypyType],
+    lib_usages: Dict[astlib.Name, str],
 ) -> Tuple[NewTarget, Dict[str, List[str]]]:
     """Replace constants and remaining variable names with standard ones to create a template suitable for clustering"""
-    type_to_exprs: Dict[str, List[astlib.BaseExpression]] = collections.defaultdict(list)
+    type_to_exprs: Dict[str, List[astlib.BaseExpression]] = collections.defaultdict(
+        list
+    )
     allowed_key_chars = set(string.ascii_letters + string.digits + "_")
     for node in true_exprs:
         is_const = astlib.is_constant(node)
         const_val = None if not is_const else astlib.get_constant_value(node)
-        if not ((isinstance(node, astlib.Name) and node in free_vars) or
-                (is_const and not isinstance(const_val, (set, dict, list, tuple)))):
+        if not (
+            (isinstance(node, astlib.Name) and node in free_vars)
+            or (is_const and not isinstance(const_val, (set, dict, list, tuple)))
+        ):
             continue
 
         if node in lib_usages:
@@ -393,9 +450,9 @@ def templatize(
                 if isinstance(typ.type_json, str):
                     key = typ.type_json
                 else:
-                    key = str(typ.type_json.get('.class', "VAR"))
+                    key = str(typ.type_json.get(".class", "VAR"))
 
-        key = "".join(i if i in allowed_key_chars else '_' for i in key)
+        key = "".join(i if i in allowed_key_chars else "_" for i in key)
         type_to_exprs[key].append(node)
         # print("Adding", key, astlib.to_code(node))
 

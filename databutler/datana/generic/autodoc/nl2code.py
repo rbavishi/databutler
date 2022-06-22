@@ -47,7 +47,7 @@ class BaseNatLangToCode(ABC):
 @attrs.define(eq=False)
 class SimpleNatLangToCode(BaseNatLangToCode):
     temperature: float = 0.0
-    engine: str = 'code-davinci-001'
+    engine: str = "code-davinci-001"
     max_tokens: int = 512
 
     stop_token: str = "END"
@@ -102,22 +102,26 @@ class SimpleNatLangToCode(BaseNatLangToCode):
 
     def _get_stop_token_id(self) -> int:
         if self._stop_token_id is None:
-            self._stop_token_id = langmodels.tokenize(self.stop_token, engine=self.engine)['token_ids'][0]
+            self._stop_token_id = langmodels.tokenize(
+                self.stop_token, engine=self.engine
+            )["token_ids"][0]
 
         return self._stop_token_id
 
     def _get_newline_token_id(self) -> int:
         if self._newline_token_id is None:
-            self._newline_token_id = langmodels.tokenize("\n", engine=self.engine)['token_ids'][0]
+            self._newline_token_id = langmodels.tokenize("\n", engine=self.engine)[
+                "token_ids"
+            ][0]
 
         return self._newline_token_id
 
     def get_code(
-            self,
-            task: NatLangToCodeTask,
-            allowed_tokens: Optional[Union[str, List[int]]] = None,
-            allowed_tokens_bias: int = 100,
-            key_manager: Optional[langmodels.OpenAIKeyManager] = None,
+        self,
+        task: NatLangToCodeTask,
+        allowed_tokens: Optional[Union[str, List[int]]] = None,
+        allowed_tokens_bias: int = 100,
+        key_manager: Optional[langmodels.OpenAIKeyManager] = None,
     ) -> str:
         """
         Creates a simple prompt stringing examples together and uses it to generate the code.
@@ -128,7 +132,9 @@ class SimpleNatLangToCode(BaseNatLangToCode):
         max_tokens = self.max_tokens
         if allowed_tokens is not None:
             if isinstance(allowed_tokens, str):
-                allowed_token_ids = langmodels.tokenize(allowed_tokens, engine=self.engine)['token_ids']
+                allowed_token_ids = langmodels.tokenize(
+                    allowed_tokens, engine=self.engine
+                )["token_ids"]
                 max_tokens = len(allowed_token_ids) + 64
             else:
                 allowed_token_ids = allowed_tokens
@@ -160,26 +166,25 @@ class SimpleNatLangToCode(BaseNatLangToCode):
         return text
 
     def parallel_get_code(
-            self,
-            tasks: List[NatLangToCodeTask],
-            allowed_tokens: Optional[Union[str, List[int]]] = None,
-            allowed_tokens_bias: int = 100,
-            key_manager: Optional[langmodels.OpenAIKeyManager] = None,
-            top_logprobs: Optional[List[List[Dict[str, float]]]] = None,
+        self,
+        tasks: List[NatLangToCodeTask],
+        allowed_tokens: Optional[Union[str, List[int]]] = None,
+        allowed_tokens_bias: int = 100,
+        key_manager: Optional[langmodels.OpenAIKeyManager] = None,
+        top_logprobs: Optional[List[List[Dict[str, float]]]] = None,
     ) -> List[str]:
         """
         Like get_code, but handles multiple tasks in parallel.
         """
-        completion_prompts = [
-            self._create_completion_prompt(task)
-            for task in tasks
-        ]
+        completion_prompts = [self._create_completion_prompt(task) for task in tasks]
 
         logit_bias = {}
         max_tokens = self.max_tokens
         if allowed_tokens is not None:
             if isinstance(allowed_tokens, str):
-                allowed_token_ids = langmodels.tokenize(allowed_tokens, engine=self.engine)['token_ids']
+                allowed_token_ids = langmodels.tokenize(
+                    allowed_tokens, engine=self.engine
+                )["token_ids"]
                 max_tokens = len(allowed_token_ids) + 64
             else:
                 allowed_token_ids = allowed_tokens

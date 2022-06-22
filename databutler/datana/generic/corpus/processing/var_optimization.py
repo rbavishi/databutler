@@ -5,10 +5,18 @@ from typing import Union, List, Dict, Any, Tuple, Optional
 import attrs
 
 from databutler.datana.generic.corpus.code import DatanaFunction
-from databutler.datana.generic.corpus.processing.base_processor import DatanaFunctionProcessor
+from databutler.datana.generic.corpus.processing.base_processor import (
+    DatanaFunctionProcessor,
+)
 from databutler.pat import astlib
-from databutler.pat.analysis.instrumentation import ExprWrappersGenerator, ExprWrapper, StmtCallbacksGenerator, \
-    StmtCallback, Instrumentation, Instrumenter
+from databutler.pat.analysis.instrumentation import (
+    ExprWrappersGenerator,
+    ExprWrapper,
+    StmtCallbacksGenerator,
+    StmtCallback,
+    Instrumentation,
+    Instrumenter,
+)
 from databutler.pat.utils import miscutils
 from databutler.utils import code as codeutils
 
@@ -38,21 +46,27 @@ class _VarDefAndAccessTracker(StmtCallbacksGenerator, ExprWrappersGenerator):
     """
     Instrumentation generator for tracking definitions and accesses.
     """
+
     _time: int = 0
     events: List[Union[_VarAccess, _VarDef]] = attrs.Factory(list)
 
-    def gen_stmt_callbacks(self, ast_root: astlib.AstNode) -> Dict[astlib.AstStatementT,
-                                                                   List[StmtCallback]]:
-        callbacks: Dict[astlib.AstStatementT, List[StmtCallback]] = collections.defaultdict(list)
+    def gen_stmt_callbacks(
+        self, ast_root: astlib.AstNode
+    ) -> Dict[astlib.AstStatementT, List[StmtCallback]]:
+        callbacks: Dict[
+            astlib.AstStatementT, List[StmtCallback]
+        ] = collections.defaultdict(list)
 
         definitions, accesses = astlib.get_definitions_and_accesses(ast_root)
         for definition in definitions:
-            if isinstance(definition.node, astlib.Name) and isinstance(definition.enclosing_node,
-                                                                       (astlib.Assign,
-                                                                        astlib.AugAssign,
-                                                                        astlib.AnnAssign)):
+            if isinstance(definition.node, astlib.Name) and isinstance(
+                definition.enclosing_node,
+                (astlib.Assign, astlib.AugAssign, astlib.AnnAssign),
+            ):
                 #  We only care about assignments to variables, not function/class defs.
-                miscutils.merge_defaultdicts_list(callbacks, self._gen_def_callbacks_assignments(definition))
+                miscutils.merge_defaultdicts_list(
+                    callbacks, self._gen_def_callbacks_assignments(definition)
+                )
 
         return callbacks
 
@@ -66,18 +80,18 @@ class _VarDefAndAccessTracker(StmtCallbacksGenerator, ExprWrappersGenerator):
         if isinstance(enc_node, astlib.Assign):
             if isinstance(enc_node.value, astlib.Name) and len(enc_node.targets) == 1:
                 #  The assignment is of the form `var1 = var2`. This allows us to perform additional optimizations.
-                def_metadata['is_var_eq_var'] = True
+                def_metadata["is_var_eq_var"] = True
             else:
-                def_metadata['is_var_eq_var'] = False
+                def_metadata["is_var_eq_var"] = False
 
             if astlib.is_constant(enc_node.value) and len(enc_node.targets) == 1:
-                def_metadata['is_constant'] = True
-                def_metadata['constant_val'] = astlib.get_constant_value(enc_node.value)
-                def_metadata['constant_val_ast'] = enc_node.value
+                def_metadata["is_constant"] = True
+                def_metadata["constant_val"] = astlib.get_constant_value(enc_node.value)
+                def_metadata["constant_val_ast"] = enc_node.value
             else:
-                def_metadata['is_constant'] = False
-                def_metadata['constant_val'] = None
-                def_metadata['constant_val_ast'] = None
+                def_metadata["is_constant"] = False
+                def_metadata["constant_val"] = None
+                def_metadata["constant_val_ast"] = None
 
         scope_id: astlib.ScopeId = definition.scope_id
 
@@ -102,12 +116,23 @@ class _VarDefAndAccessTracker(StmtCallbacksGenerator, ExprWrappersGenerator):
             )
 
         return {
-            enc_node: [StmtCallback(callable=callback, name=self.gen_stmt_callback_id(),
-                                    position='post', arg_str='globals(), locals()', mandatory=False)]
+            enc_node: [
+                StmtCallback(
+                    callable=callback,
+                    name=self.gen_stmt_callback_id(),
+                    position="post",
+                    arg_str="globals(), locals()",
+                    mandatory=False,
+                )
+            ]
         }
 
-    def gen_expr_wrappers(self, ast_root: astlib.AstNode) -> Dict[astlib.BaseExpression, List[ExprWrapper]]:
-        wrappers: Dict[astlib.BaseExpression, List[ExprWrapper]] = collections.defaultdict(list)
+    def gen_expr_wrappers(
+        self, ast_root: astlib.AstNode
+    ) -> Dict[astlib.BaseExpression, List[ExprWrapper]]:
+        wrappers: Dict[
+            astlib.BaseExpression, List[ExprWrapper]
+        ] = collections.defaultdict(list)
         definitions, accesses = astlib.get_definitions_and_accesses(ast_root)
 
         for access in accesses:
@@ -146,6 +171,7 @@ class _LiveVarRange:
     """
     The primary data-structure used to find variable renamings for optimization.
     """
+
     #  Start timestamp, should correspond to the timestamp of the anchor def-event.
     start: int
     #  End timestamp, should correspond to the timestamp of the last access which fed off of the anchor def-event.
@@ -179,7 +205,9 @@ def _get_live_var_ranges(tracker: _VarDefAndAccessTracker) -> List[_LiveVarRange
 
     for event in events:
         if isinstance(event, _VarAccess):
-            last_def: Optional[_VarDef] = last_defs.get((event.name, event.scope_id), None)
+            last_def: Optional[_VarDef] = last_defs.get(
+                (event.name, event.scope_id), None
+            )
             range_key = (event.name, event.scope_id, last_def)
 
             if range_key not in range_dict:
@@ -205,7 +233,7 @@ def _get_live_var_ranges(tracker: _VarDefAndAccessTracker) -> List[_LiveVarRange
             last_defs[event.name, event.scope_id] = event
             range_key = (event.name, event.scope_id, event)
 
-            if event.metadata['is_var_eq_var']:
+            if event.metadata["is_var_eq_var"]:
                 #  We know for sure that the event recorded just before this would be the access event corresponding
                 #  to the RHS.
                 assert last_access_range is not None
@@ -260,7 +288,10 @@ def _perform_register_allocation(ranges: List[_LiveVarRange]) -> None:
         #  Assign one of the available registers
         compat_key = (rnge.scope_id, rnge.dtype)
         for free_reg in sorted(registers):
-            if free_reg not in reg_to_compat_key or reg_to_compat_key[free_reg] == compat_key:
+            if (
+                free_reg not in reg_to_compat_key
+                or reg_to_compat_key[free_reg] == compat_key
+            ):
                 registers.remove(free_reg)
                 rnge.reg = free_reg
                 reg_to_compat_key[free_reg] = compat_key
@@ -286,11 +317,13 @@ def _rename_variables(code_ast: astlib.AstNode, tracker: _VarDefAndAccessTracker
     for reg, reg_ranges in reg_assignment_dict.items():
         new_name = reg_ranges[0].name
         for rnge in reg_ranges:
-            if rnge.def_event is not None and rnge.def_event.metadata['is_constant']:
-                constant_val = rnge.def_event.metadata['constant_val']
-                constant_val_ast = rnge.def_event.metadata['constant_val_ast']
+            if rnge.def_event is not None and rnge.def_event.metadata["is_constant"]:
+                constant_val = rnge.def_event.metadata["constant_val"]
+                constant_val_ast = rnge.def_event.metadata["constant_val_ast"]
 
-                if (not isinstance(constant_val, (list, tuple, set, dict))) or len(rnge.access_events) < 3:
+                if (not isinstance(constant_val, (list, tuple, set, dict))) or len(
+                    rnge.access_events
+                ) < 3:
                     #  Remove the assignments.
                     repl_map[rnge.def_event.enclosing_node] = None
 
@@ -341,10 +374,13 @@ class VarNameOptimizer(DatanaFunctionProcessor):
         #  Execute the code as per the client domain's requirements.
         #  Once the instrumented code is run, the finder should have populated its
         #  internal data-structures for us to use.
-        self._run_function_code(func_code=inst_code, func_name=d_func.func_name,
-                                pos_args=d_func.get_pos_args() or [],
-                                kw_args=d_func.get_kw_args() or {},
-                                global_ctx=global_ctx)
+        self._run_function_code(
+            func_code=inst_code,
+            func_name=d_func.func_name,
+            pos_args=d_func.get_pos_args() or [],
+            kw_args=d_func.get_kw_args() or {},
+            global_ctx=global_ctx,
+        )
 
         new_code = _rename_variables(code_ast, tracker)
 
@@ -363,8 +399,14 @@ class VarNameOptimizer(DatanaFunctionProcessor):
         return "var-name-optimizer"
 
     @abstractmethod
-    def _run_function_code(self, func_code: str, func_name: str, pos_args: List[Any], kw_args: Dict[str, Any],
-                           global_ctx: Dict[str, Any]) -> Any:
+    def _run_function_code(
+        self,
+        func_code: str,
+        func_name: str,
+        pos_args: List[Any],
+        kw_args: Dict[str, Any],
+        global_ctx: Dict[str, Any],
+    ) -> Any:
         """
         Runs the provided function with the given args and global context.
 

@@ -14,7 +14,12 @@ def _get_lib_version_path(lib_name: str, version: str) -> str:
         lib_name (str): Name of the library.
         version (str): The version to use. This must be an exact version - wildcards are not supported as of now.
     """
-    path = os.path.join(path_utils.get_user_home_dir_path(), ".databutler", "libversioning", f"{lib_name}-{version}")
+    path = os.path.join(
+        path_utils.get_user_home_dir_path(),
+        ".databutler",
+        "libversioning",
+        f"{lib_name}-{version}",
+    )
     return path
 
 
@@ -41,7 +46,9 @@ def _download_lib_version(lib_name: str, version: str) -> None:
     path = _get_lib_version_path(lib_name, version)
 
     #  As per guidelines at https://pip.pypa.io/en/latest/user_guide/#using-pip-from-your-program
-    result = subprocess.check_call([sys.executable, '-m', 'pip', 'install', f"{lib_name}=={version}", '-t', path])
+    result = subprocess.check_call(
+        [sys.executable, "-m", "pip", "install", f"{lib_name}=={version}", "-t", path]
+    )
     if result != 0:
         raise RuntimeError(f"Could not install version {version} of library {lib_name}")
 
@@ -84,9 +91,10 @@ def modified_lib_env(lib_name: str, version: str):
         active = []
         for mod_name in sys.modules.keys():
             #  Note that we need to remove submodules as well, otherwise things won't work.
-            key = mod_name.split('.')[0]
-            if os.path.exists(os.path.join(lib_path, key)) or \
-                    os.path.exists(os.path.join(lib_path, f"{key}.py")):
+            key = mod_name.split(".")[0]
+            if os.path.exists(os.path.join(lib_path, key)) or os.path.exists(
+                os.path.join(lib_path, f"{key}.py")
+            ):
                 active.append(mod_name)
 
         for i in active:

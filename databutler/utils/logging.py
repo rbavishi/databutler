@@ -12,6 +12,8 @@ logger.remove()
 logger.add(sys.stderr, level="INFO")
 
 #  Add in a file-log
-logger.add(os.path.join(paths.get_logging_dir_path(), "databutler_{time}.log"),
-           retention=50,  # Max. 50 logs
-           level="TRACE")
+logger.add(
+    os.path.join(paths.get_logging_dir_path(), "databutler_{time}.log"),
+    retention=50,  # Max. 50 logs
+    level="TRACE",
+)

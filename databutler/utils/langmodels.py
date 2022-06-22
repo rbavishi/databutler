@@ -20,6 +20,7 @@ class OpenAIKeyManager:
     """
     An internal manager that cycles between OPENAI keys to enable a net-increase in rate=limits.
     """
+
     keys: List[str]
     _cur_key: str = attrs.field(init=False, default=None)
     _next_key_idx: int = attrs.field(init=False, default=0)
@@ -62,14 +63,16 @@ def _setup_openai_key() -> None:
     if _DEFAULT_KEY_MANAGER is not None:
         return
 
-    path_key = os.path.join(paths.get_user_home_dir_path(), ".databutler", "openai_key.txt")
+    path_key = os.path.join(
+        paths.get_user_home_dir_path(), ".databutler", "openai_key.txt"
+    )
     if os.path.exists(path_key):
         #  Great just load it from the file.
         with open(path_key, "r") as f:
             key_text = f.read().strip()
 
         if "\n" in key_text:
-            keys = key_text.split('\n')
+            keys = key_text.split("\n")
         else:
             keys = [key_text]
 
@@ -85,7 +88,9 @@ def _setup_openai_key() -> None:
                 try:
                     keys = eval(key_text)
                 except:
-                    raise ValueError("Could not understand environment variable OPENAI_KEY")
+                    raise ValueError(
+                        "Could not understand environment variable OPENAI_KEY"
+                    )
 
             elif "," in key_text:
                 keys = key_text.split(",")
@@ -142,7 +147,10 @@ class RateLimiter:
     def _update_window(self):
         cur_time = datetime.datetime.now()
 
-        while len(self._window) > 0 and (cur_time - self._window[0]["time"]).total_seconds() > 60:
+        while (
+            len(self._window) > 0
+            and (cur_time - self._window[0]["time"]).total_seconds() > 60
+        ):
             item = self._window.popleft()
             self._num_tokens_rolling_sum -= item["num_tokens"]
 
@@ -176,7 +184,15 @@ class RateLimiter:
             return 0
 
         latest_in_conflict_time: datetime.datetime = in_conflict_items[-1]["time"]
-        return int(max(((latest_in_conflict_time + datetime.timedelta(seconds=60)) - cur_time).total_seconds(), 0))
+        return int(
+            max(
+                (
+                    (latest_in_conflict_time + datetime.timedelta(seconds=60))
+                    - cur_time
+                ).total_seconds(),
+                0,
+            )
+        )
 
 
 @attrs.define
@@ -200,11 +216,16 @@ _CODEX_TOKENIZER: Optional[transformers.GPT2Tokenizer] = None
 def codex_tokenize(text: str) -> Dict[str, Union[List[int], List[str]]]:
     global _CODEX_TOKENIZER
     if _CODEX_TOKENIZER is None:
-        _CODEX_TOKENIZER = transformers.GPT2Tokenizer.from_pretrained("SaulLu/codex-like-tokenizer")
+        _CODEX_TOKENIZER = transformers.GPT2Tokenizer.from_pretrained(
+            "SaulLu/codex-like-tokenizer"
+        )
 
     return {
-        "token_ids": _CODEX_TOKENIZER(text)['input_ids'],
-        "token_strs": [_CODEX_TOKENIZER.convert_tokens_to_string([i]) for i in _CODEX_TOKENIZER.tokenize(text)]
+        "token_ids": _CODEX_TOKENIZER(text)["input_ids"],
+        "token_strs": [
+            _CODEX_TOKENIZER.convert_tokens_to_string([i])
+            for i in _CODEX_TOKENIZER.tokenize(text)
+        ],
     }
 
 
@@ -217,8 +238,8 @@ def gpt3_tokenize(text: str) -> Dict[str, Union[List[int], List[str]]]:
         _GPT3_TOKENIZER = transformers.GPT2TokenizerFast.from_pretrained("gpt2")
 
     return {
-        "token_ids": _GPT3_TOKENIZER(text)['input_ids'],
-        "token_strs": _GPT3_TOKENIZER.tokenize(text)
+        "token_ids": _GPT3_TOKENIZER(text)["input_ids"],
+        "token_strs": _GPT3_TOKENIZER.tokenize(text),
     }
 
 
@@ -240,12 +261,14 @@ def _get_rate_limiter_for_api_key(api_key: str):
 
 
 def _retrieve_top_tokens(completion_resp: Dict) -> Optional[List[Dict[str, float]]]:
-    if len(completion_resp['logprobs']['top_logprobs']) != len(completion_resp['logprobs']['tokens']):
+    if len(completion_resp["logprobs"]["top_logprobs"]) != len(
+        completion_resp["logprobs"]["tokens"]
+    ):
         logger.warning(f"Unexpected top_logprobs value in response: {completion_resp}")
         return None
 
-    logprob_tokens = completion_resp['logprobs']['tokens']
-    text = completion_resp['text']
+    logprob_tokens = completion_resp["logprobs"]["tokens"]
+    text = completion_resp["text"]
 
     start_idx: int = 0
     while start_idx < len(logprob_tokens):
@@ -260,7 +283,7 @@ def _retrieve_top_tokens(completion_resp: Dict) -> Optional[List[Dict[str, float
 
     end_idx: int = len(logprob_tokens)
     while end_idx > start_idx:
-        if "".join(logprob_tokens[start_idx: end_idx]).endswith(text):
+        if "".join(logprob_tokens[start_idx:end_idx]).endswith(text):
             break
 
         end_idx -= 1
@@ -269,24 +292,25 @@ def _retrieve_top_tokens(completion_resp: Dict) -> Optional[List[Dict[str, float
         logger.warning(f"Could not retrieve top tokens for response: {completion_resp}")
         return None
 
-    return completion_resp['logprobs']['top_logprobs'][start_idx: end_idx]
+    return completion_resp["logprobs"]["top_logprobs"][start_idx:end_idx]
 
 
-def openai_completion(engine: str,
-                      prompt: Optional[str] = None,
-                      prompts: Optional[List[str]] = None,
-                      temperature: float = 0,
-                      num_completions: int = 1,
-                      max_tokens: int = 64,
-                      stop: Optional[Union[str, List[str]]] = None,
-                      retrieve_top_tokens: bool = False,
-                      *,
-                      retry_wait_duration: int = 30,
-                      max_retries: int = 5,
-                      key_manager: Optional[OpenAIKeyManager] = None,
-                      min_latency: Optional[int] = None,
-                      **completion_kwargs,
-                      ) -> Union[OpenAICompletionResponse, List[OpenAICompletionResponse]]:
+def openai_completion(
+    engine: str,
+    prompt: Optional[str] = None,
+    prompts: Optional[List[str]] = None,
+    temperature: float = 0,
+    num_completions: int = 1,
+    max_tokens: int = 64,
+    stop: Optional[Union[str, List[str]]] = None,
+    retrieve_top_tokens: bool = False,
+    *,
+    retry_wait_duration: int = 30,
+    max_retries: int = 5,
+    key_manager: Optional[OpenAIKeyManager] = None,
+    min_latency: Optional[int] = None,
+    **completion_kwargs,
+) -> Union[OpenAICompletionResponse, List[OpenAICompletionResponse]]:
     """
     Wraps the OpenAI completion API, primarily for handling errors in a retry loop.
 
@@ -320,7 +344,9 @@ def openai_completion(engine: str,
     :raises InvalidRequestError: If the request is invalid. This can happen if the wrong model is specified, or invalid
         values for max_tokens, temperature, stop etc. are provided.
     """
-    if (prompt is None and prompts is None) or (prompt is not None and prompts is not None):
+    if (prompt is None and prompts is None) or (
+        prompt is not None and prompts is not None
+    ):
         raise ValueError("Exactly one of prompt and prompts must be specified")
 
     if prompts is None:
@@ -338,8 +364,11 @@ def openai_completion(engine: str,
     num_keys_tried = 0
     num_retries = 0
 
-    num_tokens = sum((len(tokenize(prompt, engine=engine)["token_ids"]) + max_tokens) * num_completions
-                     for prompt in prompts)
+    num_tokens = sum(
+        (len(tokenize(prompt, engine=engine)["token_ids"]) + max_tokens)
+        * num_completions
+        for prompt in prompts
+    )
 
     start_time = time.time()
     cur_best = (None, None)
@@ -393,20 +422,25 @@ def openai_completion(engine: str,
         else:
             rate_limiter.record_request(num_tokens)
             processed_responses: List[OpenAICompletionResponse] = []
-            timestamp = openai_response['created']
-            model = openai_response['model']
-            resp_id = openai_response['id']
+            timestamp = openai_response["created"]
+            model = openai_response["model"]
+            resp_id = openai_response["id"]
             for idx in range(0, len(prompts)):
-                choices = openai_response['choices'][idx * num_completions: (idx + 1) * num_completions]
+                choices = openai_response["choices"][
+                    idx * num_completions : (idx + 1) * num_completions
+                ]
                 completions = [
                     OpenAICompletion(
-                        text=choice['text'],
+                        text=choice["text"],
                         top_logprobs=None,
-                        finish_reason=choice['finish_reason']
-                    ) for choice in choices
+                        finish_reason=choice["finish_reason"],
+                    )
+                    for choice in choices
                 ]
 
-                if retrieve_top_tokens and all('logprobs' in choice for choice in choices):
+                if retrieve_top_tokens and all(
+                    "logprobs" in choice for choice in choices
+                ):
                     for completion, choice in zip(completions, choices):
                         completion.top_logprobs = _retrieve_top_tokens(choice)
 

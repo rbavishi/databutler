@@ -6,7 +6,10 @@ import attrs
 
 from databutler.pat import astlib
 from databutler.utils import caching
-from databutler.mining.kaggle.notebooks.datasources import KaggleDataSource, KaggleDataSourceType
+from databutler.mining.kaggle.notebooks.datasources import (
+    KaggleDataSource,
+    KaggleDataSourceType,
+)
 from databutler.mining.kaggle.notebooks import utils as nb_utils
 
 
@@ -14,6 +17,7 @@ class KaggleNotebookSourceType(Enum):
     """
     Source type of a Kaggle notebook.
     """
+
     IPYTHON_NOTEBOOK = 0
     PYTHON_SOURCE_FILE = 1
 
@@ -24,7 +28,7 @@ class KaggleNotebook:
     slug: str
 
     @classmethod
-    def from_raw_data(cls, owner: str, slug: str, raw_data: Dict) -> 'KaggleNotebook':
+    def from_raw_data(cls, owner: str, slug: str, raw_data: Dict) -> "KaggleNotebook":
         nb = KaggleNotebook(owner, slug)
         nb._raw_data = raw_data
         return nb
@@ -64,11 +68,13 @@ class KaggleNotebook:
         """
         if self.source_type == KaggleNotebookSourceType.IPYTHON_NOTEBOOK:
             #  TODO: Handle magics
-            return astlib.parse(self.source_code, extension='.ipynb')
+            return astlib.parse(self.source_code, extension=".ipynb")
         elif self.source_type == KaggleNotebookSourceType.PYTHON_SOURCE_FILE:
             return astlib.parse(self.source_code)
         else:
-            raise NotImplementedError(f"Could not recognize source of type {self.source_type}")
+            raise NotImplementedError(
+                f"Could not recognize source of type {self.source_type}"
+            )
 
     @caching.caching_method
     def is_parseable(self) -> bool:
@@ -115,17 +121,27 @@ class KaggleNotebook:
                 native_type = ds["reference"].get("sourceType", "")
 
                 #  Determine the type of data-source using certain heuristics.
-                if (url.startswith("/c/") or url.startswith('/competitions/')) and len(url.split('/')) == 3:
+                if (url.startswith("/c/") or url.startswith("/competitions/")) and len(
+                    url.split("/")
+                ) == 3:
                     #  If it starts with "/c/", it is bound to be a competition data-source.
                     src_type = KaggleDataSourceType.COMPETITION
                     local_storage_path = os.path.join(ds_root, "c", url.split("/")[-1])
 
-                elif url.startswith("/") and len(url.split('/')) == 3 and "DATASET_VERSION" in native_type:
+                elif (
+                    url.startswith("/")
+                    and len(url.split("/")) == 3
+                    and "DATASET_VERSION" in native_type
+                ):
                     #  We use the JSON extracted from the notebook's webpage.
                     src_type = KaggleDataSourceType.DATASET
                     local_storage_path = os.path.join(ds_root, "d", *url.split("/")[1:])
 
-                elif url.startswith("/") and len(url.split('/')) == 3 and "KERNEL_VERSION" in native_type:
+                elif (
+                    url.startswith("/")
+                    and len(url.split("/")) == 3
+                    and "KERNEL_VERSION" in native_type
+                ):
                     #  We use the JSON extracted from the notebook's webpage.
                     src_type = KaggleDataSourceType.KERNEL_OUTPUT
                     local_storage_path = os.path.join(ds_root, "k", *url.split("/")[1:])
@@ -134,12 +150,14 @@ class KaggleNotebook:
                     src_type = KaggleDataSourceType.UNKNOWN
                     local_storage_path = ""
 
-                result.append(KaggleDataSource(
-                    url=url,
-                    mount_slug=mount_slug,
-                    src_type=src_type,
-                    local_storage_path=local_storage_path,
-                ))
+                result.append(
+                    KaggleDataSource(
+                        url=url,
+                        mount_slug=mount_slug,
+                        src_type=src_type,
+                        local_storage_path=local_storage_path,
+                    )
+                )
 
             except KeyError:
                 pass
@@ -165,7 +183,7 @@ class KaggleNotebook:
         for ds in self.data_sources:
             if ds.src_type == KaggleDataSourceType.COMPETITION:
                 if ds.url.startswith("/c/"):
-                    found_competitions.append(ds.url[len("/c/"):])
+                    found_competitions.append(ds.url[len("/c/") :])
 
         if len(found_competitions) != 1:
             #  If no competitions found, or more than one competition's data-sources are being used, deem it
@@ -192,7 +210,9 @@ class KaggleNotebook:
         """
         Execution time in seconds, if available. None otherwise.
         """
-        return self._raw_data["kernelRun"].get("runInfo", {}).get("runTimeSeconds", False)
+        return (
+            self._raw_data["kernelRun"].get("runInfo", {}).get("runTimeSeconds", False)
+        )
 
     @caching.cached_property
     def imported_packages(self) -> List[str]:
@@ -213,7 +233,11 @@ class KaggleNotebook:
                     name = alias.evaluated_name.split(".")[0]
                     package_strs.add(name)
 
-            elif isinstance(node, astlib.ImportFrom) and node.module is not None and len(node.relative) == 0:
+            elif (
+                isinstance(node, astlib.ImportFrom)
+                and node.module is not None
+                and len(node.relative) == 0
+            ):
                 #  For non-relative imports, get the top-level module name.
                 name = astlib.to_code(node.module).split(".")[0]
                 package_strs.add(name)

@@ -33,7 +33,9 @@ class _TypeInferenceInstrumenter(astlib.AstTransformer):
         self._cur_ast: Optional[astlib.AstNode] = None
         self._uninstrumentable_exprs: Set[astlib.AstNode] = set()
 
-    def process(self, ast_root: astlib.AstNode) -> Tuple[astlib.AstNode, Dict[astlib.BaseExpression, int]]:
+    def process(
+        self, ast_root: astlib.AstNode
+    ) -> Tuple[astlib.AstNode, Dict[astlib.BaseExpression, int]]:
         self._node_to_idx_mapping.clear()
         self._cur_ast = ast_root
         self._uninstrumentable_exprs.clear()
@@ -69,7 +71,7 @@ class _TypeInferenceInstrumenter(astlib.AstTransformer):
         )
 
     def _process_expr(
-            self, original_node: astlib.BaseExpression, updated_node: astlib.BaseExpression
+        self, original_node: astlib.BaseExpression, updated_node: astlib.BaseExpression
     ) -> astlib.BaseExpression:
         if original_node not in self._node_to_idx_mapping:
             self._node_to_idx_mapping[original_node] = len(self._node_to_idx_mapping)
@@ -79,18 +81,24 @@ class _TypeInferenceInstrumenter(astlib.AstTransformer):
         if isinstance(updated_node, astlib.FormattedString):
             updated_node = updated_node.with_changes(start='f"""', end='"""')
 
-        tuple_expr = astlib.create_tuple_expr([
-            self._add_parens(updated_node),
-            self._create_reveal_type_call(astlib.SimpleString(repr(f"_TYPE_IDX_{idx}"))),
-            self._create_reveal_type_call(self._add_parens(original_node)),
-        ])
+        tuple_expr = astlib.create_tuple_expr(
+            [
+                self._add_parens(updated_node),
+                self._create_reveal_type_call(
+                    astlib.SimpleString(repr(f"_TYPE_IDX_{idx}"))
+                ),
+                self._create_reveal_type_call(self._add_parens(original_node)),
+            ]
+        )
         index_expr = astlib.parse_expr("dummy[2]")
         new_node = astlib.with_changes(index_expr, value=tuple_expr)
 
         return new_node
 
     def _create_reveal_type_call(self, expr: astlib.BaseExpression) -> astlib.Call:
-        return astlib.Call(func=astlib.create_name_expr("reveal_type"), args=[astlib.Arg(value=expr)])
+        return astlib.Call(
+            func=astlib.create_name_expr("reveal_type"), args=[astlib.Arg(value=expr)]
+        )
 
 
 def capture_revealed_types(type_store: List[SerializedMypyType]) -> None:
@@ -107,8 +115,8 @@ def capture_revealed_types(type_store: List[SerializedMypyType]) -> None:
 
 
 def run_mypy(
-        source: Union[str, astlib.AstNode],
-        cache_dir: Optional[str] = None,
+    source: Union[str, astlib.AstNode],
+    cache_dir: Optional[str] = None,
 ) -> Tuple[astlib.AstNode, Dict[astlib.BaseExpression, SerializedMypyType]]:
     if isinstance(source, str):
         src_ast = astlib.parse(source)
@@ -128,23 +136,27 @@ def run_mypy(
 
     stdout_buf = io.StringIO()
     stderr_buf = io.StringIO()
-    type_idx_regex = re.compile(r'_TYPE_IDX_([0-9]*)')
+    type_idx_regex = re.compile(r"_TYPE_IDX_([0-9]*)")
 
-    with tempfile.NamedTemporaryFile(mode='w') as fp:
+    with tempfile.NamedTemporaryFile(mode="w") as fp:
         fp.write(codeutils.normalize_code(inst_src))
         fp.flush()
 
         try:
             with set_env(MYPYPATH=STUBS_PATH):
                 from mypy.main import main
+
                 args = [fp.name, "--ignore-missing-imports"]
                 if cache_dir is not None:
                     args.append(f"--cache-dir={cache_dir}")
 
-                main(None,
-                     args=args,
-                     stdout=stdout_buf, stderr=stderr_buf,
-                     clean_exit=True)
+                main(
+                    None,
+                    args=args,
+                    stdout=stdout_buf,
+                    stderr=stderr_buf,
+                    clean_exit=True,
+                )
         except BaseException as e:
             # print(e)
             pass

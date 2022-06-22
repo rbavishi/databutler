@@ -14,7 +14,7 @@ from databutler.utils import code as codeutils
 class BaseCodeChange(ABC):
     @classmethod
     @abstractmethod
-    def apply_changes(cls, code: str, changes: List['BaseCodeChange']) -> str:
+    def apply_changes(cls, code: str, changes: List["BaseCodeChange"]) -> str:
         """
         Class method to apply the provided list of changes to the supplied code.
 
@@ -40,7 +40,7 @@ class BaseCodeRemovalChange(BaseCodeChange, ABC):
     #  As an example suppose the parent change is removal of a function call, while a child change can be
     #  the removal of a single keyword argument, along with any statements solely involved in the computation
     #  of the argument.
-    children: List['BaseCodeRemovalChange']
+    children: List["BaseCodeRemovalChange"]
 
 
 @attrs.define(eq=True, hash=True)
@@ -50,11 +50,12 @@ class SimpleAstNodeRef:
     This relies on the native ast.walk function to always return nodes in the same order. It obviously also relies on
     the parse tree not changing.
     """
+
     node_type: str
     index: int
 
     @classmethod
-    def get_refs(cls, code: Union[str, ast.AST]) -> Dict['SimpleAstNodeRef', ast.AST]:
+    def get_refs(cls, code: Union[str, ast.AST]) -> Dict["SimpleAstNodeRef", ast.AST]:
         """
         Returns a dictionary mapping node-refs to nodes given a code or a native AST instance.
 
@@ -87,14 +88,15 @@ class SimpleAstRemovalChange(BaseCodeRemovalChange):
     """
     A simple removal-based change class that removes nodes from an AST to apply the code change.
     """
+
     #  Node-refs to remove as part of this change
     node_refs: List[SimpleAstNodeRef]
 
     #  The children should be of the same class.
-    children: List['SimpleAstRemovalChange']
+    children: List["SimpleAstRemovalChange"]
 
     @classmethod
-    def apply_changes(cls, code: str, changes: List['BaseCodeRemovalChange']) -> str:
+    def apply_changes(cls, code: str, changes: List["BaseCodeRemovalChange"]) -> str:
         """
         Applies the code-change to the given code and returns the result.
 
@@ -111,7 +113,9 @@ class SimpleAstRemovalChange(BaseCodeRemovalChange):
             A string corresponding to the changed code.
         """
         if any(not isinstance(c, SimpleAstRemovalChange) for c in changes):
-            raise TypeError(f"Cannot handle heterogeneous change-types in {cls.__name__}")
+            raise TypeError(
+                f"Cannot handle heterogeneous change-types in {cls.__name__}"
+            )
 
         code_ast = ast.parse(code)
         ref_dict: Dict[SimpleAstNodeRef, ast.AST] = SimpleAstNodeRef.get_refs(code_ast)
@@ -124,11 +128,12 @@ class SimpleAstRemovalChange(BaseCodeRemovalChange):
 
         #  Collect all the node-refs of the changes.
         to_remove: List[ast.AST] = sum(
-            ([ref_dict[r] for r in change.node_refs] for change in all_changes),
-            []
+            ([ref_dict[r] for r in change.node_refs] for change in all_changes), []
         )
 
-        new_code = codeutils.unparse_native_ast(astutils.remove_nodes_from_native_ast(code_ast, to_remove))
+        new_code = codeutils.unparse_native_ast(
+            astutils.remove_nodes_from_native_ast(code_ast, to_remove)
+        )
         return new_code
 
 
@@ -139,11 +144,14 @@ class SimpleAstLibNodeRef:
     This relies on the astlib.walk function to always return nodes in the same order. It obviously also relies on
     the parse tree not changing.
     """
+
     node_type: str
     index: int
 
     @classmethod
-    def get_refs(cls, code: Union[str, astlib.AstNode]) -> Dict['SimpleAstLibNodeRef', astlib.AstNode]:
+    def get_refs(
+        cls, code: Union[str, astlib.AstNode]
+    ) -> Dict["SimpleAstLibNodeRef", astlib.AstNode]:
         """
         Returns a dictionary mapping node-refs to nodes given a code or a astlib AST instance.
 
@@ -177,14 +185,15 @@ class SimpleAstLibRemovalChange(BaseCodeRemovalChange):
     Similar to SimpleAstRemovalChange with the primary difference being the use of astlib instead of the native ast
     module.
     """
+
     #  Node-refs to remove as part of this change
     node_refs: List[SimpleAstLibNodeRef]
 
     #  The children should be of the same class.
-    children: List['SimpleAstLibRemovalChange']
+    children: List["SimpleAstLibRemovalChange"]
 
     @classmethod
-    def apply_changes(cls, code: str, changes: List['BaseCodeRemovalChange']) -> str:
+    def apply_changes(cls, code: str, changes: List["BaseCodeRemovalChange"]) -> str:
         """
         Applies the code-change to the given code and returns the result.
 
@@ -201,10 +210,14 @@ class SimpleAstLibRemovalChange(BaseCodeRemovalChange):
             A string corresponding to the changed code.
         """
         if any(not isinstance(c, SimpleAstLibRemovalChange) for c in changes):
-            raise TypeError(f"Cannot handle heterogeneous change-types in {cls.__name__}")
+            raise TypeError(
+                f"Cannot handle heterogeneous change-types in {cls.__name__}"
+            )
 
         code_ast = astlib.parse(code)
-        ref_dict: Dict[SimpleAstLibNodeRef, astlib.AstNode] = SimpleAstLibNodeRef.get_refs(code_ast)
+        ref_dict: Dict[
+            SimpleAstLibNodeRef, astlib.AstNode
+        ] = SimpleAstLibNodeRef.get_refs(code_ast)
         #  Need to include the children in the changes as well.
         all_changes = changes[:]
         for c in changes:
@@ -214,9 +227,10 @@ class SimpleAstLibRemovalChange(BaseCodeRemovalChange):
 
         #  Collect all the node-refs of the changes.
         to_remove: List[astlib.AstNode] = sum(
-            ([ref_dict[r] for r in change.node_refs] for change in all_changes),
-            []
+            ([ref_dict[r] for r in change.node_refs] for change in all_changes), []
         )
 
-        new_code = codeutils.unparse_astlib_ast(astutils.remove_nodes_from_astlib_ast(code_ast, to_remove))
+        new_code = codeutils.unparse_astlib_ast(
+            astutils.remove_nodes_from_astlib_ast(code_ast, to_remove)
+        )
         return new_code

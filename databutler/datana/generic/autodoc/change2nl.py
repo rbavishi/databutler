@@ -55,22 +55,26 @@ class FullCodeChangeToNatLang(BaseCodeChangeToNatLang):
     of the change. This is the most demanding of the model as it is responsible for identifying and localizing the
     change.
     """
+
     temperature: float = 0.0
-    engine: str = 'code-davinci-001'
+    engine: str = "code-davinci-001"
     max_tokens: int = 256
 
-    default_task_description: str = (
-        "Describe the difference between the old Python code and new Python code snippets below."
-    )
+    default_task_description: str = "Describe the difference between the old Python code and new Python code snippets below."
 
     def _get_diff_representation(self, old_code: str, new_code: str) -> List[str]:
-        prompt_strs: List[str] = [f"Old Code:\n{old_code}\n",
-                                  f"New Code:\n{new_code}\n"]
+        prompt_strs: List[str] = [
+            f"Old Code:\n{old_code}\n",
+            f"New Code:\n{new_code}\n",
+        ]
 
         return prompt_strs
 
-    def _create_completion_prompt(self, task: CodeChangeToNatLangTask,
-                                  generated_bullets: Optional[List[str]] = None) -> str:
+    def _create_completion_prompt(
+        self,
+        task: CodeChangeToNatLangTask,
+        generated_bullets: Optional[List[str]] = None,
+    ) -> str:
         """
         Helper method to create the prompt. Strings the few-shot examples together, and adds the target description to
         the beginning of the prompt.
@@ -110,13 +114,18 @@ class FullCodeChangeToNatLang(BaseCodeChangeToNatLang):
             prompt_strs.append("----\n")
 
         if not (all(i for i in is_bullet) or all(not i for i in is_bullet)):
-            raise ValueError("Few-shot examples must not mix the single-line description and the bullet-point format")
+            raise ValueError(
+                "Few-shot examples must not mix the single-line description and the bullet-point format"
+            )
 
         if (not all(is_bullet)) and generated_bullets is not None:
-            raise ValueError("Cannot supply generated bullets for single-line description prompts.")
+            raise ValueError(
+                "Cannot supply generated bullets for single-line description prompts."
+            )
 
-        prompt_strs.extend(self._get_diff_representation(task.target_old_code,
-                                                         task.target_new_code))
+        prompt_strs.extend(
+            self._get_diff_representation(task.target_old_code, task.target_new_code)
+        )
 
         if all(is_bullet):
             #  In either case, end with a '*' so the model knows it is starting the next bullet point.
@@ -140,8 +149,10 @@ class FullCodeChangeToNatLang(BaseCodeChangeToNatLang):
         """
         #  Ensure that the few-shot examples do not use bullet-points.
         if any(isinstance(ex.nl, list) for ex in task.few_shot_examples):
-            raise ValueError("Few-shot examples cannot contain bullet-point descriptions "
-                             "when generating single-line descriptions.")
+            raise ValueError(
+                "Few-shot examples cannot contain bullet-point descriptions "
+                "when generating single-line descriptions."
+            )
 
         completion_prompt = self._create_completion_prompt(task)
 
@@ -157,9 +168,7 @@ class FullCodeChangeToNatLang(BaseCodeChangeToNatLang):
             retrieve_top_tokens=False,
         )
 
-        descriptions = list(set(
-            c.text.strip() for c in resp.completions
-        ))
+        descriptions = list(set(c.text.strip() for c in resp.completions))
 
         return descriptions
 
@@ -172,8 +181,10 @@ class FullCodeChangeToNatLang(BaseCodeChangeToNatLang):
 
         #  Ensure that the few-shot examples all use bullet-points.
         if any(not isinstance(ex.nl, list) for ex in task.few_shot_examples):
-            raise ValueError("Few-shot examples cannot contain single-line descriptions "
-                             "when generating bullet-point descriptions.")
+            raise ValueError(
+                "Few-shot examples cannot contain single-line descriptions "
+                "when generating bullet-point descriptions."
+            )
 
         generated_bullets: List[str] = []
 
@@ -188,7 +199,9 @@ class FullCodeChangeToNatLang(BaseCodeChangeToNatLang):
                 temperature=self.temperature,
                 num_completions=1,
                 max_tokens=self.max_tokens,
-                stop=["\n"],  # Use new-line as the stop-token for single-line descriptions.
+                stop=[
+                    "\n"
+                ],  # Use new-line as the stop-token for single-line descriptions.
                 retry_wait_duration=60,
                 max_retries=5,
                 retrieve_top_tokens=False,
@@ -209,8 +222,9 @@ class DiffToNatLang(FullCodeChangeToNatLang):
     Thus, this makes it easier for the model to look at what actually changed, so results should be better for
     this strategy in general.
     """
+
     temperature: float = 0.0
-    engine: str = 'code-davinci-001'
+    engine: str = "code-davinci-001"
     max_tokens: int = 256
 
     default_task_description: str = (
@@ -235,9 +249,20 @@ class DiffToNatLang(FullCodeChangeToNatLang):
         #  The output only contains '-' and '+'es, something like below:
         #  - c = call(var=a)
         #  + c = call(var=a, another=arg)
-        diff_lines = list(difflib.unified_diff(old_code.split('\n'), new_code.split('\n'), n=0, lineterm=''))
-        return "\n".join(line for line in diff_lines
-                         if not (line.startswith("---") or line.startswith("+++") or line.startswith("@@")))
+        diff_lines = list(
+            difflib.unified_diff(
+                old_code.split("\n"), new_code.split("\n"), n=0, lineterm=""
+            )
+        )
+        return "\n".join(
+            line
+            for line in diff_lines
+            if not (
+                line.startswith("---")
+                or line.startswith("+++")
+                or line.startswith("@@")
+            )
+        )
 
     def _get_diff_representation(self, old_code: str, new_code: str) -> List[str]:
         #  Return the diff instead of Old Code: and New Code: as done in FullCodeChangeToNatLang.

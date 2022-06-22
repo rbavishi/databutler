@@ -7,11 +7,27 @@ import attr
 from databutler.pat import astlib
 from databutler.pat.analysis.clock import LogicalClock
 from databutler.pat.analysis.hierarchical_trace import specutils
-from databutler.pat.analysis.hierarchical_trace.builder_utils import TraceEventsCollector, TraceItemsCollector, \
-    iter_potentially_modified_subexprs
-from databutler.pat.analysis.hierarchical_trace.core import DefEvent, AccessEvent, ObjReadEvent, ObjWriteEvent
-from databutler.pat.analysis.instrumentation import StmtCallbacksGenerator, StmtCallback, ExprCallbacksGenerator, \
-    ExprWrappersGenerator, ExprWrapper, ExprCallback, CallDecoratorsGenerator, CallDecorator
+from databutler.pat.analysis.hierarchical_trace.builder_utils import (
+    TraceEventsCollector,
+    TraceItemsCollector,
+    iter_potentially_modified_subexprs,
+)
+from databutler.pat.analysis.hierarchical_trace.core import (
+    DefEvent,
+    AccessEvent,
+    ObjReadEvent,
+    ObjWriteEvent,
+)
+from databutler.pat.analysis.instrumentation import (
+    StmtCallbacksGenerator,
+    StmtCallback,
+    ExprCallbacksGenerator,
+    ExprWrappersGenerator,
+    ExprWrapper,
+    ExprCallback,
+    CallDecoratorsGenerator,
+    CallDecorator,
+)
 from databutler.pat.utils import miscutils
 from databutler.utils.logging import logger
 
@@ -21,23 +37,32 @@ class BasicDefEventsGenerator(StmtCallbacksGenerator):
     """
     Handles generation of basic def events that do not require auxiliary trace items.
     """
+
     clock: LogicalClock = attr.ib()
     trace_events_collector: TraceEventsCollector = attr.ib()
     trace_items_collector: TraceItemsCollector = attr.ib()
 
-    def gen_stmt_callbacks(self, ast_root: astlib.AstNode) -> Dict[astlib.AstStatementT, List[StmtCallback]]:
-        callbacks: Dict[astlib.AstStatementT, List[StmtCallback]] = collections.defaultdict(list)
+    def gen_stmt_callbacks(
+        self, ast_root: astlib.AstNode
+    ) -> Dict[astlib.AstStatementT, List[StmtCallback]]:
+        callbacks: Dict[
+            astlib.AstStatementT, List[StmtCallback]
+        ] = collections.defaultdict(list)
 
         definitions, accesses = astlib.get_definitions_and_accesses(ast_root)
         for definition in definitions:
             if astlib.is_stmt(definition.node):
-                miscutils.merge_defaultdicts_list(callbacks, self._gen_def_callbacks_simple(definition))
+                miscutils.merge_defaultdicts_list(
+                    callbacks, self._gen_def_callbacks_simple(definition)
+                )
 
-            elif isinstance(definition.node, astlib.Name) and isinstance(definition.enclosing_node,
-                                                                         (astlib.Assign,
-                                                                          astlib.AugAssign,
-                                                                          astlib.AnnAssign)):
-                miscutils.merge_defaultdicts_list(callbacks, self._gen_def_callbacks_assignments(definition))
+            elif isinstance(definition.node, astlib.Name) and isinstance(
+                definition.enclosing_node,
+                (astlib.Assign, astlib.AugAssign, astlib.AnnAssign),
+            ):
+                miscutils.merge_defaultdicts_list(
+                    callbacks, self._gen_def_callbacks_assignments(definition)
+                )
 
         return callbacks
 
@@ -70,8 +95,15 @@ class BasicDefEventsGenerator(StmtCallbacksGenerator):
             self.trace_events_collector.add_event(def_event, obj=obj)
 
         return {
-            node: [StmtCallback(callable=callback, name=self.gen_stmt_callback_id(),
-                                position='post', arg_str='globals(), locals()', mandatory=False)]
+            node: [
+                StmtCallback(
+                    callable=callback,
+                    name=self.gen_stmt_callback_id(),
+                    position="post",
+                    arg_str="globals(), locals()",
+                    mandatory=False,
+                )
+            ]
         }
 
     def _gen_def_callbacks_assignments(self, definition: astlib.Definition):
@@ -102,8 +134,15 @@ class BasicDefEventsGenerator(StmtCallbacksGenerator):
             self.trace_events_collector.add_event(def_event, obj=obj)
 
         return {
-            node: [StmtCallback(callable=callback, name=self.gen_stmt_callback_id(),
-                                position='post', arg_str='globals(), locals()', mandatory=False)]
+            node: [
+                StmtCallback(
+                    callable=callback,
+                    name=self.gen_stmt_callback_id(),
+                    position="post",
+                    arg_str="globals(), locals()",
+                    mandatory=False,
+                )
+            ]
         }
 
 
@@ -112,6 +151,7 @@ class BasicAccessEventsGenerator(ExprWrappersGenerator, ExprCallbacksGenerator):
     """
     Handles generation of access events.
     """
+
     clock: LogicalClock = attr.ib()
     trace_events_collector: TraceEventsCollector = attr.ib()
     trace_items_collector: TraceItemsCollector = attr.ib()
@@ -122,24 +162,36 @@ class BasicAccessEventsGenerator(ExprWrappersGenerator, ExprCallbacksGenerator):
     def preprocess(self, ast_root: astlib.AstNode):
         _, self._accesses = astlib.get_definitions_and_accesses(ast_root)
 
-    def gen_expr_wrappers(self, ast_root: astlib.AstNode) -> Dict[astlib.BaseExpression, List[ExprWrapper]]:
-        wrappers: Dict[astlib.BaseExpression, List[ExprWrapper]] = collections.defaultdict(list)
+    def gen_expr_wrappers(
+        self, ast_root: astlib.AstNode
+    ) -> Dict[astlib.BaseExpression, List[ExprWrapper]]:
+        wrappers: Dict[
+            astlib.BaseExpression, List[ExprWrapper]
+        ] = collections.defaultdict(list)
 
         for access in self._accesses:
             wrappers[access.node].append(self._gen_access_wrapper(access))
 
         return wrappers
 
-    def gen_expr_callbacks(self, ast_root: astlib.AstNode) -> Dict[astlib.BaseExpression, List[ExprCallback]]:
-        callbacks: Dict[astlib.BaseExpression, List[ExprCallback]] = collections.defaultdict(list)
+    def gen_expr_callbacks(
+        self, ast_root: astlib.AstNode
+    ) -> Dict[astlib.BaseExpression, List[ExprCallback]]:
+        callbacks: Dict[
+            astlib.BaseExpression, List[ExprCallback]
+        ] = collections.defaultdict(list)
 
         for stmt in astlib.iter_stmts(ast_root):
-            if isinstance(stmt, astlib.AugAssign) and isinstance(stmt.target, astlib.Name):
+            if isinstance(stmt, astlib.AugAssign) and isinstance(
+                stmt.target, astlib.Name
+            ):
                 #  The access corresponding to this target will not be covered by the previous step as its
                 #  expression context will be a store, and hence the wrapper will be  discarded by the
                 #  instrumentation (with a warning). Hence we need to handle this specially.
                 assert any(stmt.target is a.node for a in self._accesses)
-                miscutils.merge_defaultdicts_list(callbacks, self._gen_access_callbacks_aug_assign(stmt))
+                miscutils.merge_defaultdicts_list(
+                    callbacks, self._gen_access_callbacks_aug_assign(stmt)
+                )
 
         return callbacks
 
@@ -155,11 +207,20 @@ class BasicAccessEventsGenerator(ExprWrappersGenerator, ExprCallbacksGenerator):
             :return:
             """
             obj_id: int = id(value)
-            def_events = list(filter(None, [self.trace_events_collector.get_last_event_for_def(d)
-                                            for d in definitions]))
+            def_events = list(
+                filter(
+                    None,
+                    [
+                        self.trace_events_collector.get_last_event_for_def(d)
+                        for d in definitions
+                    ],
+                )
+            )
             def_events = sorted(def_events, key=lambda x: -x.timestamp)
 
-            trace_item = self.trace_items_collector.get_last_in_progress_item_for_node(node)
+            trace_item = self.trace_items_collector.get_last_in_progress_item_for_node(
+                node
+            )
             if trace_item is None:
                 logger.warning(f"Did not find trace item for node of type {type(node)}")
                 return value
@@ -204,11 +265,20 @@ class BasicAccessEventsGenerator(ExprWrappersGenerator, ExprCallbacksGenerator):
             #  The argument to this callback is the value of the target (see arg_str below).
             #  This only works if evaluating the target is non side-effecting.
             obj_id: int = id(value)
-            def_events = list(filter(None, [self.trace_events_collector.get_last_event_for_def(d)
-                                            for d in definitions]))
+            def_events = list(
+                filter(
+                    None,
+                    [
+                        self.trace_events_collector.get_last_event_for_def(d)
+                        for d in definitions
+                    ],
+                )
+            )
             def_events = sorted(def_events, key=lambda x: -x.timestamp)
 
-            trace_item = self.trace_items_collector.get_last_in_progress_item_for_node(stmt)
+            trace_item = self.trace_items_collector.get_last_in_progress_item_for_node(
+                stmt
+            )
             if trace_item is None:
                 logger.warning(f"Did not find trace item for node of type {type(stmt)}")
                 return
@@ -234,8 +304,14 @@ class BasicAccessEventsGenerator(ExprWrappersGenerator, ExprCallbacksGenerator):
                 return
 
         return {
-            stmt.value: [ExprCallback(callable=callback, name=self.gen_expr_callback_id(),
-                                      arg_str=code_str, position='post')]
+            stmt.value: [
+                ExprCallback(
+                    callable=callback,
+                    name=self.gen_expr_callback_id(),
+                    arg_str=code_str,
+                    position="post",
+                )
+            ]
         }
 
 
@@ -244,31 +320,44 @@ class BasicReadEventsGenerator(ExprCallbacksGenerator, ExprWrappersGenerator):
     """
     Handles generation of basic read events.
     """
+
     clock: LogicalClock = attr.ib()
     trace_events_collector: TraceEventsCollector = attr.ib()
     trace_items_collector: TraceItemsCollector = attr.ib()
 
-    def gen_expr_wrappers(self, ast_root: astlib.AstNode) -> Dict[astlib.BaseExpression, List[ExprWrapper]]:
-        wrappers: Dict[astlib.BaseExpression, List[ExprWrapper]] = collections.defaultdict(list)
+    def gen_expr_wrappers(
+        self, ast_root: astlib.AstNode
+    ) -> Dict[astlib.BaseExpression, List[ExprWrapper]]:
+        wrappers: Dict[
+            astlib.BaseExpression, List[ExprWrapper]
+        ] = collections.defaultdict(list)
 
         for expr in self.iter_valid_exprs(ast_root):
             wrappers[expr].append(self._gen_read_wrapper(expr))
 
         return wrappers
 
-    def gen_expr_callbacks(self, ast_root: astlib.AstNode) -> Dict[astlib.BaseExpression, List[ExprCallback]]:
-        callbacks: Dict[astlib.BaseExpression, List[ExprCallback]] = collections.defaultdict(list)
+    def gen_expr_callbacks(
+        self, ast_root: astlib.AstNode
+    ) -> Dict[astlib.BaseExpression, List[ExprCallback]]:
+        callbacks: Dict[
+            astlib.BaseExpression, List[ExprCallback]
+        ] = collections.defaultdict(list)
 
         for stmt in astlib.iter_stmts(ast_root):
             if isinstance(stmt, astlib.AugAssign):
-                miscutils.merge_defaultdicts_list(callbacks, self._gen_read_callbacks_aug_assign(stmt))
+                miscutils.merge_defaultdicts_list(
+                    callbacks, self._gen_read_callbacks_aug_assign(stmt)
+                )
 
         return callbacks
 
     def _gen_read_wrapper(self, expr: astlib.BaseExpression):
         def wrapper(value):
             obj_id = id(value)
-            trace_item = self.trace_items_collector.get_last_in_progress_item_for_node(expr)
+            trace_item = self.trace_items_collector.get_last_in_progress_item_for_node(
+                expr
+            )
             if trace_item is None:
                 return value
 
@@ -292,7 +381,9 @@ class BasicReadEventsGenerator(ExprCallbacksGenerator, ExprWrappersGenerator):
 
         def callback(value):
             obj_id = id(value)
-            trace_item = self.trace_items_collector.get_last_in_progress_item_for_node(aug)
+            trace_item = self.trace_items_collector.get_last_in_progress_item_for_node(
+                aug
+            )
             if trace_item is None:
                 return value
 
@@ -306,8 +397,14 @@ class BasicReadEventsGenerator(ExprCallbacksGenerator, ExprWrappersGenerator):
             self.trace_events_collector.add_event(event)
 
         return {
-            aug.value: [ExprCallback(callable=callback, name=self.gen_expr_callback_id(),
-                                     arg_str=code_str, position='post')]
+            aug.value: [
+                ExprCallback(
+                    callable=callback,
+                    name=self.gen_expr_callback_id(),
+                    arg_str=code_str,
+                    position="post",
+                )
+            ]
         }
 
 
@@ -316,28 +413,31 @@ class BasicWriteEventsGenerator(StmtCallbacksGenerator, ExprWrappersGenerator):
     """
     Handles generation of basic write events.
     """
+
     clock: LogicalClock = attr.ib()
     trace_events_collector: TraceEventsCollector = attr.ib()
     trace_items_collector: TraceItemsCollector = attr.ib()
 
-    def gen_stmt_callbacks(self, ast_root: astlib.AstNode) -> Dict[astlib.AstStatementT, List[StmtCallback]]:
-        callbacks: Dict[astlib.AstStatementT, List[StmtCallback]] = collections.defaultdict(list)
+    def gen_stmt_callbacks(
+        self, ast_root: astlib.AstNode
+    ) -> Dict[astlib.AstStatementT, List[StmtCallback]]:
+        callbacks: Dict[
+            astlib.AstStatementT, List[StmtCallback]
+        ] = collections.defaultdict(list)
 
         for stmt in self.iter_stmts(ast_root):
-            if isinstance(stmt,
-                          (astlib.Assign,
-                           astlib.AugAssign,
-                           astlib.AnnAssign)):
-                miscutils.merge_defaultdicts_list(callbacks, self._gen_write_callbacks_assignments(ast_root, stmt))
+            if isinstance(stmt, (astlib.Assign, astlib.AugAssign, astlib.AnnAssign)):
+                miscutils.merge_defaultdicts_list(
+                    callbacks, self._gen_write_callbacks_assignments(ast_root, stmt)
+                )
 
         return callbacks
 
-    def _gen_write_callbacks_assignments(self,
-                                         ast_root: astlib.AstNode,
-                                         stmt: Union[astlib.Assign,
-                                                     astlib.AugAssign,
-                                                     astlib.AnnAssign]) -> Dict[astlib.AstStatementT,
-                                                                                List[StmtCallback]]:
+    def _gen_write_callbacks_assignments(
+        self,
+        ast_root: astlib.AstNode,
+        stmt: Union[astlib.Assign, astlib.AugAssign, astlib.AnnAssign],
+    ) -> Dict[astlib.AstStatementT, List[StmtCallback]]:
 
         targets: List[astlib.BaseAssignTargetExpression] = []
         if isinstance(stmt, astlib.Assign):
@@ -378,8 +478,15 @@ class BasicWriteEventsGenerator(StmtCallbacksGenerator, ExprWrappersGenerator):
                 self.trace_events_collector.add_event(event)
 
         return {
-            stmt: [StmtCallback(callable=callback, name=self.gen_stmt_callback_id(),
-                                position='post', mandatory=False, arg_str='')]
+            stmt: [
+                StmtCallback(
+                    callable=callback,
+                    name=self.gen_stmt_callback_id(),
+                    position="post",
+                    mandatory=False,
+                    arg_str="",
+                )
+            ]
         }
 
 
@@ -388,26 +495,35 @@ class FunctionCallSpecsChecker(CallDecoratorsGenerator):
     """
     For function calls, check for side-effects using specs if available.
     """
+
     clock: LogicalClock = attr.ib()
     trace_events_collector: TraceEventsCollector = attr.ib()
     trace_items_collector: TraceItemsCollector = attr.ib()
 
     def __attrs_post_init__(self):
-        specutils.setup(clock=self.clock,
-                        trace_events_collector=self.trace_events_collector,
-                        trace_items_collector=self.trace_items_collector)
+        specutils.setup(
+            clock=self.clock,
+            trace_events_collector=self.trace_events_collector,
+            trace_items_collector=self.trace_items_collector,
+        )
 
-    def gen_decorators(self, ast_root: astlib.AstNode) -> Dict[astlib.BaseExpression, List[CallDecorator]]:
-        decorators: Dict[astlib.BaseExpression, List[CallDecorator]] = collections.defaultdict(list)
+    def gen_decorators(
+        self, ast_root: astlib.AstNode
+    ) -> Dict[astlib.BaseExpression, List[CallDecorator]]:
+        decorators: Dict[
+            astlib.BaseExpression, List[CallDecorator]
+        ] = collections.defaultdict(list)
 
         for n in self.iter_calls(ast_root):
-            miscutils.merge_defaultdicts_list(decorators, self.gen_spec_checker(n, ast_root=ast_root))
+            miscutils.merge_defaultdicts_list(
+                decorators, self.gen_spec_checker(n, ast_root=ast_root)
+            )
 
         return decorators
 
-    def gen_spec_checker(self,
-                         call: astlib.Call,
-                         ast_root: astlib.AstNode) -> Dict[astlib.BaseExpression, List[CallDecorator]]:
+    def gen_spec_checker(
+        self, call: astlib.Call, ast_root: astlib.AstNode
+    ) -> Dict[astlib.BaseExpression, List[CallDecorator]]:
         """
         We will replace the func node with a decorator of sorts that will consult rules, if any
         and determine if the function is side-effecting.
@@ -437,7 +553,9 @@ class FunctionCallSpecsChecker(CallDecoratorsGenerator):
         #  TODO : appropriate trace item?
 
         modified_exprs_map: Dict[astlib.AstNode, Set[astlib.AstNode]] = {}
-        for root in itertools.chain([call.func], (arg.value for arg in call.args if arg.star == '')):
+        for root in itertools.chain(
+            [call.func], (arg.value for arg in call.args if arg.star == "")
+        ):
             for node in astlib.iter_true_exprs(root, ast_root):
                 modified_exprs_map[node] = set(iter_potentially_modified_subexprs(node))
 
@@ -447,7 +565,9 @@ class FunctionCallSpecsChecker(CallDecoratorsGenerator):
 
             if not specutils.has_spec(func, ret_val, args, kwargs):
                 #  Be conservative and mark writes for all the arguments.
-                reads_and_writes = [(o, 'write') for o in itertools.chain(args, kwargs.values())]
+                reads_and_writes = [
+                    (o, "write") for o in itertools.chain(args, kwargs.values())
+                ]
             else:
                 reads_and_writes = specutils.check_spec(func, ret_val, args, kwargs)
 
@@ -466,20 +586,24 @@ class FunctionCallSpecsChecker(CallDecoratorsGenerator):
                 extended_writes_map[key] = ext_writes
 
             if len(reads_and_writes) > 0:
-                call_trace_item = self.trace_items_collector.get_last_in_progress_item_for_node(call)
+                call_trace_item = (
+                    self.trace_items_collector.get_last_in_progress_item_for_node(call)
+                )
                 for obj, event_type in reads_and_writes:
-                    if event_type == 'read':
+                    if event_type == "read":
                         event = ObjReadEvent(
                             timestamp=self.clock.get_time(),
                             owner=call_trace_item,
                             obj_id=id(obj),
-                            ast_node=call_trace_item.ast_node
+                            ast_node=call_trace_item.ast_node,
                         )
                         self.clock.increment(1)
                         self.trace_events_collector.add_event(event)
 
                     else:
-                        for written_obj_id in itertools.chain([id(obj)], extended_writes_map.get(id(obj), [])):
+                        for written_obj_id in itertools.chain(
+                            [id(obj)], extended_writes_map.get(id(obj), [])
+                        ):
                             event = ObjWriteEvent(
                                 timestamp=self.clock.get_time(),
                                 owner=call_trace_item,
@@ -489,6 +613,10 @@ class FunctionCallSpecsChecker(CallDecoratorsGenerator):
                             self.clock.increment(1)
                             self.trace_events_collector.add_event(event)
 
-        return {call.func: [CallDecorator(callable=checker,
-                                          does_not_return=True,
-                                          needs_return_value=True)]}
+        return {
+            call.func: [
+                CallDecorator(
+                    callable=checker, does_not_return=True, needs_return_value=True
+                )
+            ]
+        }

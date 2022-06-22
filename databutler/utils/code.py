@@ -9,7 +9,11 @@ from databutler.pat import astlib
 
 class _CodeOptimizer(ast.NodeTransformer):
     def visit_Assign(self, node: ast.Assign) -> Any:
-        if len(node.targets) == 1 and isinstance(node.targets[0], ast.Name) and isinstance(node.value, ast.Name):
+        if (
+            len(node.targets) == 1
+            and isinstance(node.targets[0], ast.Name)
+            and isinstance(node.value, ast.Name)
+        ):
             if node.targets[0].id == node.value.id:
                 return None
 
@@ -82,4 +86,6 @@ def optimize_code(code: str) -> str:
     """
     code_ast = ast.parse(code)
     mode = black.FileMode()
-    return black.format_str(astunparse.unparse(_CodeOptimizer().visit(code_ast)), mode=mode).strip()
+    return black.format_str(
+        astunparse.unparse(_CodeOptimizer().visit(code_ast)), mode=mode
+    ).strip()

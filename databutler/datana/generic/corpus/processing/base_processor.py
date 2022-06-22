@@ -52,7 +52,9 @@ class DatanaFunctionProcessor(ABC):
         orig_metadata_keys = set((d_func.metadata or {}).keys())
         new_metadata_keys = set((new_func.metadata or {}).keys())
         new_keys = new_metadata_keys - orig_metadata_keys
-        if len(new_keys) > 1 or (len(new_keys) == 1 and self.get_processor_metadata_key() not in new_keys):
+        if len(new_keys) > 1 or (
+            len(new_keys) == 1 and self.get_processor_metadata_key() not in new_keys
+        ):
             raise AssertionError(
                 f"A processor can only add in a single metadata key - {self.get_processor_metadata_key()}"
             )
@@ -62,7 +64,7 @@ class DatanaFunctionProcessor(ABC):
             new_func.metadata = {}
 
         old_metadata = d_func.metadata or {}
-        key = 'processors_applied'
+        key = "processors_applied"
         processor_history = list(old_metadata.get(key, []))
         processor_history.append(self.get_processor_name())
         new_func.metadata[key] = processor_history

@@ -8,92 +8,87 @@ class NL2CodeTests(unittest.TestCase):
         few_shot_examples = [
             few_shot.FewShotExampleCodeAndNL(
                 nl="A function to add two numbers",
-                code=(
-                    "def f(a, b):\n"
-                    "    return a + b"
-                )
+                code=("def f(a, b):\n" "    return a + b"),
             ),
             few_shot.FewShotExampleCodeAndNL(
                 nl="A function to multiply two numbers",
-                code=(
-                    "def f(a, b):\n"
-                    "    return a * b"
-                )
+                code=("def f(a, b):\n" "    return a * b"),
             ),
         ]
 
         target_nl = "A function to subtract two numbers"
         generator = nl2code.SimpleNatLangToCode()
-        task = nl2code.NatLangToCodeTask(few_shot_examples=few_shot_examples, target_nl=target_nl)
+        task = nl2code.NatLangToCodeTask(
+            few_shot_examples=few_shot_examples, target_nl=target_nl
+        )
         generated_code = generator.get_code(task)
 
         #  Run the generated code to see if it does the right thing
         ctx = {}
         exec(generated_code, ctx)
-        self.assertIn('f', ctx.keys())
-        self.assertEqual(5, ctx['f'](10, 5))  # 10 - 5 = 5
-        self.assertEqual(-15, ctx['f'](5, 20))  # 5 - 20 = -15
+        self.assertIn("f", ctx.keys())
+        self.assertEqual(5, ctx["f"](10, 5))  # 10 - 5 = 5
+        self.assertEqual(-15, ctx["f"](5, 20))  # 5 - 20 = -15
 
         #  Try with output prefixes. Use specific variable names.
         output_prefix = "def func(x, y):\n"
 
-        task = nl2code.NatLangToCodeTask(few_shot_examples=few_shot_examples, target_nl=target_nl,
-                                         output_prefix=output_prefix)
+        task = nl2code.NatLangToCodeTask(
+            few_shot_examples=few_shot_examples,
+            target_nl=target_nl,
+            output_prefix=output_prefix,
+        )
         generated_code = generator.get_code(task)
 
         #  Run the generated code to see if it does the right thing
         ctx = {}
         exec(generated_code, ctx)
-        self.assertIn('func', ctx.keys())
-        self.assertEqual(5, ctx['func'](10, 5))  # 10 - 5 = 5
-        self.assertEqual(-15, ctx['func'](5, 20))  # 5 - 20 = -15
+        self.assertIn("func", ctx.keys())
+        self.assertEqual(5, ctx["func"](10, 5))  # 10 - 5 = 5
+        self.assertEqual(-15, ctx["func"](5, 20))  # 5 - 20 = -15
 
     def test_2(self):
         few_shot_examples = [
             few_shot.FewShotExampleCodeAndNL(
-                nl=[
-                    "A function that takes two integers as input",
-                    "Returns their xor"
-                ],
-                code=(
-                    "def f(a, b):\n"
-                    "    return a ^ b"
-                )
+                nl=["A function that takes two integers as input", "Returns their xor"],
+                code=("def f(a, b):\n" "    return a ^ b"),
             ),
             few_shot.FewShotExampleCodeAndNL(
                 nl=[
                     "A function that takes two integers as input",
-                    "Returns their product"
+                    "Returns their product",
                 ],
-                code=(
-                    "def f(a, b):\n"
-                    "    return a * b"
-                )
+                code=("def f(a, b):\n" "    return a * b"),
             ),
         ]
 
         target_nl = [
             "A function that takes two strings as input",
-            "Returns their concatenation"
+            "Returns their concatenation",
         ]
         generator = nl2code.SimpleNatLangToCode()
-        task = nl2code.NatLangToCodeTask(few_shot_examples=few_shot_examples, target_nl=target_nl)
+        task = nl2code.NatLangToCodeTask(
+            few_shot_examples=few_shot_examples, target_nl=target_nl
+        )
         generated_code = generator.get_code(task)
 
         #  Run the generated code to see if it does the right thing
         ctx = {}
         exec(generated_code, ctx)
-        self.assertEqual("ab", ctx['f']("a", "b"))
-        self.assertEqual("10", ctx['f']("1", "0"))
+        self.assertEqual("ab", ctx["f"]("a", "b"))
+        self.assertEqual("10", ctx["f"]("1", "0"))
 
         #  Try with output prefixes. Use specific variable names.
         output_prefix = "def func(x, y):\n"
-        task = nl2code.NatLangToCodeTask(few_shot_examples=few_shot_examples, target_nl=target_nl,
-                                         output_prefix=output_prefix)
+        task = nl2code.NatLangToCodeTask(
+            few_shot_examples=few_shot_examples,
+            target_nl=target_nl,
+            output_prefix=output_prefix,
+        )
         generated_code = generator.get_code(task)
 
         #  Run the generated code to see if it does the right thing
         ctx = {}
         exec(generated_code, ctx)
-        self.assertEqual("ab", ctx['func']("a", "b"))
-        self.assertEqual("10", ctx['func']("1", "0"))
+        self.assertEqual("ab", ctx["func"]("a", "b"))
+        self.assertEqual("10", ctx["func"]("1", "0"))

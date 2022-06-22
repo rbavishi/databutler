@@ -1,7 +1,9 @@
 import attrs
 
 from databutler.datana.generic.corpus.code import DatanaFunction
-from databutler.datana.generic.corpus.processing.base_processor import DatanaFunctionProcessor
+from databutler.datana.generic.corpus.processing.base_processor import (
+    DatanaFunctionProcessor,
+)
 from databutler.utils import code as codeutils
 
 

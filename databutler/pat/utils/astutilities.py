@@ -18,7 +18,7 @@ def parse_obj(obj):
 
 
 def parse_file(fname: str) -> ast.Module:
-    with open(fname, 'r') as f:
+    with open(fname, "r") as f:
         return ast.parse(f.read().strip())
 
 

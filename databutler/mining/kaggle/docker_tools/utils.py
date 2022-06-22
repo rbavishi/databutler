@@ -4,9 +4,12 @@ import tarfile
 from typing import Collection
 
 
-def _tarify_path(path: str, root_name: str,
-                 include: Collection[str] = None,
-                 exclude: Collection[str] = None) -> bytes:
+def _tarify_path(
+    path: str,
+    root_name: str,
+    include: Collection[str] = None,
+    exclude: Collection[str] = None,
+) -> bytes:
     """
     Returns a tarball containing the file or the directory (recursively) at the given path as bytes.
 
@@ -22,7 +25,7 @@ def _tarify_path(path: str, root_name: str,
     """
     if include is not None:
         include = set(include)
-        include.add('')
+        include.add("")
 
     if exclude is not None:
         exclude = set(exclude)

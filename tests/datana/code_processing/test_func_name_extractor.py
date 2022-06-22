@@ -36,7 +36,7 @@ class FuncNameExtractorTests(unittest.TestCase):
 
         new_d_func = multiprocess.run_func_in_process(_seaborn_runner, datana_func)
         metadata_key = f"metadata-{VizMplFuncNameExtractor.get_processor_name()}"
-        func_name_mappings = new_d_func.metadata[metadata_key]['func_name_mappings']
+        func_name_mappings = new_d_func.metadata[metadata_key]["func_name_mappings"]
 
         #  Just one function call to check
         self.assertEqual(1, len(func_name_mappings))

@@ -15,12 +15,15 @@ class __automl_wrapped_ipython:
     """
     Wrap special IPython calls with exception handling.
     """
+
     def __init__(self):
         from IPython import get_ipython
+
         self.ipython = get_ipython()
 
     def __getattr__(self, item):
         if self.ipython is None:
+
             def func(*args, **kwargs):
                 return
 
@@ -28,6 +31,7 @@ class __automl_wrapped_ipython:
 
         val = getattr(self.ipython, item)
         if inspect.ismethod(val):
+
             def wrapper(*args, **kwargs):
                 try:
                     return val(*args, **kwargs)
@@ -45,30 +49,33 @@ def convert_python_notebook_magics(src: Union[str, Dict[str, Any]]) -> Dict:
     else:
         src = src.copy()
 
-    if 'cells' not in src:
+    if "cells" not in src:
         raise AssertionError("Did not recognize notebook format")
 
-    for c in src['cells']:
-        if c['cell_type'] == "code":
-            c_code = c['source']
+    for c in src["cells"]:
+        if c["cell_type"] == "code":
+            c_code = c["source"]
             if isinstance(c_code, list):
                 c_code = "".join(c_code)
 
             c_code = ipython2python(c_code)
-            c_code = c_code.replace('get_ipython', '__automl_wrapped_ipython')
-            c['source'] = [i + "\n" for i in c_code.split('\n')]
+            c_code = c_code.replace("get_ipython", "__automl_wrapped_ipython")
+            c["source"] = [i + "\n" for i in c_code.split("\n")]
 
-    src['cells'].insert(0, {
-        "cell_type": "code",
-        "execution_count": None,
-        "outputs": [],
-        "metadata": {},
-        "source": [
-            "import IPython, inspect\n",
-            "IPython.display.display_html = lambda *objs, **kwargs : None\n",
-            *inspect.getsourcelines(__automl_wrapped_ipython)[0],
-        ]
-    })
+    src["cells"].insert(
+        0,
+        {
+            "cell_type": "code",
+            "execution_count": None,
+            "outputs": [],
+            "metadata": {},
+            "source": [
+                "import IPython, inspect\n",
+                "IPython.display.display_html = lambda *objs, **kwargs : None\n",
+                *inspect.getsourcelines(__automl_wrapped_ipython)[0],
+            ],
+        },
+    )
 
     return src
 
@@ -80,8 +87,8 @@ def convert_python_notebook_to_code(src: Union[str, Dict[str, Any]]) -> str:
         src = src.copy()
 
     code: List[str] = []
-    for c in src['cells']:
-        if c['cell_type'] == "code":
+    for c in src["cells"]:
+        if c["cell_type"] == "code":
             c_code = c["source"]
             code.extend(c_code)
 
@@ -114,7 +121,9 @@ def getclosurevars_recursive(func, f_ast: Optional[ast.FunctionDef] = None):
     annotation_names = []
     try:
         if f_ast is None:
-            f_ast: ast.FunctionDef = astutilities.parse(textwrap.dedent(inspect.getsource(func)))
+            f_ast: ast.FunctionDef = astutilities.parse(
+                textwrap.dedent(inspect.getsource(func))
+            )
 
         for n in ast.walk(f_ast.args):
             if isinstance(n, ast.arg) and n.annotation is not None:
@@ -166,5 +175,4 @@ def getclosurevars_recursive(func, f_ast: Optional[ast.FunctionDef] = None):
             except KeyError:
                 unbound_names.add(name)
 
-    return ClosureVars(nonlocal_vars, global_vars,
-                       builtin_vars, unbound_names)
+    return ClosureVars(nonlocal_vars, global_vars, builtin_vars, unbound_names)

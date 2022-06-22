@@ -3,10 +3,10 @@
 
 class _Missing:
     def __reduce__(self):
-        return '_missing'
+        return "_missing"
 
     def __repr__(self):
-        return 'no value'
+        return "no value"
 
 
 _missing = _Missing()

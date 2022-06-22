@@ -17,22 +17,41 @@ from transformers import RobertaTokenizer, T5Tokenizer, T5ForConditionalGenerati
 import pandas as pd
 from databutler.datana.generic.autodoc import code2nl, nl2code
 from databutler.datana.generic.autodoc.few_shot import FewShotExampleCodeAndNL
-from databutler.datana.generic.autoparameterization.few_shot import FewShotExampleParameterization
-from databutler.datana.generic.autoparameterization.parameterizers import SimpleParameterizer, ParameterizationTask
-from databutler.mining.kaggle.static_analysis.pandas_autodoc_utils import AutodocFewShotExample, \
-    AutodocDescription, AutodocResult, normalize_code_for_comparison, get_few_shot_example_path, \
-    generate_nl_based_parameterization, attempt_parameterization_application, Parameterization, \
-    generate_llm_based_parameterization
+from databutler.datana.generic.autoparameterization.few_shot import (
+    FewShotExampleParameterization,
+)
+from databutler.datana.generic.autoparameterization.parameterizers import (
+    SimpleParameterizer,
+    ParameterizationTask,
+)
+from databutler.mining.kaggle.static_analysis.pandas_autodoc_utils import (
+    AutodocFewShotExample,
+    AutodocDescription,
+    AutodocResult,
+    normalize_code_for_comparison,
+    get_few_shot_example_path,
+    generate_nl_based_parameterization,
+    attempt_parameterization_application,
+    Parameterization,
+    generate_llm_based_parameterization,
+)
 from databutler.mining.kaggle.static_analysis.pandas_mining import MINING_RESULTS_FILE
 from databutler.mining.kaggle.static_analysis.pandas_mining_utils import MinedResult
 from databutler.pat import astlib
 from databutler.utils import pickleutils, langmodels
 
-from sentence_transformers import SentenceTransformer, LoggingHandler, losses, InputExample, evaluation, util
+from sentence_transformers import (
+    SentenceTransformer,
+    LoggingHandler,
+    losses,
+    InputExample,
+    evaluation,
+    util,
+)
 from torch.utils.data import DataLoader
 import torch
 
-ENGINE = 'code-davinci-002'
+ENGINE = "code-davinci-002"
 PREPROCESSING_RESULTS_FILE = "pandas_mining_preprocessed.pkl"
 AUTODOC_SUCCESSES_PATH = "autodoc_results.pkl"
 AUTODOC_FAILURES_FILE = "autodoc_failures.pkl"
@@ -40,34 +59,40 @@ MAX_TEMPLATE_FAILURES = 5
 
 
 def get_nl_descriptions_for_batch(
-        batch: List[MinedResult],
-        few_shot_examples: List[AutodocFewShotExample],
-        temperature: float = 0.0,
-        num_nl_per_query: int = 10,
-        max_tokens: int = 64,
-        key_manager: Optional[langmodels.OpenAIKeyManager] = None,
+    batch: List[MinedResult],
+    few_shot_examples: List[AutodocFewShotExample],
+    temperature: float = 0.0,
+    num_nl_per_query: int = 10,
+    max_tokens: int = 64,
+    key_manager: Optional[langmodels.OpenAIKeyManager] = None,
 ) -> List[Optional[List[str]]]:
     few_shot_c2nl: List[FewShotExampleCodeAndNL] = [
-        FewShotExampleCodeAndNL(code=ex.code, nl=ex.nl)
-        for ex in few_shot_examples
+        FewShotExampleCodeAndNL(code=ex.code, nl=ex.nl) for ex in few_shot_examples
     ]
 
-    c2nl_engine = code2nl.SimpleCodeToNatLang(temperature=temperature, engine=ENGINE, max_tokens=max_tokens)
+    c2nl_engine = code2nl.SimpleCodeToNatLang(
+        temperature=temperature, engine=ENGINE, max_tokens=max_tokens
+    )
     c2nl_tasks = [
         code2nl.CodeToNatLangTask(
             few_shot_examples=few_shot_c2nl,
             target_code=elem.code,
             task_description="Describe the following data science code snippets in plain english. "
-                             "Be as exhaustive as possible and repeat any constants verbatim in double quotes. "
+            "Be as exhaustive as possible and repeat any constants verbatim in double quotes. ",
         )
         for elem in batch
     ]
 
-    return c2nl_engine.parallel_get_nl(c2nl_tasks, num_results=1 if temperature == 0.0 else num_nl_per_query,
-                                       key_manager=key_manager)
+    return c2nl_engine.parallel_get_nl(
+        c2nl_tasks,
+        num_results=1 if temperature == 0.0 else num_nl_per_query,
+        key_manager=key_manager,
+    )
 
 
-def normalize_code_results(code_results: List[str], df_arg_names: Set[str]) -> List[Optional[str]]:
+def normalize_code_results(
+    code_results: List[str], df_arg_names: Set[str]
+) -> List[Optional[str]]:
     normalized = []
     for code_result in code_results:
         try:
@@ -83,11 +108,11 @@ def normalize_code_results(code_results: List[str], df_arg_names: Set[str]) -> L
 
 
 def evaluate_code_results(
-        snippet: MinedResult,
-        gt: str,
-        candidates: List[str],
-        code_results: List[str],
-        assistance_level: int,
+    snippet: MinedResult,
+    gt: str,
+    candidates: List[str],
+    code_results: List[str],
+    assistance_level: int,
 ) -> Tuple[List[AutodocDescription], List[AutodocDescription]]:
     df_arg_names: Set[str] = set(snippet.df_vars)
     correct: List[AutodocDescription] = []
@@ -118,20 +143,22 @@ def evaluate_code_results(
 
 
 def run_llm_based_parameterization(
-        ground_truth_code: str,
-        descriptions: List[AutodocDescription],
-        few_shot_examples: List[AutodocFewShotExample],
-        batch_size: int = 10
+    ground_truth_code: str,
+    descriptions: List[AutodocDescription],
+    few_shot_examples: List[AutodocFewShotExample],
+    batch_size: int = 10,
 ) -> List[Optional[Parameterization]]:
     few_shot_param = [
-        FewShotExampleParameterization(code=ex.code, nl=ex.nl, param_code=ex.param_code, param_nl=ex.param_nl)
+        FewShotExampleParameterization(
+            code=ex.code, nl=ex.nl, param_code=ex.param_code, param_nl=ex.param_nl
+        )
         for ex in few_shot_examples
     ]
 
     results: List[Optional[Parameterization]] = []
 
     for start_idx in range(0, len(descriptions), batch_size):
-        batch = descriptions[start_idx: start_idx + batch_size]
+        batch = descriptions[start_idx : start_idx + batch_size]
 
         tasks = [
             ParameterizationTask(
@@ -143,7 +170,7 @@ def run_llm_based_parameterization(
                     "applied to other inputs. "
                     "Clearly distinguish which arguments are column parameters. "
                     "Ensure all the arguments are also mentioned in the parameterized natural language."
-                )
+                ),
             )
             for desc in batch
         ]
@@ -155,8 +182,13 @@ def run_llm_based_parameterization(
                 continue
 
             param_nl, param_code = res
-            parameterization: Optional[Parameterization] = generate_llm_based_parameterization(
-                desc, param_nl, param_code, ground_truth_code,
+            parameterization: Optional[
+                Parameterization
+            ] = generate_llm_based_parameterization(
+                desc,
+                param_nl,
+                param_code,
+                ground_truth_code,
             )
             results.append(parameterization)
             if parameterization:
@@ -168,28 +200,32 @@ def run_llm_based_parameterization(
 
 
 def validate_strict(
-        snippet: MinedResult,
-        gt: str,
-        few_shot_examples: List[AutodocFewShotExample],
-        candidates: List[str],
-        key_manager: Optional[langmodels.OpenAIKeyManager] = None,
+    snippet: MinedResult,
+    gt: str,
+    few_shot_examples: List[AutodocFewShotExample],
+    candidates: List[str],
+    key_manager: Optional[langmodels.OpenAIKeyManager] = None,
 ) -> Tuple[List[AutodocDescription], List[AutodocDescription]]:
     few_shot_nl2c: List[FewShotExampleCodeAndNL] = [
-        FewShotExampleCodeAndNL(code=ex.code, nl=ex.nl)
-        for ex in few_shot_examples
+        FewShotExampleCodeAndNL(code=ex.code, nl=ex.nl) for ex in few_shot_examples
     ]
 
     assistance_level = 0
 
     gt_tokens = langmodels.codex_tokenize(snippet.code)["token_ids"]
-    nl2c_engine = nl2code.SimpleNatLangToCode(temperature=0.0, engine=ENGINE, max_tokens=len(gt_tokens) + 64)
+    nl2c_engine = nl2code.SimpleNatLangToCode(
+        temperature=0.0, engine=ENGINE, max_tokens=len(gt_tokens) + 64
+    )
     nl2c_tasks = [
         nl2code.NatLangToCodeTask(
             few_shot_examples=few_shot_nl2c,
             target_nl=candidate,
             task_description="Generate a Python pandas code snippet given the english description",
-            output_prefix="pd.read_csv(('/kaggle/input/digit-recognizer/'" if assistance_level == 1 else None,
-        ) for candidate in candidates
+            output_prefix="pd.read_csv(('/kaggle/input/digit-recognizer/'"
+            if assistance_level == 1
+            else None,
+        )
+        for candidate in candidates
     ]
 
     code_results: List[str] = nl2c_engine.parallel_get_code(
@@ -204,20 +240,28 @@ def validate_strict(
 
 
 def perform_corrections(
-        gt: str, code_result: str, nl_candidate: str, output_prefix: Optional[str], top_logprobs: List[Dict[str, float]]
+    gt: str,
+    code_result: str,
+    nl_candidate: str,
+    output_prefix: Optional[str],
+    top_logprobs: List[Dict[str, float]],
 ) -> Optional[str]:
     """Performs corrections and returns the new output prefix, if successful."""
     gt_tok_strs: List[str] = langmodels.codex_tokenize(gt)["token_strs"]
     code_tok_strs: List[str] = langmodels.codex_tokenize(code_result)["token_strs"]
 
     if output_prefix is not None:
-        output_prefix = output_prefix or ''
-        output_prefix_tok_strs: List[str] = langmodels.codex_tokenize(output_prefix)["token_strs"]
+        output_prefix = output_prefix or ""
+        output_prefix_tok_strs: List[str] = langmodels.codex_tokenize(output_prefix)[
+            "token_strs"
+        ]
         top_logprobs = [{tok: 0.0} for tok in output_prefix_tok_strs] + top_logprobs
 
     new_output_prefix_toks: List[str] = []
 
-    for (gt_tok_idx, gt_tok), code_tok, top_toks in zip(enumerate(gt_tok_strs), code_tok_strs, top_logprobs):
+    for (gt_tok_idx, gt_tok), code_tok, top_toks in zip(
+        enumerate(gt_tok_strs), code_tok_strs, top_logprobs
+    ):
         if gt_tok == code_tok:
             new_output_prefix_toks.append(gt_tok)
         elif top_toks is not None and gt_tok in top_toks:
@@ -239,16 +283,15 @@ def perform_corrections(
 
 
 def validate_lenient(
-        snippet: MinedResult,
-        gt: str,
-        few_shot_examples: List[AutodocFewShotExample],
-        candidates: List[str],
-        max_mistakes: int = 2,
-        key_manager: Optional[langmodels.OpenAIKeyManager] = None,
+    snippet: MinedResult,
+    gt: str,
+    few_shot_examples: List[AutodocFewShotExample],
+    candidates: List[str],
+    max_mistakes: int = 2,
+    key_manager: Optional[langmodels.OpenAIKeyManager] = None,
 ) -> Tuple[List[AutodocDescription], List[AutodocDescription]]:
     few_shot_nl2c: List[FewShotExampleCodeAndNL] = [
-        FewShotExampleCodeAndNL(code=ex.code, nl=ex.nl)
-        for ex in few_shot_examples
+        FewShotExampleCodeAndNL(code=ex.code, nl=ex.nl) for ex in few_shot_examples
     ]
 
     #  Candidates still in the running.
@@ -256,7 +299,9 @@ def validate_lenient(
     output_prefixes = [None] * len(eligible_candidates)
     gt_token_ids_and_strs = langmodels.codex_tokenize(snippet.code)
     nl2c_engine = nl2code.SimpleNatLangToCode(
-        temperature=0.0, engine=ENGINE, max_tokens=len(gt_token_ids_and_strs['token_ids']) + 64
+        temperature=0.0,
+        engine=ENGINE,
+        max_tokens=len(gt_token_ids_and_strs["token_ids"]) + 64,
     )
 
     correct: List[AutodocDescription] = []
@@ -269,15 +314,16 @@ def validate_lenient(
                 target_nl=candidate,
                 task_description="Generate a Python pandas code snippet given the english description",
                 output_prefix=output_prefix,
-            ) for candidate, output_prefix in zip(eligible_candidates, output_prefixes)
+            )
+            for candidate, output_prefix in zip(eligible_candidates, output_prefixes)
         ]
 
         top_logprobs_list = []
         code_results: List[str] = nl2c_engine.parallel_get_code(
             nl2c_tasks,
-            allowed_tokens=gt_token_ids_and_strs['token_ids'],
+            allowed_tokens=gt_token_ids_and_strs["token_ids"],
             key_manager=key_manager,
-            top_logprobs=top_logprobs_list
+            top_logprobs=top_logprobs_list,
         )
         desc_correct, desc_incorrect = evaluate_code_results(
             snippet, gt, candidates, code_results, assistance_level
@@ -293,12 +339,14 @@ def validate_lenient(
         new_candidates = []
         new_output_prefixes = []
         for candidate, output_prefix, code_result, top_logprobs in zip(
-                eligible_candidates, output_prefixes, code_results, top_logprobs_list
+            eligible_candidates, output_prefixes, code_results, top_logprobs_list
         ):
             if top_logprobs is None:
                 continue
 
-            new_output_prefix = perform_corrections(gt, code_result, candidate, output_prefix, top_logprobs)
+            new_output_prefix = perform_corrections(
+                gt, code_result, candidate, output_prefix, top_logprobs
+            )
             if new_output_prefix is not None:
                 new_candidates.append(candidate)
                 new_output_prefixes.append(new_output_prefix)
@@ -318,11 +366,11 @@ def validate_lenient(
 
 
 def validate_nl_descriptions(
-        snippet: MinedResult,
-        few_shot_examples: List[AutodocFewShotExample],
-        candidates: List[str],
-        max_mistakes: int = 1,
-        key_manager: Optional[langmodels.OpenAIKeyManager] = None,
+    snippet: MinedResult,
+    few_shot_examples: List[AutodocFewShotExample],
+    candidates: List[str],
+    max_mistakes: int = 1,
+    key_manager: Optional[langmodels.OpenAIKeyManager] = None,
 ) -> AutodocResult:
     df_arg_names: Set[str] = set(snippet.df_vars)
     gt = normalize_code_for_comparison(snippet.code, df_arg_names)
@@ -331,7 +379,9 @@ def validate_nl_descriptions(
     incorrect: List[AutodocDescription] = []
 
     #  First try the strongest, validate_strict
-    desc_correct, desc_incorrect = validate_strict(snippet, gt, few_shot_examples, candidates, key_manager)
+    desc_correct, desc_incorrect = validate_strict(
+        snippet, gt, few_shot_examples, candidates, key_manager
+    )
     correct.extend(desc_correct)
     incorrect.extend(desc_incorrect)
 
@@ -344,18 +394,24 @@ def validate_nl_descriptions(
         incorrect.extend(desc_incorrect)
 
     if len(correct) > 0:
-        llm_based_parameterizations = run_llm_based_parameterization(gt, correct, few_shot_examples)
+        llm_based_parameterizations = run_llm_based_parameterization(
+            gt, correct, few_shot_examples
+        )
         for idx, desc in enumerate(correct):
             desc.llm_based_parameterization = llm_based_parameterizations[idx]
             try:
-                desc.nl_based_parameterization = generate_nl_based_parameterization(snippet, desc.nl)
+                desc.nl_based_parameterization = generate_nl_based_parameterization(
+                    snippet, desc.nl
+                )
             except:
                 pass
 
     print(f"Code: {gt}")
     print("Correct:")
     for desc in sorted(correct, key=lambda x: x.assistance_level):
-        print(f"[{desc.assistance_level}] NL: {desc.nl} || Generated Code: {desc.generated_code}")
+        print(
+            f"[{desc.assistance_level}] NL: {desc.nl} || Generated Code: {desc.generated_code}"
+        )
         if desc.llm_based_parameterization is not None:
             print(f"[LLM] Param NL: {desc.llm_based_parameterization.nl}")
             print(f"[LLM] Param Code:\n{desc.llm_based_parameterization.code}")
@@ -369,7 +425,9 @@ def validate_nl_descriptions(
     print("---")
     print("Incorrect:")
     for desc in sorted(incorrect, key=lambda x: x.assistance_level):
-        print(f"[{desc.assistance_level}] NL: {desc.nl} || Generated Code: {desc.generated_code}")
+        print(
+            f"[{desc.assistance_level}] NL: {desc.nl} || Generated Code: {desc.generated_code}"
+        )
     print("---")
 
     return AutodocResult(
@@ -382,10 +440,10 @@ def validate_nl_descriptions(
 
 
 def run_autodoc_for_batch(
-        batch: List[MinedResult],
-        few_shot_examples: List[AutodocFewShotExample],
-        temperature: float = 0.0,
-        num_nl_per_query: int = 10,
+    batch: List[MinedResult],
+    few_shot_examples: List[AutodocFewShotExample],
+    temperature: float = 0.0,
+    num_nl_per_query: int = 10,
 ) -> List[AutodocResult]:
     available_keys = langmodels.get_available_keys()
 
@@ -399,7 +457,11 @@ def run_autodoc_for_batch(
 
     #  Get NL for each in one shot using parallel prompts
     nl_descriptions = get_nl_descriptions_for_batch(
-        batch, few_shot_examples, temperature, num_nl_per_query, key_manager=c2nl_key_manager
+        batch,
+        few_shot_examples,
+        temperature,
+        num_nl_per_query,
+        key_manager=c2nl_key_manager,
     )
     num_success = 0
     autodoc_results: List[AutodocResult] = []
@@ -409,8 +471,9 @@ def run_autodoc_for_batch(
             print("*", k)
 
         print("-------")
-        autodoc_res = validate_nl_descriptions(snippet, few_shot_examples, desc_candidates,
-                                               key_manager=nl2c_key_manager)
+        autodoc_res = validate_nl_descriptions(
+            snippet, few_shot_examples, desc_candidates, key_manager=nl2c_key_manager
+        )
         print("=======")
         if autodoc_res.success:
             num_success += 1
@@ -421,13 +484,16 @@ def run_autodoc_for_batch(
 
 
 def try_transferring_autodoc_result(
-        orig_snippet: MinedResult, new_snippet: MinedResult, autodoc_result: AutodocResult
+    orig_snippet: MinedResult, new_snippet: MinedResult, autodoc_result: AutodocResult
 ) -> List[AutodocDescription]:
     assert autodoc_result.success
     transferred_correct_descs: List[AutodocDescription] = []
 
     for desc in autodoc_result.correct_descriptions:
-        if desc.llm_based_parameterization is None and desc.nl_based_parameterization is None:
+        if (
+            desc.llm_based_parameterization is None
+            and desc.nl_based_parameterization is None
+        ):
             continue
 
         transferred_nl: Optional[str] = None
@@ -448,7 +514,9 @@ def try_transferring_autodoc_result(
             if new_llm_parameterization:
                 transferred_nl = new_llm_parameterization.get_instantiated_nl()
 
-        if (new_llm_parameterization is not None) or (new_nl_parameterization is not None):
+        if (new_llm_parameterization is not None) or (
+            new_nl_parameterization is not None
+        ):
             assert transferred_nl is not None
             new_desc = AutodocDescription(
                 uid=desc.uid,
@@ -484,27 +552,39 @@ def run_preprocessing(campaign_dir: str, rerun_preprocessing: bool = False) -> N
 
     mining_results_path = os.path.join(campaign_dir, MINING_RESULTS_FILE)
     if not os.path.exists(mining_results_path):
-        raise FileNotFoundError(f"Could not find mining results at {mining_results_path}")
+        raise FileNotFoundError(
+            f"Could not find mining results at {mining_results_path}"
+        )
 
     simplified_entries: List[Dict] = []
     with pickleutils.PickledMapReader(mining_results_path) as reader:
         print(f"Found {len(reader)} mining results")
-        for idx, mining_result in enumerate(tqdm.tqdm(reader.values(),
-                                                      desc="Running Preprocessing",
-                                                      dynamic_ncols=True,
-                                                      total=len(reader))):
+        for idx, mining_result in enumerate(
+            tqdm.tqdm(
+                reader.values(),
+                desc="Running Preprocessing",
+                dynamic_ncols=True,
+                total=len(reader),
+            )
+        ):
             assert isinstance(mining_result, MinedResult)
-            simplified_entries.append({
-                "uid": mining_result.uid,
-                "code": mining_result.code,
-                "template": mining_result.template,
-                "support": 1,
-            })
+            simplified_entries.append(
+                {
+                    "uid": mining_result.uid,
+                    "code": mining_result.code,
+                    "template": mining_result.template,
+                    "support": 1,
+                }
+            )
 
     #  Deduplicate by code
     code_counter = collections.Counter(x["code"] for x in simplified_entries)
-    simplified_entries = list({entry['code']: {**entry, "support": code_counter[entry['code']]}
-                               for entry in simplified_entries}.values())
+    simplified_entries = list(
+        {
+            entry["code"]: {**entry, "support": code_counter[entry["code"]]}
+            for entry in simplified_entries
+        }.values()
+    )
     print(f"Found {len(simplified_entries)} code-unique mining results")
 
     #  Save to disk
@@ -521,9 +601,9 @@ def compute_template_processing_order(preprocessed_entries: List[Dict]) -> List[
 
 
 def build_next_chunk(
-        active_iters: List[Tuple[str, Iterator[Dict]]],
-        template_iters_queue: Deque[Tuple[str, Iterator[Dict]]],
-        finished_uids: Set[str]
+    active_iters: List[Tuple[str, Iterator[Dict]]],
+    template_iters_queue: Deque[Tuple[str, Iterator[Dict]]],
+    finished_uids: Set[str],
 ) -> List[Dict]:
     chunk: List[Dict] = []
     iter_worklist: Deque[Tuple[str, Iterator[Dict]]] = collections.deque(active_iters)
@@ -547,10 +627,10 @@ def build_next_chunk(
 
 
 def run_autodoc_new(
-        campaign_dir: str,
-        few_shot_version: int = 1,
-        batch_size: int = 10,
-        rerun_preprocessing: bool = False,
+    campaign_dir: str,
+    few_shot_version: int = 1,
+    batch_size: int = 10,
+    rerun_preprocessing: bool = False,
 ) -> None:
     """Run autodoc for a campaign assuming the few-shot examples have been set up."""
     run_preprocessing(campaign_dir, rerun_preprocessing)
@@ -562,14 +642,16 @@ def run_autodoc_new(
 
     mining_results_path = os.path.join(campaign_dir, MINING_RESULTS_FILE)
     if not os.path.exists(mining_results_path):
-        raise FileNotFoundError(f"Could not find mining results at {mining_results_path}")
+        raise FileNotFoundError(
+            f"Could not find mining results at {mining_results_path}"
+        )
 
     #  Load few shot examples
     few_shot_path = get_few_shot_example_path(campaign_dir, few_shot_version)
     if not os.path.exists(few_shot_path):
         raise FileNotFoundError(f"Could not find few shot examples at {few_shot_path}")
 
-    with open(few_shot_path, 'r') as f:
+    with open(few_shot_path, "r") as f:
         few_shot_dicts: List[Dict] = yaml.full_load(f)
         if any("TODO" in ex["nl"] for ex in few_shot_dicts):
             raise ValueError(f"Some few-shot examples are missing an NL description")
@@ -601,7 +683,9 @@ def run_autodoc_new(
         print(f"Already found {len(unsuccessful_uids)} unsuccessful autodoc results")
         print(f"Already found {len(successful_uids)} successful autodoc results")
 
-    seen_templates: Set[str] = {e["template"] for e in simplified_entries if e["uid"] in finished}
+    seen_templates: Set[str] = {
+        e["template"] for e in simplified_entries if e["uid"] in finished
+    }
     simplified_entries = [e for e in simplified_entries if e["uid"] not in finished]
 
     #  Collect entries for each template
@@ -626,23 +710,34 @@ def run_autodoc_new(
     #  We'll also maintain a counter of how many times a template continuously failed.
     #  This will help us demote a template to the back if it's failing too much.
     template_failure_counts: Dict[str, int] = collections.defaultdict(int)
-    with pickleutils.PickledMapReader(mining_results_path) as mined_result_reader, \
-            tqdm.tqdm(desc="Running Autodoc", dynamic_ncols=True, total=len(simplified_entries)) as pbar, \
-            pickleutils.PickledMapWriter(autodoc_successes_path, overwrite_existing=False) as writer_success, \
-            pickleutils.PickledMapWriter(autodoc_failures_path, overwrite_existing=False) as writer_failures:
+    with pickleutils.PickledMapReader(
+        mining_results_path
+    ) as mined_result_reader, tqdm.tqdm(
+        desc="Running Autodoc", dynamic_ncols=True, total=len(simplified_entries)
+    ) as pbar, pickleutils.PickledMapWriter(
+        autodoc_successes_path, overwrite_existing=False
+    ) as writer_success, pickleutils.PickledMapWriter(
+        autodoc_failures_path, overwrite_existing=False
+    ) as writer_failures:
 
         while len(finished) < len(finished) + len(simplified_entries):
             num_finished_start = len(finished)
 
             #  Build the next chunk of entries to process
-            chunk: List[Dict] = build_next_chunk(active_iters, template_iters_queue, finished)
+            chunk: List[Dict] = build_next_chunk(
+                active_iters, template_iters_queue, finished
+            )
             batch: List[MinedResult] = [mined_result_reader[x["uid"]] for x in chunk]
 
             #  Run autodoc for the batch
-            autodoc_results = run_autodoc_for_batch(batch, few_shot_examples, temperature=0.8, num_nl_per_query=10)
+            autodoc_results = run_autodoc_for_batch(
+                batch, few_shot_examples, temperature=0.8, num_nl_per_query=10
+            )
             assert len(autodoc_results) == len(batch) == len(chunk)
 
-            for entry, (snippet_idx, snippet), autodoc_res in zip(chunk, enumerate(batch), autodoc_results):
+            for entry, (snippet_idx, snippet), autodoc_res in zip(
+                chunk, enumerate(batch), autodoc_results
+            ):
                 finished.add(entry["uid"])
                 success = autodoc_res.success
                 (successful_uids if success else unsuccessful_uids).add(entry["uid"])
@@ -654,14 +749,21 @@ def run_autodoc_new(
                     writer_success[entry["uid"]] = autodoc_res
                     seen_templates.add(entry["template"])
                     #  Try transferring the result to other results with the same template.
-                    unprocessed_entries = [e for e in entries_by_template[entry["template"]]
-                                           if e["uid"] not in finished]
+                    unprocessed_entries = [
+                        e
+                        for e in entries_by_template[entry["template"]]
+                        if e["uid"] not in finished
+                    ]
                     with tqdm.tqdm(
-                            unprocessed_entries, desc=f"Transferring results for {snippet_idx}", dynamic_ncols=True
+                        unprocessed_entries,
+                        desc=f"Transferring results for {snippet_idx}",
+                        dynamic_ncols=True,
                     ) as transfer_pbar:
                         transfer_succ, transfer_fail = 0, 0
                         for unprocessed_entry in transfer_pbar:
-                            unprocessed_snippet = mined_result_reader[unprocessed_entry["uid"]]
+                            unprocessed_snippet = mined_result_reader[
+                                unprocessed_entry["uid"]
+                            ]
                             assert isinstance(unprocessed_snippet, MinedResult)
                             transferred_descs = try_transferring_autodoc_result(
                                 snippet, unprocessed_snippet, autodoc_res
@@ -674,26 +776,35 @@ def run_autodoc_new(
                                     correct_descriptions=transferred_descs,
                                     incorrect_descriptions=[],
                                 )
-                                writer_success[unprocessed_entry["uid"]] = transferred_res
+                                writer_success[
+                                    unprocessed_entry["uid"]
+                                ] = transferred_res
                                 finished.add(unprocessed_entry["uid"])
                                 successful_uids.add(unprocessed_entry["uid"])
                                 transfer_succ += 1
                             else:
                                 transfer_fail += 1
 
-                            transfer_pbar.set_postfix(succ=transfer_succ, fail=transfer_fail)
+                            transfer_pbar.set_postfix(
+                                succ=transfer_succ, fail=transfer_fail
+                            )
 
                 #  Reset the contiguous failure count
                 template_failure_counts[entry["template"]] = 0
 
             pbar.update(len(finished) - num_finished_start)
             pbar.set_postfix(
-                successes=len(successful_uids), failures=len(unsuccessful_uids), templates=len(seen_templates)
+                successes=len(successful_uids),
+                failures=len(unsuccessful_uids),
+                templates=len(seen_templates),
             )
 
             #  Demote a template if too many errors
             for idx, (template, iter_) in enumerate(active_iters, start=0):
-                if template_failure_counts[template] >= MAX_TEMPLATE_FAILURES and len(template_iters_queue) > 0:
+                if (
+                    template_failure_counts[template] >= MAX_TEMPLATE_FAILURES
+                    and len(template_iters_queue) > 0
+                ):
                     active_iters[idx] = template_iters_queue.popleft()
                     template_iters_queue.append((template, iter_))
 
@@ -701,14 +812,20 @@ def run_autodoc_new(
             writer_failures.flush()
 
 
-def prepare_dataset_for_generational_model(campaign_dir: str, num_per_desc_uid: int = 10):
+def prepare_dataset_for_generational_model(
+    campaign_dir: str, num_per_desc_uid: int = 10
+):
     """Prepare a dataset out of the autodoc results to be used for training a small model like CodeBERT or CodeT5"""
     autodoc_successes_path = os.path.join(campaign_dir, AUTODOC_SUCCESSES_PATH)
     with pickleutils.PickledMapReader(autodoc_successes_path) as autodoc_reader:
-        all_autodoc_results: List[AutodocResult] = list(tqdm.tqdm(autodoc_reader.values(), total=len(autodoc_reader)))
+        all_autodoc_results: List[AutodocResult] = list(
+            tqdm.tqdm(autodoc_reader.values(), total=len(autodoc_reader))
+        )
 
     print(f"Found {len(all_autodoc_results)} autodoc results")
-    descriptions_by_uid: Dict[str, List[AutodocDescription]] = collections.defaultdict(list)
+    descriptions_by_uid: Dict[str, List[AutodocDescription]] = collections.defaultdict(
+        list
+    )
     for res in all_autodoc_results:
         for desc in res.correct_descriptions:
             descriptions_by_uid[desc.uid].append(desc)
@@ -719,7 +836,9 @@ def prepare_dataset_for_generational_model(campaign_dir: str, num_per_desc_uid: 
 
     print(f"Found {len(descriptions_by_uid)} unique descriptions")
 
-    iter_dict: Dict[str, Iterator[AutodocDescription]] = {k: itertools.cycle(v) for k, v in descriptions_by_uid.items()}
+    iter_dict: Dict[str, Iterator[AutodocDescription]] = {
+        k: itertools.cycle(v) for k, v in descriptions_by_uid.items()
+    }
 
     records = []
     for loop_no in range(0, num_per_desc_uid):
@@ -730,7 +849,7 @@ def prepare_dataset_for_generational_model(campaign_dir: str, num_per_desc_uid: 
             if code.startswith("def "):
                 code = "\n".join(code.split("\n")[1:])
             if code.startswith("return "):
-                code = code[len("return "):]
+                code = code[len("return ") :]
 
             source_text = f"generate-code: {nl}"
             target_text = code
@@ -745,12 +864,19 @@ def prepare_dataset_for_generational_model(campaign_dir: str, num_per_desc_uid: 
 def get_max_tokens(tokenizer, strings: List[str]) -> int:
     lengths = []
     for idx in range(0, len(strings), 32):
-        batch = strings[idx: idx + 32]
+        batch = strings[idx : idx + 32]
         lengths.extend(len(i) for i in tokenizer(batch)["input_ids"])
 
-    print(np.mean(lengths), np.median(lengths), np.max(lengths), np.min(lengths),
-          np.percentile(lengths, 50), np.percentile(lengths, 75), np.percentile(lengths, 90),
-          np.percentile(lengths, 99))
+    print(
+        np.mean(lengths),
+        np.median(lengths),
+        np.max(lengths),
+        np.min(lengths),
+        np.percentile(lengths, 50),
+        np.percentile(lengths, 75),
+        np.percentile(lengths, 90),
+        np.percentile(lengths, 99),
+    )
     return max(lengths)
 
 
@@ -775,24 +901,34 @@ def train_generational_model(campaign_dir: str, model_name: str, max_epochs: int
     if os.path.exists(output_dir):
         shutil.rmtree(output_dir, ignore_errors=True)
 
-    simplet5_model.train(train_df=train_df,
-                         eval_df=test_df,
-                         source_max_token_len=128,
-                         target_max_token_len=128,
-                         outputdir=output_dir,
-                         early_stopping_patience_epochs=3,
-                         batch_size=8,
-                         max_epochs=max_epochs,
-                         use_gpu=True)
+    simplet5_model.train(
+        train_df=train_df,
+        eval_df=test_df,
+        source_max_token_len=128,
+        target_max_token_len=128,
+        outputdir=output_dir,
+        early_stopping_patience_epochs=3,
+        batch_size=8,
+        max_epochs=max_epochs,
+        use_gpu=True,
+    )
 
-    simplet5_model.model.save_pretrained(os.path.join(campaign_dir, prefix + "_trained"))
-    simplet5_model.tokenizer.save_pretrained(os.path.join(campaign_dir, prefix + "_trained"))
+    simplet5_model.model.save_pretrained(
+        os.path.join(campaign_dir, prefix + "_trained")
+    )
+    simplet5_model.tokenizer.save_pretrained(
+        os.path.join(campaign_dir, prefix + "_trained")
+    )
 
 
-def prepare_dataset_for_training_embeddings(campaign_dir: str, per_equiv_class: int = 10):
+def prepare_dataset_for_training_embeddings(
+    campaign_dir: str, per_equiv_class: int = 10
+):
     autodoc_successes_path = os.path.join(campaign_dir, AUTODOC_SUCCESSES_PATH)
     with pickleutils.PickledMapReader(autodoc_successes_path) as autodoc_reader:
-        all_autodoc_results: List[AutodocResult] = list(tqdm.tqdm(autodoc_reader.values(), total=len(autodoc_reader)))
+        all_autodoc_results: List[AutodocResult] = list(
+            tqdm.tqdm(autodoc_reader.values(), total=len(autodoc_reader))
+        )
 
     desc_by_uids: Dict[str, List[AutodocDescription]] = collections.defaultdict(list)
     for res in all_autodoc_results:
@@ -800,8 +936,11 @@ def prepare_dataset_for_training_embeddings(campaign_dir: str, per_equiv_class: 
             if desc.is_derived:
                 desc_by_uids[desc.uid].append(desc)
 
-    non_derived_results: List[AutodocResult] = [res for res in all_autodoc_results
-                                                if all(not desc.is_derived for desc in res.correct_descriptions)]
+    non_derived_results: List[AutodocResult] = [
+        res
+        for res in all_autodoc_results
+        if all(not desc.is_derived for desc in res.correct_descriptions)
+    ]
     print(f"Found {len(non_derived_results)} non-derived autodoc results")
 
     equiv_classes: List[List[str]] = []
@@ -823,7 +962,9 @@ def prepare_dataset_for_training_embeddings(campaign_dir: str, per_equiv_class: 
     correct_pairs: List[Tuple[str, str]] = []
     incorrect_pairs: List[Tuple[str, str]] = []
     for idx, equiv_class in enumerate(tqdm.tqdm(equiv_classes, desc="Preparing data")):
-        candidates = list(itertools.islice(itertools.combinations(equiv_class, 2), per_equiv_class))
+        candidates = list(
+            itertools.islice(itertools.combinations(equiv_class, 2), per_equiv_class)
+        )
         random.shuffle(candidates)
 
         for s1, s2 in candidates:
@@ -839,23 +980,42 @@ def prepare_dataset_for_training_embeddings(campaign_dir: str, per_equiv_class: 
             incorrect_pairs.append((s1, s2))
 
     print("SIZES", len(correct_pairs), len(incorrect_pairs))
-    pickleutils.smart_dump([correct_pairs, incorrect_pairs], os.path.join(campaign_dir, "embedding_train_data.pkl"))
+    pickleutils.smart_dump(
+        [correct_pairs, incorrect_pairs],
+        os.path.join(campaign_dir, "embedding_train_data.pkl"),
+    )
 
 
-def train_embeddings(campaign_dir: str, loss_type: str = "contrastive", num_epochs: int = 5):
-    correct_pairs, incorrect_pairs = pickleutils.smart_load(os.path.join(campaign_dir, "embedding_train_data.pkl"))
+def train_embeddings(
+    campaign_dir: str, loss_type: str = "contrastive", num_epochs: int = 5
+):
+    correct_pairs, incorrect_pairs = pickleutils.smart_load(
+        os.path.join(campaign_dir, "embedding_train_data.pkl")
+    )
     random.shuffle(correct_pairs)
     random.shuffle(incorrect_pairs)
 
-    model = SentenceTransformer('all-mpnet-base-v2')
+    model = SentenceTransformer("all-mpnet-base-v2")
     train_examples = [
-        *(InputExample(texts=[s1, s2], label=1) for s1, s2 in correct_pairs[:int(len(correct_pairs) * 0.8)]),
-        *(InputExample(texts=[s1, s2], label=0) for s1, s2 in incorrect_pairs[:int(len(incorrect_pairs) * 0.8)]),
+        *(
+            InputExample(texts=[s1, s2], label=1)
+            for s1, s2 in correct_pairs[: int(len(correct_pairs) * 0.8)]
+        ),
+        *(
+            InputExample(texts=[s1, s2], label=0)
+            for s1, s2 in incorrect_pairs[: int(len(incorrect_pairs) * 0.8)]
+        ),
     ]
 
     test_examples = [
-        *(InputExample(texts=[s1, s2], label=1) for s1, s2 in correct_pairs[int(len(correct_pairs) * 0.8):]),
-        *(InputExample(texts=[s1, s2], label=0) for s1, s2 in incorrect_pairs[int(len(incorrect_pairs) * 0.8):]),
+        *(
+            InputExample(texts=[s1, s2], label=1)
+            for s1, s2 in correct_pairs[int(len(correct_pairs) * 0.8) :]
+        ),
+        *(
+            InputExample(texts=[s1, s2], label=0)
+            for s1, s2 in incorrect_pairs[int(len(incorrect_pairs) * 0.8) :]
+        ),
     ]
 
     if loss_type == "contrastive":
@@ -869,7 +1029,9 @@ def train_embeddings(campaign_dir: str, loss_type: str = "contrastive", num_epoc
     else:
         raise ValueError(f"Unsupported loss type: {loss_type}")
 
-    evaluator = evaluation.EmbeddingSimilarityEvaluator.from_input_examples(test_examples, show_progress_bar=True)
+    evaluator = evaluation.EmbeddingSimilarityEvaluator.from_input_examples(
+        test_examples, show_progress_bar=True
+    )
 
     train_dataloader = DataLoader(train_examples, shuffle=True, batch_size=8)
 
@@ -880,7 +1042,7 @@ def train_embeddings(campaign_dir: str, loss_type: str = "contrastive", num_epoc
         evaluation_steps=10000,
         show_progress_bar=True,
         save_best_model=True,
-        output_path=output_path
+        output_path=output_path,
     )
 
 
@@ -889,7 +1051,9 @@ def prepare_search_engine(campaign_dir: str, model_path: str):
 
     autodoc_successes_path = os.path.join(campaign_dir, AUTODOC_SUCCESSES_PATH)
     with pickleutils.PickledMapReader(autodoc_successes_path) as autodoc_reader:
-        all_autodoc_results: List[AutodocResult] = list(tqdm.tqdm(autodoc_reader.values(), total=len(autodoc_reader)))
+        all_autodoc_results: List[AutodocResult] = list(
+            tqdm.tqdm(autodoc_reader.values(), total=len(autodoc_reader))
+        )
 
     corpus: List[AutodocDescription] = []
     for res in all_autodoc_results:
@@ -900,7 +1064,9 @@ def prepare_search_engine(campaign_dir: str, model_path: str):
 
     print(f"Found {len(corpus)} autodoc descriptions")
 
-    embeddings = model.encode([desc.nl for desc in corpus], show_progress_bar=True, convert_to_tensor=True)
+    embeddings = model.encode(
+        [desc.nl for desc in corpus], show_progress_bar=True, convert_to_tensor=True
+    )
     print("Finished generating embeddings")
 
     embeddings_path = os.path.join(model_path, "search_engine_embeddings.pkl")
@@ -909,13 +1075,17 @@ def prepare_search_engine(campaign_dir: str, model_path: str):
 
 
 def start_search_engine(campaign_dir: str, model_path: str):
-    corpus, embeddings = pickleutils.smart_load(os.path.join(model_path, "search_engine_embeddings.pkl"))
+    corpus, embeddings = pickleutils.smart_load(
+        os.path.join(model_path, "search_engine_embeddings.pkl")
+    )
     print(f"Loaded corpus and embeddings from {model_path}")
 
     model = SentenceTransformer(model_path)
     while True:
         query = input("Query: ")
-        query_embedding = model.encode(query, show_progress_bar=False, convert_to_tensor=True)
+        query_embedding = model.encode(
+            query, show_progress_bar=False, convert_to_tensor=True
+        )
         distances = util.cos_sim(query_embedding, embeddings)[0]
 
         top_results = torch.topk(distances, k=100)
@@ -938,13 +1108,17 @@ def start_search_engine(campaign_dir: str, model_path: str):
 
 
 def run_search_engine(model_path: str, queries: List[str]):
-    corpus, embeddings = pickleutils.smart_load(os.path.join(model_path, "search_engine_embeddings.pkl"))
+    corpus, embeddings = pickleutils.smart_load(
+        os.path.join(model_path, "search_engine_embeddings.pkl")
+    )
     print(f"Loaded corpus and embeddings from {model_path}")
 
     model = SentenceTransformer(model_path)
     all_results: List[List[Dict]] = []
     for query in tqdm.tqdm(queries, desc="Processing queries"):
-        query_embedding = model.encode(query, show_progress_bar=False, convert_to_tensor=True)
+        query_embedding = model.encode(
+            query, show_progress_bar=False, convert_to_tensor=True
+        )
         distances = util.cos_sim(query_embedding, embeddings)[0]
 
         top_results = torch.topk(distances, k=100)
@@ -956,11 +1130,13 @@ def run_search_engine(model_path: str, queries: List[str]):
                 continue
 
             seen_code.add(corpus[idx].generated_code)
-            results.append({
-                "score": score,
-                "nl": corpus[idx].nl,
-                "code": corpus[idx].generated_code
-            })
+            results.append(
+                {
+                    "score": score,
+                    "nl": corpus[idx].nl,
+                    "code": corpus[idx].generated_code,
+                }
+            )
             ctr += 1
 
             if ctr == 10:
@@ -981,22 +1157,31 @@ def analyze(campaign_dir: str):
             print("UID", uid, res.success)
             print("CODE:", res.ground_truth_code)
             for desc in res.correct_descriptions:
-                print(desc.nl, " ||| ", desc.parameterization.nl, "|||", desc.parameterization.code)
+                print(
+                    desc.nl,
+                    " ||| ",
+                    desc.parameterization.nl,
+                    "|||",
+                    desc.parameterization.code,
+                )
 
             print("---")
 
 
 if __name__ == "__main__":
     import logging
+
     logging.basicConfig(level=logging.INFO)
 
-    fire.Fire({
-        "run_autodoc": run_autodoc_new,
-        "analyze": analyze,
-        "prepare_dataset_for_generational_model": prepare_dataset_for_generational_model,
-        "train_generational_model": train_generational_model,
-        "prepare_dataset_for_training_embeddings": prepare_dataset_for_training_embeddings,
-        "train_embeddings": train_embeddings,
-        "prepare_search_engine": prepare_search_engine,
-        "start_search_engine": start_search_engine,
-    })
+    fire.Fire(
+        {
+            "run_autodoc": run_autodoc_new,
+            "analyze": analyze,
+            "prepare_dataset_for_generational_model": prepare_dataset_for_generational_model,
+            "train_generational_model": train_generational_model,
+            "prepare_dataset_for_training_embeddings": prepare_dataset_for_training_embeddings,
+            "train_embeddings": train_embeddings,
+            "prepare_search_engine": prepare_search_engine,
+            "start_search_engine": start_search_engine,
+        }
+    )

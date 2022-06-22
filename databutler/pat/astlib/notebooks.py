@@ -5,7 +5,12 @@ from typing import Union, Sequence, Optional
 import libcst as cst
 from libcst import CSTVisitorT
 from libcst._add_slots import add_slots
-from libcst._nodes.internal import CodegenState, visit_body_sequence, visit_required, visit_sequence
+from libcst._nodes.internal import (
+    CodegenState,
+    visit_body_sequence,
+    visit_required,
+    visit_sequence,
+)
 
 MAGICS = {
     "automagic": "AutoMagics",
@@ -170,7 +175,7 @@ class NotebookCell(cst.BaseCompoundStatement):
 
 def _remove_magics_from_cell_code(code: str) -> str:
     new_lines = []
-    for line in code.split('\n'):
+    for line in code.split("\n"):
         line_s = line.lstrip()
         if line_s.startswith("%") or line_s.startswith("!") or line_s.startswith("?"):
             continue
@@ -193,7 +198,9 @@ def _remove_magics_from_cell_code(code: str) -> str:
 
 def parse_ipynb(src: Union[str, dict], python_version: str = None):
     if python_version is not None:
-        config = cst.PartialParserConfig(encoding="utf-8", python_version=python_version)
+        config = cst.PartialParserConfig(
+            encoding="utf-8", python_version=python_version
+        )
     else:
         config = cst.PartialParserConfig(encoding="utf-8")
 
@@ -202,20 +209,26 @@ def parse_ipynb(src: Union[str, dict], python_version: str = None):
 
     cell_nodes = []
 
-    for cell in src['cells']:
-        cell_src = "".join(cell['source'])
-        cell_type = cell['cell_type']
-        if cell_type == 'code':
+    for cell in src["cells"]:
+        cell_src = "".join(cell["source"])
+        cell_type = cell["cell_type"]
+        if cell_type == "code":
             try:
                 module = cst.parse_module(cell_src, config)
             except cst.ParserSyntaxError:
                 #  Try after removing magics
-                module = cst.parse_module(_remove_magics_from_cell_code(cell_src), config)
+                module = cst.parse_module(
+                    _remove_magics_from_cell_code(cell_src), config
+                )
 
             body = NotebookCellBody(body=module.body)
-            cell_nodes.append(NotebookCell(body=body, markdown=None, header=module.header, footer=module.footer))
+            cell_nodes.append(
+                NotebookCell(
+                    body=body, markdown=None, header=module.header, footer=module.footer
+                )
+            )
 
-        elif cell_type == 'markdown':
+        elif cell_type == "markdown":
             body = NotebookCellBody(body=[])
             cell_nodes.append(NotebookCell(body=body, markdown=cell_src))
 

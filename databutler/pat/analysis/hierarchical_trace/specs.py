@@ -4,7 +4,10 @@ import inspect
 from typing import List, Union, Callable, Tuple, Any, Optional, Mapping
 
 from databutler.pat.analysis.clock import LogicalClock
-from databutler.pat.analysis.hierarchical_trace.builder_utils import TraceEventsCollector, TraceItemsCollector
+from databutler.pat.analysis.hierarchical_trace.builder_utils import (
+    TraceEventsCollector,
+    TraceItemsCollector,
+)
 from databutler.pat.analysis.hierarchical_trace.core import ObjWriteEvent, ObjReadEvent
 from databutler.pat.utils import pythonutils
 from databutler.utils.logging import logger
@@ -40,23 +43,25 @@ def read_write_spec(funcs: Union[Callable, List[Callable]]):
 # ------------------
 
 
-@read_write_spec([
-    list.extend,
-    list.append,
-    list.insert,
-    list.reverse,
-    list.remove,
-    list.sort,
-    list.clear,
-    list.pop,
-    dict.pop,
-    dict.update,
-    dict.clear,
-    dict.popitem,
-])
+@read_write_spec(
+    [
+        list.extend,
+        list.append,
+        list.insert,
+        list.reverse,
+        list.remove,
+        list.sort,
+        list.clear,
+        list.pop,
+        dict.pop,
+        dict.update,
+        dict.clear,
+        dict.popitem,
+    ]
+)
 def spec(binding: inspect.BoundArguments, ret_val: Any) -> List[Tuple[Any, str]]:
     #  The list (i.e. `self`) is always modified for these.
-    return [(binding.arguments['self'], 'write')]
+    return [(binding.arguments["self"], "write")]
 
 
 # --------------
@@ -72,12 +77,24 @@ else:
         pythonutils.load_module_complete(pd)
 
         #  Including checks to partly take care of version issues.
-        @read_write_spec([
-            *[getattr(pd.DataFrame, name) for name in ["pop", "update"] if hasattr(pd.DataFrame, name)],
-            *[getattr(pd.Series, name) for name in ["pop", "update"] if hasattr(pd.Series, name)],
-        ])
-        def spec(binding: inspect.BoundArguments, ret_val: Any) -> List[Tuple[Any, str]]:
-            return [(binding.arguments['self'], 'write')]
+        @read_write_spec(
+            [
+                *[
+                    getattr(pd.DataFrame, name)
+                    for name in ["pop", "update"]
+                    if hasattr(pd.DataFrame, name)
+                ],
+                *[
+                    getattr(pd.Series, name)
+                    for name in ["pop", "update"]
+                    if hasattr(pd.Series, name)
+                ],
+            ]
+        )
+        def spec(
+            binding: inspect.BoundArguments, ret_val: Any
+        ) -> List[Tuple[Any, str]]:
+            return [(binding.arguments["self"], "write")]
 
         methods_with_inplace = []
         for elem in [pd.DataFrame, pd.Series]:
@@ -86,16 +103,18 @@ else:
                     m = getattr(klass, k)
                     try:
                         sig = inspect.signature(m)
-                        if 'inplace' in sig.parameters:
+                        if "inplace" in sig.parameters:
                             methods_with_inplace.append(m)
 
                     except:
                         pass
 
         @read_write_spec(methods_with_inplace)
-        def spec(binding: inspect.BoundArguments, ret_val: Any) -> List[Tuple[Any, str]]:
-            if binding.arguments['inplace'] is True:
-                return [(binding.arguments['self'], 'write')]
+        def spec(
+            binding: inspect.BoundArguments, ret_val: Any
+        ) -> List[Tuple[Any, str]]:
+            if binding.arguments["inplace"] is True:
+                return [(binding.arguments["self"], "write")]
             else:
                 return []
 
@@ -109,16 +128,18 @@ else:
                     m = getattr(klass, k)
                     try:
                         sig = inspect.signature(m)
-                        if 'copy' in sig.parameters:
+                        if "copy" in sig.parameters:
                             methods_with_copy.append(m)
 
                     except:
                         pass
 
         @read_write_spec(methods_with_copy)
-        def spec(binding: inspect.BoundArguments, ret_val: Any) -> List[Tuple[Any, str]]:
-            if binding.arguments['copy'] is False:
-                return [(binding.arguments['self'], 'write')]
+        def spec(
+            binding: inspect.BoundArguments, ret_val: Any
+        ) -> List[Tuple[Any, str]]:
+            if binding.arguments["copy"] is False:
+                return [(binding.arguments["self"], "write")]
             else:
                 return []
 
@@ -127,13 +148,27 @@ else:
             pd.Series.plot,
             *(v for k, v in vars(pd.DataFrame.plot).items() if not k.startswith("_")),
             *(v for k, v in vars(pd.Series.plot).items() if not k.startswith("_")),
-            *(getattr(pd.DataFrame, k) for k in ['boxplot', 'hist'] if hasattr(pd.DataFrame, k)),
-            *(getattr(pd.Series, k) for k in ['boxplot', 'hist'] if hasattr(pd.Series, k)),
+            *(
+                getattr(pd.DataFrame, k)
+                for k in ["boxplot", "hist"]
+                if hasattr(pd.DataFrame, k)
+            ),
+            *(
+                getattr(pd.Series, k)
+                for k in ["boxplot", "hist"]
+                if hasattr(pd.Series, k)
+            ),
         ]
 
         try:
             module = pd.plotting._core
-            for k in ['boxplot', 'boxplot_frame', 'boxplot_frame_groupby', 'hist_frame', 'hist_series']:
+            for k in [
+                "boxplot",
+                "boxplot_frame",
+                "boxplot_frame_groupby",
+                "hist_frame",
+                "hist_series",
+            ]:
                 if hasattr(module, k):
                     pd_plotting_functions.append(getattr(module, k))
 
@@ -143,11 +178,14 @@ else:
             pass
 
         try:
+
             @read_write_spec(pd_plotting_functions)
-            def spec(binding: inspect.BoundArguments, ret_val: Any) -> List[Tuple[Any, str]]:
+            def spec(
+                binding: inspect.BoundArguments, ret_val: Any
+            ) -> List[Tuple[Any, str]]:
                 #  Mark the current figure object as read and written, in that order.
                 gcf = plt.gcf()
-                return [(gcf, 'read'), (gcf, 'write')]
+                return [(gcf, "read"), (gcf, "write")]
 
         except Exception as e:
             logger.info("Failed to load specs for pandas plotting backend.")
@@ -172,7 +210,9 @@ else:
         estimators = set(pythonutils.get_all_subclasses(sklearn.base.BaseEstimator))
         classifiers = set(pythonutils.get_all_subclasses(sklearn.base.ClassifierMixin))
         regressors = set(pythonutils.get_all_subclasses(sklearn.base.RegressorMixin))
-        transformers = set(pythonutils.get_all_subclasses(sklearn.base.TransformerMixin))
+        transformers = set(
+            pythonutils.get_all_subclasses(sklearn.base.TransformerMixin)
+        )
         try:
             classifiers.add(sklearn.pipeline.Pipeline)
             regressors.add(sklearn.pipeline.Pipeline)
@@ -180,15 +220,23 @@ else:
             pass
 
         fit_and_fit_transform_methods = [
-            *(getattr(estimator, "fit") for estimator in estimators
-              if hasattr(estimator, "fit")),
-            *(getattr(estimator, "fit_transform") for estimator in estimators
-              if hasattr(estimator, "fit_transform")),
+            *(
+                getattr(estimator, "fit")
+                for estimator in estimators
+                if hasattr(estimator, "fit")
+            ),
+            *(
+                getattr(estimator, "fit_transform")
+                for estimator in estimators
+                if hasattr(estimator, "fit_transform")
+            ),
         ]
 
         @read_write_spec(fit_and_fit_transform_methods)
-        def spec(binding: inspect.BoundArguments, ret_val: Any) -> List[Tuple[Any, str]]:
-            return [(binding.arguments['self'], 'write')]
+        def spec(
+            binding: inspect.BoundArguments, ret_val: Any
+        ) -> List[Tuple[Any, str]]:
+            return [(binding.arguments["self"], "write")]
 
     except Exception as e:
         logger.info("Failed to load specs for sklearn.")
@@ -266,19 +314,26 @@ else:
         plt.rcParams = rc_params_wrapped
 
         plt_functions = [
-            getattr(plt, k, None) for k in dir(plt)
-            if inspect.isroutine(getattr(plt, k, None)) and k != 'show' and k != 'figure'
+            getattr(plt, k, None)
+            for k in dir(plt)
+            if inspect.isroutine(getattr(plt, k, None))
+            and k != "show"
+            and k != "figure"
         ]
 
         @read_write_spec(plt_functions)
-        def spec(binding: inspect.BoundArguments, ret_val: Any) -> List[Tuple[Any, str]]:
+        def spec(
+            binding: inspect.BoundArguments, ret_val: Any
+        ) -> List[Tuple[Any, str]]:
             #  Mark the current figure object as read and written, in that order.
             gcf = plt.gcf()
-            return [(gcf, 'read'), (gcf, 'write')]
+            return [(gcf, "read"), (gcf, "write")]
 
         @read_write_spec([plt.figure])
-        def spec(binding: inspect.BoundArguments, ret_val: Any) -> List[Tuple[Any, str]]:
-            return [(ret_val, 'read'), (ret_val, 'write')]
+        def spec(
+            binding: inspect.BoundArguments, ret_val: Any
+        ) -> List[Tuple[Any, str]]:
+            return [(ret_val, "read"), (ret_val, "write")]
 
         figure_methods = []
         for k in dir(plt.Figure):
@@ -294,24 +349,31 @@ else:
                 pass
 
         @read_write_spec(figure_methods)
-        def spec(binding: inspect.BoundArguments, ret_val: Any) -> List[Tuple[Any, str]]:
-            fig = binding.arguments['self']
-            return [(fig, 'read'), (fig, 'write')]
+        def spec(
+            binding: inspect.BoundArguments, ret_val: Any
+        ) -> List[Tuple[Any, str]]:
+            fig = binding.arguments["self"]
+            return [(fig, "read"), (fig, "write")]
 
         subclasses = pythonutils.get_all_subclasses(matplotlib.artist.Artist)
-        klass_access_subplot = next(k for k in subclasses if k.__name__.endswith("AxesSubplot"))
+        klass_access_subplot = next(
+            k for k in subclasses if k.__name__.endswith("AxesSubplot")
+        )
 
         subplot_functions = [
             v
             for klass in klass_access_subplot.mro()
-            for k, v in klass.__dict__.items() if inspect.isroutine(v)
+            for k, v in klass.__dict__.items()
+            if inspect.isroutine(v)
         ]
 
         @read_write_spec(subplot_functions)
-        def spec(binding: inspect.BoundArguments, ret_val: Any) -> List[Tuple[Any, str]]:
+        def spec(
+            binding: inspect.BoundArguments, ret_val: Any
+        ) -> List[Tuple[Any, str]]:
             #  We mark the figure object as read and written, in that order.
-            fig = binding.arguments['self'].figure
-            return [(fig, 'read'), (fig, 'write')]
+            fig = binding.arguments["self"].figure
+            return [(fig, "read"), (fig, "write")]
 
         try:
             import seaborn as sns
@@ -319,47 +381,58 @@ else:
             pythonutils.load_module_complete(sns)
 
             plotting_modules = [
-                'seaborn.categorical',
-                'seaborn.distributions',
-                'seaborn.relational',
-                'seaborn.regression',
-                'seaborn.axisgrid',
-                'seaborn.matrix'
+                "seaborn.categorical",
+                "seaborn.distributions",
+                "seaborn.relational",
+                "seaborn.regression",
+                "seaborn.axisgrid",
+                "seaborn.matrix",
             ]
 
-            themeing_modules = [
-                'seaborn.rcmod'
-            ]
+            themeing_modules = ["seaborn.rcmod"]
 
             seaborn_functions = [
-                getattr(sns, k, None) for k in dir(sns) if inspect.isroutine(getattr(sns, k, None))
+                getattr(sns, k, None)
+                for k in dir(sns)
+                if inspect.isroutine(getattr(sns, k, None))
             ]
 
-            seaborn_plotting_functions = [f for f in seaborn_functions
-                                          if (not hasattr(f, "__module__")) or f.__module__ in plotting_modules]
+            seaborn_plotting_functions = [
+                f
+                for f in seaborn_functions
+                if (not hasattr(f, "__module__")) or f.__module__ in plotting_modules
+            ]
 
-            seaborn_themeing_functions = [f for f in seaborn_functions
-                                          if (not hasattr(f, "__module__")) or f.__module__ in themeing_modules]
+            seaborn_themeing_functions = [
+                f
+                for f in seaborn_functions
+                if (not hasattr(f, "__module__")) or f.__module__ in themeing_modules
+            ]
 
             @read_write_spec(seaborn_plotting_functions)
-            def spec(binding: inspect.BoundArguments, ret_val: Any) -> List[Tuple[Any, str]]:
+            def spec(
+                binding: inspect.BoundArguments, ret_val: Any
+            ) -> List[Tuple[Any, str]]:
                 #  Mark the current figure object as read and written, in that order.
                 gcf = plt.gcf()
-                return [(gcf, 'read'), (gcf, 'write')]
+                return [(gcf, "read"), (gcf, "write")]
 
             grid_subclasses = pythonutils.get_all_subclasses(sns.axisgrid.Grid)
             grid_functions = {
                 v
                 for par_klass in grid_subclasses
                 for klass in par_klass.mro()
-                for k, v in klass.__dict__.items() if inspect.isroutine(v)
+                for k, v in klass.__dict__.items()
+                if inspect.isroutine(v)
             }
 
             @read_write_spec(list(grid_functions))
-            def spec(binding: inspect.BoundArguments, ret_val: Any) -> List[Tuple[Any, str]]:
+            def spec(
+                binding: inspect.BoundArguments, ret_val: Any
+            ) -> List[Tuple[Any, str]]:
                 try:
-                    fig = binding.arguments['self'].fig
-                    return [(fig, 'read'), (fig, 'write')]
+                    fig = binding.arguments["self"].fig
+                    return [(fig, "read"), (fig, "write")]
                 except:
                     return []
 
@@ -394,10 +467,12 @@ else:
                     candidate_fig_creators.append(value)
 
         @read_write_spec(candidate_fig_creators)
-        def spec(binding: inspect.BoundArguments, ret_val: Any) -> List[Tuple[Any, str]]:
+        def spec(
+            binding: inspect.BoundArguments, ret_val: Any
+        ) -> List[Tuple[Any, str]]:
             try:
                 if isinstance(ret_val, plotly.graph_objs.Figure):
-                    return [(ret_val, 'write')]
+                    return [(ret_val, "write")]
             except:
                 pass
 
@@ -405,16 +480,24 @@ else:
 
         #  Cover Figure methods that should update the figure
         klass = plotly.graph_objs.Figure
-        fig_methods = {name: getattr(klass, name) for name in dir(klass)
-                       if (not name.startswith("_")) and inspect.isroutine(getattr(klass, name))}
-        fig_upd_methods = [func for name, func in fig_methods.items()
-                           if any(i in name for i in {'add_', 'update', 'append', 'set_'})]
+        fig_methods = {
+            name: getattr(klass, name)
+            for name in dir(klass)
+            if (not name.startswith("_")) and inspect.isroutine(getattr(klass, name))
+        }
+        fig_upd_methods = [
+            func
+            for name, func in fig_methods.items()
+            if any(i in name for i in {"add_", "update", "append", "set_"})
+        ]
 
         @read_write_spec(fig_upd_methods)
-        def spec(binding: inspect.BoundArguments, ret_val: Any) -> List[Tuple[Any, str]]:
+        def spec(
+            binding: inspect.BoundArguments, ret_val: Any
+        ) -> List[Tuple[Any, str]]:
             try:
-                self_ = binding.arguments['self']
-                return [(self_, 'read'), (self_, 'write')]
+                self_ = binding.arguments["self"]
+                return [(self_, "read"), (self_, "write")]
             except:
                 pass
 

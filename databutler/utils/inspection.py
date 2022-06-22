@@ -13,7 +13,9 @@ def _get_signature(func: Callable):
         return sig
 
 
-def get_positional_only_args(*, func: Optional[Callable] = None, sig: Optional[inspect.Signature] = None) -> List[str]:
+def get_positional_only_args(
+    *, func: Optional[Callable] = None, sig: Optional[inspect.Signature] = None
+) -> List[str]:
     """
     Returns the positional-only arguments, if any, in their definition order for the given function.
 
@@ -46,7 +48,9 @@ def get_positional_only_args(*, func: Optional[Callable] = None, sig: Optional[i
     return result
 
 
-def get_required_args(*, func: Optional[Callable] = None, sig: Optional[inspect.Signature] = None) -> List[str]:
+def get_required_args(
+    *, func: Optional[Callable] = None, sig: Optional[inspect.Signature] = None
+) -> List[str]:
     """
     Returns the required arguments, in their definition order, for the given function.
 
@@ -73,7 +77,10 @@ def get_required_args(*, func: Optional[Callable] = None, sig: Optional[inspect.
 
     result: List[str] = []
     for param in sig.parameters.values():
-        if param.kind == inspect.Parameter.POSITIONAL_OR_KEYWORD or param.kind == inspect.Parameter.POSITIONAL_ONLY:
+        if (
+            param.kind == inspect.Parameter.POSITIONAL_OR_KEYWORD
+            or param.kind == inspect.Parameter.POSITIONAL_ONLY
+        ):
             #  We are looking for positional arguments with a default value.
             if param.default is inspect.Parameter.empty:
                 result.append(param.name)
@@ -81,7 +88,9 @@ def get_required_args(*, func: Optional[Callable] = None, sig: Optional[inspect.
     return result
 
 
-def get_optional_args(func: Optional[Callable] = None, sig: Optional[inspect.Signature] = None) -> List[str]:
+def get_optional_args(
+    func: Optional[Callable] = None, sig: Optional[inspect.Signature] = None
+) -> List[str]:
     """
     Returns the optional keyword arguments, in their definition order, for the given function.
 

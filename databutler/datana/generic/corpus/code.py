@@ -21,6 +21,7 @@ class DatanaFunction:
             by default.
         metadata (Optional[Dict[str, Any]]: An optional dictionary corresponding to extra metadata about the function.
     """
+
     code_str: str
     uid: str
 
@@ -56,7 +57,9 @@ class DatanaFunction:
             func_name=self.func_name,
             pos_args=new_pos_args,
             kw_args=new_kw_args,
-            metadata=copy.deepcopy(self.metadata),  # Deepcopy metadata so it's safe for modification
+            metadata=copy.deepcopy(
+                self.metadata
+            ),  # Deepcopy metadata so it's safe for modification
         )
 
     def get_pos_args(self) -> List[Any]:

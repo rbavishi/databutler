@@ -90,7 +90,11 @@ def fetch_notebook_data(owner: str, slug: str) -> Dict:
     #  NOTE: Although this is not too likely to change, this method will break if Kaggle decides to change their
     #  website structure.
     try:
-        d = next(i for i in re.compile(r"Kaggle.State.push\(({.*})\)").findall(text) if "runInfo" in i)
+        d = next(
+            i
+            for i in re.compile(r"Kaggle.State.push\(({.*})\)").findall(text)
+            if "runInfo" in i
+        )
     except StopIteration:
         raise NotebookFetchError(f"Regex matching failure for {owner}/{slug}")
 
@@ -103,7 +107,10 @@ def fetch_notebook_data(owner: str, slug: str) -> Dict:
         kernel_run = d.get("kernelRun", {})
         source_type = kernel_run.get("sourceType", None)
         output_url = kernel_run.get("renderedOutputUrl", None)
-        if source_type == "EDITOR_TYPE_NOTEBOOK" and "kaggleusercontent.com" in output_url:
+        if (
+            source_type == "EDITOR_TYPE_NOTEBOOK"
+            and "kaggleusercontent.com" in output_url
+        ):
             #  Try scraping directly
             try:
                 resp = requests.get(output_url)
@@ -129,7 +136,7 @@ def fetch_notebook_data(owner: str, slug: str) -> Dict:
         except Exception as e:
             raise NotebookFetchError(f"Failed to fetch kernel sources")
 
-        d['kernelBlob'] = response['blob']
+        d["kernelBlob"] = response["blob"]
 
     return d
 

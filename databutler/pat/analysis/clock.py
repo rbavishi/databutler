@@ -6,6 +6,7 @@ class LogicalClock:
     """
     A basic clock implementation supporting getters and increment methods.
     """
+
     _time: int = attr.ib(init=False)
 
     def __attrs_post_init__(self):

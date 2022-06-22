@@ -88,11 +88,13 @@ class LazyObjTests(unittest.TestCase):
         ref2 = pickleutils.PickledRef(path=pickle_path, index=1)
         ref3 = pickleutils.PickledRef(path=pickle_path, index=2)
 
-        lazy_dict = lazyobjs.LazyDict({
-            1: ref1,
-            2: ref2,
-            3: ref3,
-        })
+        lazy_dict = lazyobjs.LazyDict(
+            {
+                1: ref1,
+                2: ref2,
+                3: ref3,
+            }
+        )
         self.assertDictEqual({1: 10, 2: 20, 3: 30}, lazy_dict.resolve())
 
         os.unlink(pickle_path)

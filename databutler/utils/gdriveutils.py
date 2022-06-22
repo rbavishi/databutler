@@ -21,19 +21,27 @@ def _is_json(s: str) -> bool:
 
 
 def _get_settings_path() -> str:
-    return os.path.join(paths.get_user_home_dir_path(), ".databutler", "gdrive", "settings.yaml")
+    return os.path.join(
+        paths.get_user_home_dir_path(), ".databutler", "gdrive", "settings.yaml"
+    )
 
 
 def _get_client_secrets_path() -> str:
-    return os.path.join(paths.get_user_home_dir_path(), ".databutler", "gdrive", "client_secrets.json")
+    return os.path.join(
+        paths.get_user_home_dir_path(), ".databutler", "gdrive", "client_secrets.json"
+    )
 
 
 def _get_credentials_path() -> str:
-    return os.path.join(paths.get_user_home_dir_path(), ".databutler", "gdrive", "credentials.yaml")
+    return os.path.join(
+        paths.get_user_home_dir_path(), ".databutler", "gdrive", "credentials.yaml"
+    )
 
 
 def _get_success_path() -> str:
-    return os.path.join(paths.get_user_home_dir_path(), ".databutler", "gdrive", "SUCCESS")
+    return os.path.join(
+        paths.get_user_home_dir_path(), ".databutler", "gdrive", "SUCCESS"
+    )
 
 
 def _setup_credentials():
@@ -42,17 +50,20 @@ def _setup_credentials():
         return
 
     while True:
-        print(f"Please provide your client_secrets.json contents. Instructions can be found here - {url}")
+        print(
+            f"Please provide your client_secrets.json contents. Instructions can be found here - {url}"
+        )
         secrets = input()
         os.makedirs(os.path.dirname(_get_client_secrets_path()), exist_ok=True)
         with open(_get_client_secrets_path(), "w") as f:
-            print(secrets, file=f, end='')
+            print(secrets, file=f, end="")
 
         #  The file needs to exist beforehand, otherwise it won't work.
         with open(_get_credentials_path(), "w") as f:
             pass
 
-        settings_yaml = textwrap.dedent(f"""
+        settings_yaml = textwrap.dedent(
+            f"""
         client_config_backend: file
         client_config_file: {_get_client_secrets_path()}
 
@@ -65,7 +76,8 @@ def _setup_credentials():
         oauth_scope:
             - https://www.googleapis.com/auth/drive
             - https://www.googleapis.com/auth/drive.install
-        """)
+        """
+        )
 
         with open(_get_settings_path(), "w") as f:
             print(settings_yaml, file=f)
@@ -142,7 +154,9 @@ def download_folder(folder_id: str, path_dir=".", _indent: int = 0):
     name = _get_name(folder_id, drive)
 
     #  Get a list of all the files
-    file_list = drive.ListFile({"q": f"'{folder_id}' in parents and trashed=False"}).GetList()
+    file_list = drive.ListFile(
+        {"q": f"'{folder_id}' in parents and trashed=False"}
+    ).GetList()
 
     #  Make sure the directory exists
     os.makedirs(path_dir, exist_ok=True)
@@ -161,5 +175,7 @@ def download_folder(folder_id: str, path_dir=".", _indent: int = 0):
             #  Recursively download directories.
             download_folder(obj.metadata["id"], target_dir, _indent=_indent)
         else:
-            logger.info(f"{_indent * ' '}Downloading `{obj.metadata['title']}` to `{target_dir}` ...")
+            logger.info(
+                f"{_indent * ' '}Downloading `{obj.metadata['title']}` to `{target_dir}` ..."
+            )
             obj.GetContentFile(os.path.join(target_dir, obj.metadata["title"]))

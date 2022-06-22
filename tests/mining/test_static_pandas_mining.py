@@ -8,7 +8,8 @@ from databutler.pat import astlib
 
 class StaticPandasMiningTests(unittest.TestCase):
     def test_find_library_usages_1(self):
-        code = textwrap.dedent("""
+        code = textwrap.dedent(
+            """
         import matplotlib.pyplot as plt
         import pandas as pd
         import numpy
@@ -21,15 +22,19 @@ class StaticPandasMiningTests(unittest.TestCase):
         b = [1, 2, 3, 4]
         random.shuffle(b)
         shuffle(b)
-        """)
+        """
+        )
 
         code_ast = astlib.parse(code)
-        result = databutler.mining.kaggle.static_analysis.pandas_mining_utils.find_library_usages(code_ast)
+        result = databutler.mining.kaggle.static_analysis.pandas_mining_utils.find_library_usages(
+            code_ast
+        )
         print(result)
         self.assertEquals(5, len(result))
 
     def test_find_constants_1(self):
-        code = textwrap.dedent("""
+        code = textwrap.dedent(
+            """
         a = 20
         b = a + 10
         a = 30
@@ -39,16 +44,23 @@ class StaticPandasMiningTests(unittest.TestCase):
         f = [1, 2, 3]
         g = (1, 2, 3)
         h = d[1] + next(iter(e)) + f[0] + g[0]
-        """)
+        """
+        )
 
         code_ast = astlib.parse(code)
-        result = databutler.mining.kaggle.static_analysis.pandas_mining_utils.find_constants(code_ast)
+        result = (
+            databutler.mining.kaggle.static_analysis.pandas_mining_utils.find_constants(
+                code_ast
+            )
+        )
         self.assertEqual(6, len(result))
-        self.assertSetEqual({int, dict, set, list, tuple},
-                            {type(i) for i in result.values()})
+        self.assertSetEqual(
+            {int, dict, set, list, tuple}, {type(i) for i in result.values()}
+        )
 
     def test_mine_code_1(self):
-        code = textwrap.dedent("""
+        code = textwrap.dedent(
+            """
         import pandas as pd
         data1 = pd.read_csv("titanic.csv")
         data2 = pd.read_csv("titanic_test.csv")
@@ -67,14 +79,32 @@ class StaticPandasMiningTests(unittest.TestCase):
         df['State'].apply((lambda state: (state[0] == 'W')))
         df[df['state_name'].isin(('Florida', 'Texas', 'Louisiana', 'Alabama'))]
 
-        df.iloc[:, 0:2]
-        """)
+        df.iloc[0]
+        df.iloc[:, 0]
+        df.iloc[:, 1:3]
+        df.iloc[:, [1, 2]]
+        df.iloc[:, lambda d: [0, 2]]
+        df.iloc[:, lambda d: 1]
+        
+        df.loc['0']
+        df.loc[:, '0']
+        df.loc[:, 'a':'b']
+        df.loc[['col1', 'col2']]
+        df.loc[:, ['col1', 'col2']]
+        df.loc[:, lambda d: ['col1', 'col2']]
+        df.loc[:, lambda d: 'a']
+        
+        df.at[0, 'a']
+        df.iat[0, 0]
+        """
+        )
 
         for res in mining.mine_code(code):
             print(res)
 
     def test_mine_code_2(self):
-        code = textwrap.dedent("""
+        code = textwrap.dedent(
+            """
         import pandas as pd
         import seaborn as sns
         df = pd.read_csv("titanic.csv")
@@ -87,7 +117,9 @@ class StaticPandasMiningTests(unittest.TestCase):
         df.add_prefix("col_")
         df['Address'].str.split(' ').str[-1]
         sns.distplot(df['Age'])
-        """)
+        df.loc[:, 'Age'].hist(bins=20)
+        """
+        )
 
         for res in mining.mine_code(code):
             print(res)

@@ -17,7 +17,8 @@ def _runner(func: DatanaFunction):
 
 class NumAxesCounter(unittest.TestCase):
     def test_1(self):
-        code = textwrap.dedent("""
+        code = textwrap.dedent(
+            """
         def visualization(df0_records, col0, col1, col2):
             import matplotlib.pyplot as plt
             import seaborn as sns
@@ -27,7 +28,8 @@ class NumAxesCounter(unittest.TestCase):
             sns.distplot(a=df0[col0], color='b', ax=axes[0])
             sns.distplot(a=df0[col1], color='r', ax=axes[1])
             sns.distplot(a=df0[col2], color='y', ax=axes[2])
-        """)
+        """
+        )
 
         #  Passing in records instead of dataframe as different Pandas versions cause havoc.
         df_records = [
@@ -45,17 +47,24 @@ class NumAxesCounter(unittest.TestCase):
         )
 
         new_d_func = multiprocess.run_func_in_process(_runner, datana_func)
-        self.assertEqual(3, new_d_func.metadata[VizMplAxesCounter.get_processor_metadata_key()]["num_axes"])
+        self.assertEqual(
+            3,
+            new_d_func.metadata[VizMplAxesCounter.get_processor_metadata_key()][
+                "num_axes"
+            ],
+        )
 
     def test_2(self):
-        code = textwrap.dedent("""
+        code = textwrap.dedent(
+            """
         def visualization(df0_records, col0):
             import matplotlib.pyplot as plt
             import seaborn as sns
             import pandas as pd
             df0 = pd.DataFrame.from_records(df0_records)
             sns.distplot(a=df0[col0], color='b')
-        """)
+        """
+        )
 
         #  Passing in records instead of dataframe as different Pandas versions cause havoc.
         df_records = [
@@ -73,4 +82,9 @@ class NumAxesCounter(unittest.TestCase):
         )
 
         new_d_func = multiprocess.run_func_in_process(_runner, datana_func)
-        self.assertEqual(1, new_d_func.metadata[VizMplAxesCounter.get_processor_metadata_key()]["num_axes"])
+        self.assertEqual(
+            1,
+            new_d_func.metadata[VizMplAxesCounter.get_processor_metadata_key()][
+                "num_axes"
+            ],
+        )

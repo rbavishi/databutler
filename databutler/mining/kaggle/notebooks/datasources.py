@@ -16,6 +16,7 @@ class KaggleDataSourceType(Enum):
     Datasets are those that are uploaded by individuals.
     Kernel outputs are similar to datasets, but are associated with a specific kernel version.
     """
+
     COMPETITION = 0
     DATASET = 1
     KERNEL_OUTPUT = 2
@@ -27,6 +28,7 @@ class KaggleDataSource:
     """
     Holds information about a data-source.
     """
+
     #  URL relative to kaggle.com
     url: str
     #  Mount location inside /kaggle/input.
@@ -43,7 +45,7 @@ class KaggleDataSource:
         if (not force) and self.is_downloaded():
             return
 
-        quiet = (not verbose)
+        quiet = not verbose
         api = nb_utils.get_kaggle_api()
 
         if self.src_type == KaggleDataSourceType.COMPETITION:
@@ -52,10 +54,12 @@ class KaggleDataSource:
 
             if (not os.path.exists(path)) or force:
                 os.makedirs(path, exist_ok=True)
-                api.competition_download_files(competition=competition_slug, path=path, force=force, quiet=quiet)
+                api.competition_download_files(
+                    competition=competition_slug, path=path, force=force, quiet=quiet
+                )
 
                 #  If it is a zip, unzip it.
-                outfile = os.path.join(path, competition_slug + '.zip')
+                outfile = os.path.join(path, competition_slug + ".zip")
                 if os.path.exists(outfile):
                     utils.unzip(outfile, path, remove_zip=True)
 
@@ -64,21 +68,30 @@ class KaggleDataSource:
                     utils.unzip(p, os.path.dirname(p), remove_zip=False)
 
         elif self.src_type == KaggleDataSourceType.DATASET:
-            owner, dataset_slug = self.url.split('/')[1:]
+            owner, dataset_slug = self.url.split("/")[1:]
 
             path = self.local_storage_path
             os.makedirs(path, exist_ok=True)
 
-            api.dataset_download_files(dataset=f"{owner}/{dataset_slug}", path=path, force=force, quiet=quiet,
-                                       unzip=True)
+            api.dataset_download_files(
+                dataset=f"{owner}/{dataset_slug}",
+                path=path,
+                force=force,
+                quiet=quiet,
+                unzip=True,
+            )
 
         elif self.src_type == KaggleDataSourceType.KERNEL_OUTPUT:
-            owner, dataset_slug = self.url.split('/')[1:]
+            owner, dataset_slug = self.url.split("/")[1:]
 
             path = self.local_storage_path
             os.makedirs(path, exist_ok=True)
-            api.kernels_pull(kernel=f"{owner}/{dataset_slug}", path=path, quiet=quiet, metadata=False)
-            api.kernels_output(kernel=f"{owner}/{dataset_slug}", path=path, force=force, quiet=quiet)
+            api.kernels_pull(
+                kernel=f"{owner}/{dataset_slug}", path=path, quiet=quiet, metadata=False
+            )
+            api.kernels_output(
+                kernel=f"{owner}/{dataset_slug}", path=path, force=force, quiet=quiet
+            )
 
         else:
             raise NotImplementedError(f"Unrecognized data-source {self.url}")

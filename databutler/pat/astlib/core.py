@@ -1,6 +1,7 @@
 import collections
 import itertools
 import weakref
+
 #  We use the CSTNode as the default AST node.
 from typing import MutableMapping, Iterator, Union, Mapping, Optional
 import typing
@@ -8,18 +9,85 @@ import typing
 import attr
 import libcst as cst
 
-from databutler.pat.astlib.expr_contexts import ExpressionContextProvider, ExpressionContext
+from databutler.pat.astlib.expr_contexts import (
+    ExpressionContextProvider,
+    ExpressionContext,
+)
 from databutler.pat.astlib.position import NodePosition
-from libcst import AnnAssign, Assert, Assign, Attribute, AugAssign, Await, BaseAssignTargetExpression, BaseComp, \
-    BaseCompoundStatement, BaseDelTargetExpression, BaseDict, BaseExpression, BaseList, BaseNumber, BaseSet, \
-    BaseSimpleComp, BaseSmallStatement, BaseString, BinaryOperation, BooleanOperation, Break, Call, ClassDef, \
-    Comparison, ConcatenatedString, Continue, Del, Dict, DictComp, Ellipsis, Expr, Float, For, FormattedString, \
-    FunctionDef, GeneratorExp, Global, If, IfExp, Imaginary, Import, ImportFrom, Integer, Lambda, List, ListComp, \
-    Name, NamedExpr, Nonlocal, Pass, Raise, Return, Set, SetComp, SimpleString, Subscript, Try, Tuple, UnaryOperation, \
-    While, With, Yield, Module, Arg, Param, Decorator
+from libcst import (
+    AnnAssign,
+    Assert,
+    Assign,
+    Attribute,
+    AugAssign,
+    Await,
+    BaseAssignTargetExpression,
+    BaseComp,
+    BaseCompoundStatement,
+    BaseDelTargetExpression,
+    BaseDict,
+    BaseExpression,
+    BaseList,
+    BaseNumber,
+    BaseSet,
+    BaseSimpleComp,
+    BaseSmallStatement,
+    BaseString,
+    BinaryOperation,
+    BooleanOperation,
+    Break,
+    Call,
+    ClassDef,
+    Comparison,
+    ConcatenatedString,
+    Continue,
+    Del,
+    Dict,
+    DictComp,
+    Ellipsis,
+    Expr,
+    Float,
+    For,
+    FormattedString,
+    FunctionDef,
+    GeneratorExp,
+    Global,
+    If,
+    IfExp,
+    Imaginary,
+    Import,
+    ImportFrom,
+    Integer,
+    Lambda,
+    List,
+    ListComp,
+    Name,
+    NamedExpr,
+    Nonlocal,
+    Pass,
+    Raise,
+    Return,
+    Set,
+    SetComp,
+    SimpleString,
+    Subscript,
+    Try,
+    Tuple,
+    UnaryOperation,
+    While,
+    With,
+    Yield,
+    Module,
+    Arg,
+    Param,
+    Decorator,
+)
 
-from databutler.pat.astlib.editing import ChildReplacementTransformer, StmtRemovalAndSimplificationTransformer, \
-    NodeRemovalTransformer
+from databutler.pat.astlib.editing import (
+    ChildReplacementTransformer,
+    StmtRemovalAndSimplificationTransformer,
+    NodeRemovalTransformer,
+)
 from databutler.pat.astlib.notebooks import NotebookCell, NotebookCellBody, parse_ipynb
 
 AstNode = cst.CSTNode
@@ -28,8 +96,15 @@ NodeUID = int
 ScopeId = int
 AstStatementT = Union[cst.BaseSmallStatement, cst.BaseCompoundStatement]
 AstStatement = (cst.BaseSmallStatement, cst.BaseCompoundStatement)
-ExprContextEligible = (cst.Attribute, cst.Name, cst.Subscript, cst.StarredElement, cst.List, cst.Tuple,
-                       cst.NameItem)
+ExprContextEligible = (
+    cst.Attribute,
+    cst.Name,
+    cst.Subscript,
+    cst.StarredElement,
+    cst.List,
+    cst.Tuple,
+    cst.NameItem,
+)
 
 #  We maintain global counters to avoid unintended collisions.
 _AST_UID_COUNTER = 0
@@ -84,7 +159,7 @@ def walk(node: AstNode) -> Iterator[AstNode]:
 class Access:
     node: BaseExpression = attr.ib()
     scope_id: int = attr.ib()
-    definitions: typing.List['Definition'] = attr.ib()
+    definitions: typing.List["Definition"] = attr.ib()
 
 
 @attr.s(repr=False, cmp=False)
@@ -101,19 +176,23 @@ class _AstMetadata:
     """
     Contains extra meta-data about the AST such as position of tokens, scopes, parent/child info etc.
     """
+
     _ast: weakref.ReferenceType = attr.ib()
     _uid_dict: typing.Dict[Union[AstNode, int], Union[int, AstNode]] = attr.ib()
     _pos_ranges: Mapping[AstNode, NodePosition] = attr.ib()
     _parent_map: Mapping[AstNode, AstNode] = attr.ib()
     _expr_context: Mapping[AstNode, Optional[ExpressionContext]] = attr.ib()
     _scopes: Mapping[AstNode, cst.metadata.Scope] = attr.ib()
-    _scope_id_dict: typing.Dict[Union[cst.metadata.Scope, int], Union[int, cst.metadata.Scope]] = attr.ib()
+    _scope_id_dict: typing.Dict[
+        Union[cst.metadata.Scope, int], Union[int, cst.metadata.Scope]
+    ] = attr.ib()
     _config_for_parsing = attr.ib(default=None)
-    _defs_and_accesses: typing.Tuple[typing.List[Definition],
-                                     typing.List[Access]] = attr.ib(init=False, default=None)
+    _defs_and_accesses: typing.Tuple[
+        typing.List[Definition], typing.List[Access]
+    ] = attr.ib(init=False, default=None)
 
     @classmethod
-    def build(cls, ast_root: AstNode) -> '_AstMetadata':
+    def build(cls, ast_root: AstNode) -> "_AstMetadata":
         #  The unsafe_skip_copy avoids making copies of ast_root.
         #  For this reason, make sure ast_root does not have any duplicate nodes internally.
         wrapper = cst.metadata.MetadataWrapper(ast_root, unsafe_skip_copy=True)
@@ -152,7 +231,7 @@ class _AstMetadata:
             expr_context=expr_context,
             config_for_parsing=config_for_parsing,
             scopes=scopes,
-            scope_id_dict=scope_id_dict
+            scope_id_dict=scope_id_dict,
         )
 
     def get_uid_for_node(self, node: AstNode) -> int:
@@ -182,7 +261,9 @@ class _AstMetadata:
     def get_scope_id_mapping(self) -> Mapping[AstNode, int]:
         return {n: self._scope_id_dict[s] for n, s in self._scopes.items()}
 
-    def get_definitions_and_accesses(self) -> typing.Tuple[typing.List[Definition], typing.List[Access]]:
+    def get_definitions_and_accesses(
+        self,
+    ) -> typing.Tuple[typing.List[Definition], typing.List[Access]]:
         if self._defs_and_accesses is not None:
             return self._defs_and_accesses
 
@@ -195,13 +276,23 @@ class _AstMetadata:
                     continue
 
                 all_definitions[definition] = None
-                all_accesses.update({a: None for a in definition.references if not a.is_annotation})
+                all_accesses.update(
+                    {a: None for a in definition.references if not a.is_annotation}
+                )
 
         for definition in all_definitions.keys():
-            enclosing_node_types = (cst.BaseSmallStatement, cst.BaseCompoundStatement, cst.CompFor, cst.Lambda)
+            enclosing_node_types = (
+                cst.BaseSmallStatement,
+                cst.BaseCompoundStatement,
+                cst.CompFor,
+                cst.Lambda,
+            )
             if not isinstance(definition.node, enclosing_node_types):
-                enclosing_node = next(i for i in self.iter_parents(definition.node)
-                                      if isinstance(i, enclosing_node_types))
+                enclosing_node = next(
+                    i
+                    for i in self.iter_parents(definition.node)
+                    if isinstance(i, enclosing_node_types)
+                )
             else:
                 enclosing_node = definition.node
 
@@ -213,7 +304,9 @@ class _AstMetadata:
                 accesses=[],
             )
 
-        for access in itertools.chain(all_accesses.keys(), *(scope.accesses for scope in all_scopes)):
+        for access in itertools.chain(
+            all_accesses.keys(), *(scope.accesses for scope in all_scopes)
+        ):
             all_accesses[access] = Access(
                 node=access.node,
                 scope_id=self._scope_id_dict[access.scope],
@@ -221,10 +314,14 @@ class _AstMetadata:
             )
 
         for k, v in all_definitions.items():
-            v.accesses.extend(all_accesses[a] for a in k.references if a in all_accesses)
+            v.accesses.extend(
+                all_accesses[a] for a in k.references if a in all_accesses
+            )
 
         for k, v in all_accesses.items():
-            v.definitions.extend(all_definitions[a] for a in k.referents if a in all_definitions)
+            v.definitions.extend(
+                all_definitions[a] for a in k.referents if a in all_definitions
+            )
 
         definitions = list(all_definitions.values())
         accesses = list(all_accesses.values())
@@ -234,11 +331,13 @@ class _AstMetadata:
             if isinstance(n, AugAssign) and isinstance(n.target, Name):
                 scope = self._scopes[n]
                 defs = [all_definitions[d] for d in scope[n.target.value]]
-                accesses.append(Access(
-                    node=n.target,
-                    scope_id=self._scope_id_dict[scope],
-                    definitions=defs
-                ))
+                accesses.append(
+                    Access(
+                        node=n.target,
+                        scope_id=self._scope_id_dict[scope],
+                        definitions=defs,
+                    )
+                )
 
         self._defs_and_accesses = definitions, accesses
         return definitions, accesses
@@ -305,17 +404,20 @@ def expr_is_evaluated(expr_node: AstNode, context: AstNode) -> bool:
     :return:
     """
     ctx = _get_metadata(context).get_expr_context(expr_node)
-    return (ctx is None and not isinstance(expr_node, ExprContextEligible)) or ctx == ExpressionContext.LOAD
+    return (
+        ctx is None and not isinstance(expr_node, ExprContextEligible)
+    ) or ctx == ExpressionContext.LOAD
 
 
-def iter_store_exprs(node: Union[AstStatementT, BaseExpression]) -> Iterator[BaseExpression]:
+def iter_store_exprs(
+    node: Union[AstStatementT, BaseExpression]
+) -> Iterator[BaseExpression]:
     if isinstance(node, AstStatement):
         module = cst.Module(body=[cst.SimpleStatementLine(body=[node])])
     else:
         module = cst.Module(body=[cst.SimpleStatementLine(body=[cst.Expr(value=node)])])
 
-    wrapper = cst.metadata.MetadataWrapper(module,
-                                           unsafe_skip_copy=True)
+    wrapper = cst.metadata.MetadataWrapper(module, unsafe_skip_copy=True)
 
     expr_context = wrapper.resolve(ExpressionContextProvider)
     for n in walk(node):
@@ -327,7 +429,9 @@ def get_config_for_parsing(context: AstNode):
     return _get_metadata(context).get_config_for_parsing()
 
 
-def get_node_uid_mapping(context: AstNode) -> Mapping[Union[AstNode, int], Union[int, AstNode]]:
+def get_node_uid_mapping(
+    context: AstNode,
+) -> Mapping[Union[AstNode, int], Union[int, AstNode]]:
     return _get_metadata(context).get_node_uid_mapping()
 
 
@@ -335,11 +439,15 @@ def get_scope_id_mapping(context: AstNode) -> Mapping[AstNode, int]:
     return _get_metadata(context).get_scope_id_mapping()
 
 
-def get_definitions_and_accesses(ast_root: AstNode) -> typing.Tuple[typing.List[Definition], typing.List[Access]]:
+def get_definitions_and_accesses(
+    ast_root: AstNode,
+) -> typing.Tuple[typing.List[Definition], typing.List[Access]]:
     return _get_metadata(ast_root).get_definitions_and_accesses()
 
 
-def parse(source_code: Union[str, dict], extension: str = '.py', python_version: str = None) -> Module:
+def parse(
+    source_code: Union[str, dict], extension: str = ".py", python_version: str = None
+) -> Module:
     """
     Parses source code into an AST.
     The extension should be one of `.py` and `.ipynb`.
@@ -349,18 +457,22 @@ def parse(source_code: Union[str, dict], extension: str = '.py', python_version:
     :param python_version:
     :return:
     """
-    if extension == '.ipynb':
+    if extension == ".ipynb":
         return parse_ipynb(source_code, python_version=python_version)
 
     if python_version is not None:
-        config = cst.PartialParserConfig(encoding="utf-8", python_version=python_version)
+        config = cst.PartialParserConfig(
+            encoding="utf-8", python_version=python_version
+        )
     else:
         config = cst.PartialParserConfig(encoding="utf-8")
 
     return cst.parse_module(source_code, config=config)
 
 
-def parse_stmt(source_code: str, config: cst.PartialParserConfig = None) -> AstStatementT:
+def parse_stmt(
+    source_code: str, config: cst.PartialParserConfig = None
+) -> AstStatementT:
     """
     Parse individual statements.
     :param source_code:
@@ -378,7 +490,9 @@ def parse_stmt(source_code: str, config: cst.PartialParserConfig = None) -> AstS
     return result
 
 
-def parse_expr(source_code: str, config: cst.PartialParserConfig = None) -> cst.BaseExpression:
+def parse_expr(
+    source_code: str, config: cst.PartialParserConfig = None
+) -> cst.BaseExpression:
     """
     Parse individual expressions.
     :param source_code:
@@ -415,14 +529,20 @@ def with_changes(node: AstNode, **changes):
     return node.with_changes(**changes)
 
 
-def with_deep_replacements(node: AstNode, replacements: typing.Dict[AstNode, AstNode],
-                           output_mapping: Optional[typing.Dict[AstNode, AstNode]] = None):
+def with_deep_replacements(
+    node: AstNode,
+    replacements: typing.Dict[AstNode, AstNode],
+    output_mapping: Optional[typing.Dict[AstNode, AstNode]] = None,
+):
     #  If a node does not have a child (direct or indirect) in replacements, it should not be
     #  replaced for no reason. Hence add an identity mapping to replacements.
     replacements = replacements.copy()
 
     #  Replace Nones by empty sentinel
-    replacements = {k: (v if v is not None else cst.RemoveFromParent()) for k, v in replacements.items()}
+    replacements = {
+        k: (v if v is not None else cst.RemoveFromParent())
+        for k, v in replacements.items()
+    }
 
     par_mapping = collections.defaultdict(list)
     all_nodes = set(walk(node))
@@ -468,8 +588,9 @@ def _try_eval(node: AstNode) -> typing.Tuple[bool, Optional[typing.Any]]:
 
 
 def is_constant(node: AstNode):
-    if isinstance(node, (cst.BaseNumber, cst.BaseString)) or \
-            (isinstance(node, Name) and (node.value == 'True' or node.value == 'False')):
+    if isinstance(node, (cst.BaseNumber, cst.BaseString)) or (
+        isinstance(node, Name) and (node.value == "True" or node.value == "False")
+    ):
         return True
 
     if isinstance(node, cst.UnaryOperation) and is_constant(node.expression):
@@ -498,7 +619,9 @@ def is_stmt(node: AstNode):
 
 
 def is_stmt_container(node: AstNode) -> bool:
-    return isinstance(node, (cst.IndentedBlock, cst.SimpleStatementSuite, NotebookCellBody))
+    return isinstance(
+        node, (cst.IndentedBlock, cst.SimpleStatementSuite, NotebookCellBody)
+    )
 
 
 def is_keyword_arg(arg: Arg) -> bool:
@@ -517,7 +640,9 @@ def iter_stmts(node: AstNode) -> Iterator[AstStatementT]:
             yield n
 
 
-def iter_true_exprs(node: AstNode, context: Optional[AstNode] = None) -> Iterator[BaseExpression]:
+def iter_true_exprs(
+    node: AstNode, context: Optional[AstNode] = None
+) -> Iterator[BaseExpression]:
     if context is None:
         if is_expr(node):
             context = Module(prepare_body([Expr(node)]))
@@ -531,7 +656,9 @@ def iter_true_exprs(node: AstNode, context: Optional[AstNode] = None) -> Iterato
             yield n
 
 
-def get_assign_targets(node: Union[Assign, AugAssign, AnnAssign]) -> typing.List[BaseExpression]:
+def get_assign_targets(
+    node: Union[Assign, AugAssign, AnnAssign]
+) -> typing.List[BaseExpression]:
     module = cst.Module(body=[cst.SimpleStatementLine(body=[node])])
     wrapper = cst.metadata.MetadataWrapper(module, unsafe_skip_copy=True)
 
@@ -540,8 +667,12 @@ def get_assign_targets(node: Union[Assign, AugAssign, AnnAssign]) -> typing.List
         node_iter = itertools.chain(*(walk(t.target) for t in node.targets))
     else:
         node_iter = walk(node.target)
-    return [n for n in node_iter
-            if expr_context.get(n, None) == ExpressionContext.STORE and isinstance(n, (Name, Subscript, Attribute))]
+    return [
+        n
+        for n in node_iter
+        if expr_context.get(n, None) == ExpressionContext.STORE
+        and isinstance(n, (Name, Subscript, Attribute))
+    ]
 
 
 def iter_body_stmts(node: AstNode) -> Iterator[AstStatementT]:
@@ -557,8 +688,9 @@ def iter_body_stmts(node: AstNode) -> Iterator[AstStatementT]:
             yield stmt
 
 
-def prepare_body(stmts: typing.List[AstStatementT]) -> typing.List[Union[cst.SimpleStatementLine,
-                                                                         cst.BaseCompoundStatement]]:
+def prepare_body(
+    stmts: typing.List[AstStatementT],
+) -> typing.List[Union[cst.SimpleStatementLine, cst.BaseCompoundStatement]]:
     """
     Pre-processing to ensure stmts can become part of a body of a stmt container.
     :param stmts:
@@ -578,7 +710,9 @@ def prepare_body(stmts: typing.List[AstStatementT]) -> typing.List[Union[cst.Sim
     return body
 
 
-def update_stmt_body(node: AstNode, new_body: typing.List[cst.BaseStatement]) -> AstNode:
+def update_stmt_body(
+    node: AstNode, new_body: typing.List[cst.BaseStatement]
+) -> AstNode:
     if isinstance(node, (Module, cst.IndentedBlock, NotebookCellBody)):
         return node.with_changes(body=new_body)
 
@@ -600,7 +734,9 @@ def create_name_expr(name: str) -> Name:
     return Name(value=name)
 
 
-def create_subscript_expr(value: Union[str, BaseExpression], slices: typing.List[Union[str, BaseExpression]]):
+def create_subscript_expr(
+    value: Union[str, BaseExpression], slices: typing.List[Union[str, BaseExpression]]
+):
     if isinstance(value, str):
         value = parse_expr(value)
 
@@ -610,8 +746,10 @@ def create_subscript_expr(value: Union[str, BaseExpression], slices: typing.List
 
 
 def wrap_try_finally(body, finalbody):
-    return cst.Try(body=cst.IndentedBlock(body=body),
-                   finalbody=cst.Finally(body=cst.IndentedBlock(body=finalbody)))
+    return cst.Try(
+        body=cst.IndentedBlock(body=body),
+        finalbody=cst.Finally(body=cst.IndentedBlock(body=finalbody)),
+    )
 
 
 def create_list_expr(element_exprs: typing.List[BaseExpression]):
@@ -622,38 +760,56 @@ def create_tuple_expr(element_exprs: typing.List[BaseExpression]):
     return cst.Tuple(elements=[cst.Element(value=e) for e in element_exprs])
 
 
-def create_assignment(targets: typing.List[Union[str, BaseAssignTargetExpression]],
-                      value: Union[str, AstNode]) -> Assign:
-    targets = [t if isinstance(t, BaseAssignTargetExpression) else parse_expr(t) for t in targets]
+def create_assignment(
+    targets: typing.List[Union[str, BaseAssignTargetExpression]],
+    value: Union[str, AstNode],
+) -> Assign:
+    targets = [
+        t if isinstance(t, BaseAssignTargetExpression) else parse_expr(t)
+        for t in targets
+    ]
     if isinstance(value, str):
         value = parse_expr(value)
 
-    return Assign(targets=[cst.AssignTarget(target=t) for t in targets],
-                  value=value)
+    return Assign(targets=[cst.AssignTarget(target=t) for t in targets], value=value)
 
 
-def wrap_with_call(node: Union[str, BaseExpression], func: Union[str, BaseExpression]) -> Call:
+def wrap_with_call(
+    node: Union[str, BaseExpression], func: Union[str, BaseExpression]
+) -> Call:
     if isinstance(node, str):
         node = parse_expr(node)
 
     if isinstance(func, str):
         func = parse_expr(func)
 
-    return cst.Call(func=func, args=[cst.Arg(value=node, keyword=None, star='')])
+    return cst.Call(func=func, args=[cst.Arg(value=node, keyword=None, star="")])
 
 
 def create_return(value: BaseExpression) -> Return:
     return cst.Return(value=value)
 
 
-def remove_simple_statements_and_simplify(node: AstNode,
-                                          to_remove: Optional[typing.Set[BaseSmallStatement]] = None,
-                                          to_retain: Optional[typing.Set[BaseSmallStatement]] = None):
-    if (to_remove is None and to_retain is None) or (to_remove is not None and to_retain is not None):
-        raise AssertionError("Exactly one of to_remove and to_retain has to be provided.")
+def remove_simple_statements_and_simplify(
+    node: AstNode,
+    to_remove: Optional[typing.Set[BaseSmallStatement]] = None,
+    to_retain: Optional[typing.Set[BaseSmallStatement]] = None,
+):
+    if (to_remove is None and to_retain is None) or (
+        to_remove is not None and to_retain is not None
+    ):
+        raise AssertionError(
+            "Exactly one of to_remove and to_retain has to be provided."
+        )
 
-    return node.visit(StmtRemovalAndSimplificationTransformer(to_remove=to_remove, to_retain=to_retain))
+    return node.visit(
+        StmtRemovalAndSimplificationTransformer(
+            to_remove=to_remove, to_retain=to_retain
+        )
+    )
 
 
-def remove_nodes_from_ast(ast_: AstNode, to_remove: typing.Collection[AstNode]) -> AstNode:
+def remove_nodes_from_ast(
+    ast_: AstNode, to_remove: typing.Collection[AstNode]
+) -> AstNode:
     return ast_.visit(NodeRemovalTransformer(to_remove))

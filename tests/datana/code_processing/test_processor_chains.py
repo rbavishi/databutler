@@ -2,8 +2,13 @@ import textwrap
 import unittest
 
 from databutler.datana.generic.corpus.code import DatanaFunction
-from databutler.datana.generic.corpus.processing.base_processor import DatanaFunctionProcessorChain
-from databutler.datana.viz.corpus.code_processors import VizMplKeywordArgNormalizer, VizMplVarNameOptimizer
+from databutler.datana.generic.corpus.processing.base_processor import (
+    DatanaFunctionProcessorChain,
+)
+from databutler.datana.viz.corpus.code_processors import (
+    VizMplKeywordArgNormalizer,
+    VizMplVarNameOptimizer,
+)
 from databutler.utils import multiprocess, code as codeutils
 from databutler.utils.libversioning import modified_lib_env
 
@@ -64,5 +69,7 @@ class CodeProcessorChainTests(unittest.TestCase):
         )
 
         new_d_func = multiprocess.run_func_in_process(_seaborn_runner, datana_func)
-        self.assertEqual(codeutils.normalize_code(target_code),
-                         codeutils.normalize_code(new_d_func.code_str))
+        self.assertEqual(
+            codeutils.normalize_code(target_code),
+            codeutils.normalize_code(new_d_func.code_str),
+        )

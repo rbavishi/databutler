@@ -15,24 +15,26 @@ class SimpleExecutor(BaseExecutor):
 
     @classmethod
     @register_runner(name="simple_executor")
-    def simple_runner(cls, source: str, source_type: KaggleNotebookSourceType, output_dir_path: str):
+    def simple_runner(
+        cls, source: str, source_type: KaggleNotebookSourceType, output_dir_path: str
+    ):
         if source_type == KaggleNotebookSourceType.IPYTHON_NOTEBOOK:
-            file_name = f'{output_dir_path}/source.ipynb'
+            file_name = f"{output_dir_path}/source.ipynb"
             # writing the file to file_name
-            with open(file_name, 'w') as f:
+            with open(file_name, "w") as f:
                 f.write(source)
-            print(f'Source written to {file_name}')
+            print(f"Source written to {file_name}")
             # executing file from terminal
-            os.system(f'jupyter nbconvert --execute {file_name} --to html')
+            os.system(f"jupyter nbconvert --execute {file_name} --to html")
 
         elif source_type == KaggleNotebookSourceType.PYTHON_SOURCE_FILE:
-            file_name = f'{output_dir_path}/source.py'
+            file_name = f"{output_dir_path}/source.py"
             # writing the file to file_name
-            with open(file_name, 'w') as f:
+            with open(file_name, "w") as f:
                 f.write(source)
-            print(f'Source written to {file_name}')
+            print(f"Source written to {file_name}")
             # executing file from terminal
-            os.system(f'python3 {file_name}')
+            os.system(f"python3 {file_name}")
 
         else:
-            raise NotImplementedError(f'Unknown source type {source_type}')
+            raise NotImplementedError(f"Unknown source type {source_type}")

@@ -46,7 +46,9 @@ class PickleUtilsTests(unittest.TestCase):
             writer.append(20)
             writer.append(30)
 
-        with pickleutils.PickledCollectionWriter(pickle_path, overwrite_existing=False) as writer:
+        with pickleutils.PickledCollectionWriter(
+            pickle_path, overwrite_existing=False
+        ) as writer:
             writer.append(40)
             writer.append(50)
             writer.append(60)
@@ -83,7 +85,9 @@ class PickleUtilsTests(unittest.TestCase):
             writer["20"] = 20
             writer["30"] = 30
 
-        with pickleutils.PickledMapWriter(pickle_path, overwrite_existing=False) as writer:
+        with pickleutils.PickledMapWriter(
+            pickle_path, overwrite_existing=False
+        ) as writer:
             writer["40"] = 40
             writer["50"] = 50
             writer["60"] = 60
@@ -107,7 +111,9 @@ class PickleUtilsTests(unittest.TestCase):
             writer["30"] = 30
             self.assertRaises(ValueError, writer.__setitem__, "10", 10)
 
-        with pickleutils.PickledMapWriter(pickle_path, overwrite_existing=False) as writer:
+        with pickleutils.PickledMapWriter(
+            pickle_path, overwrite_existing=False
+        ) as writer:
             writer["40"] = 40
             writer["50"] = 50
             writer["60"] = 60

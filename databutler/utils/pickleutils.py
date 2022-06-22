@@ -1,6 +1,18 @@
 import os
 import pickle
-from typing import Any, Sequence, List, Union, Optional, BinaryIO, Dict, Mapping, Iterator, Hashable, Tuple
+from typing import (
+    Any,
+    Sequence,
+    List,
+    Union,
+    Optional,
+    BinaryIO,
+    Dict,
+    Mapping,
+    Iterator,
+    Hashable,
+    Tuple,
+)
 
 import attrs
 
@@ -60,6 +72,7 @@ class PickledCollectionWriter:
         writer.append(10)
     ```
     """
+
     path: str
     overwrite_existing: bool = True
 
@@ -78,9 +91,7 @@ class PickledCollectionWriter:
         self._open(mode)
 
     def _open(self, mode: str):
-        """
-
-        """
+        """ """
         offset_map_path = self.get_offset_map_path(self.path)
         if mode == "a":
             self._file_obj = open(self.path, "ab")
@@ -89,8 +100,10 @@ class PickledCollectionWriter:
                     self._offset_map = pickle.load(f)
             except FileNotFoundError:
                 if self._file_obj.tell() != 0:
-                    raise FileNotFoundError("Offset map not found for supplied pickle file. "
-                                            "Did you write it using PickledCollectionWriter?")
+                    raise FileNotFoundError(
+                        "Offset map not found for supplied pickle file. "
+                        "Did you write it using PickledCollectionWriter?"
+                    )
                 else:
                     self._offset_map = []
 
@@ -111,9 +124,7 @@ class PickledCollectionWriter:
             pickle.dump(self._offset_map, file=f)
 
     def close(self):
-        """
-
-        """
+        """ """
         self.flush()
         self._file_obj.close()
 
@@ -156,6 +167,7 @@ class PickledCollectionReader(Sequence):
         print("First element:", reader[0])
     ```
     """
+
     path: str
     use_cache: bool = False
 
@@ -236,6 +248,7 @@ class PickledMapWriter:
         writer["key"] = "value"
     ```
     """
+
     path: str
     overwrite_existing: bool = True
 
@@ -254,9 +267,7 @@ class PickledMapWriter:
         self._open(mode)
 
     def _open(self, mode: str):
-        """
-
-        """
+        """ """
         keys_offset_map_path = self.get_keys_offset_map_path(self.path)
         if mode == "a":
             self._file_obj = open(self.path, "ab")
@@ -265,8 +276,10 @@ class PickledMapWriter:
                     self._keys_offset_map = pickle.load(f)
             except FileNotFoundError:
                 if self._file_obj.tell() != 0:
-                    raise FileNotFoundError("Keys to offset map not found for supplied pickle file. "
-                                            "Did you write it using PickledMapReader?")
+                    raise FileNotFoundError(
+                        "Keys to offset map not found for supplied pickle file. "
+                        "Did you write it using PickledMapReader?"
+                    )
                 else:
                     self._keys_offset_map = {}
 
@@ -287,9 +300,7 @@ class PickledMapWriter:
             pickle.dump(self._keys_offset_map, file=f)
 
     def close(self):
-        """
-
-        """
+        """ """
         self.flush()
         self._file_obj.close()
 

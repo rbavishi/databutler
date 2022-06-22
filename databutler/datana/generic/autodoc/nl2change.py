@@ -42,12 +42,15 @@ class NatLangToNewCode(BaseNatLangToCodeChange):
     A change generation strategy where the model is instructed to generated the new code in its entirety.
     This is the most demanding strategy of the model as it needs to get all the aspects right.
     """
+
     temperature: float = 0.0
-    engine: str = 'code-davinci-001'
+    engine: str = "code-davinci-001"
     max_tokens: int = 512
 
     stop_token: str = "END"
-    default_task_description: str = "Generate the new code from the old code given the description of the change.\n"
+    default_task_description: str = (
+        "Generate the new code from the old code given the description of the change.\n"
+    )
 
     def _create_completion_prompt(self, task: NatLangToCodeChangeTask) -> str:
         """
@@ -146,24 +149,29 @@ class NatLangToStmtBlanks(BaseNatLangToCodeChange):
     A change generation strategy where the model is instructed to fill in the statement level blanks in the new code.
     This spares the model from having to recreate or repeat the rest of the code verbatim.
     """
+
     temperature: float = 0.0
-    engine: str = 'code-davinci-001'
+    engine: str = "code-davinci-001"
     max_tokens: int = 512
 
     all_at_once: bool = True
     stop_token: str = "END"
     default_blank_word: str = "BLANK_STATEMENT"
-    default_task_description: str = (
-        f"Replace the blanks with Python code given the description of the change and the original code.\n"
-    )
+    default_task_description: str = f"Replace the blanks with Python code given the description of the change and the original code.\n"
 
     @classmethod
-    def create_blanks_and_answers(cls, old_code: str, new_code: str, blank_word: str) -> Tuple[str, List[str]]:
+    def create_blanks_and_answers(
+        cls, old_code: str, new_code: str, blank_word: str
+    ) -> Tuple[str, List[str]]:
         old_lines = old_code.split("\n")
         new_lines = new_code.split("\n")
 
         n = max(len(old_lines), len(new_lines))
-        groups = list(difflib.SequenceMatcher(isjunk=None, a=old_lines, b=new_lines).get_grouped_opcodes(n=n))
+        groups = list(
+            difflib.SequenceMatcher(
+                isjunk=None, a=old_lines, b=new_lines
+            ).get_grouped_opcodes(n=n)
+        )
         assert len(groups) == 1
 
         new_lines_with_blanks: List[str] = []
@@ -171,16 +179,16 @@ class NatLangToStmtBlanks(BaseNatLangToCodeChange):
         #  See difflib.py to learn the inner workings of SequenceMatcher
         ctr = 1
         for tag, i1, i2, j1, j2 in groups[0]:
-            if tag == 'equal':
-                new_lines_with_blanks.extend(old_lines[i1: i2])
+            if tag == "equal":
+                new_lines_with_blanks.extend(old_lines[i1:i2])
                 continue
 
-            if tag in {'replace', 'delete'}:
+            if tag in {"replace", "delete"}:
                 #  These are not part of the new code, so skip.
                 pass
 
-            if tag in {'replace', 'insert'}:
-                for line in new_lines[j1: j2]:
+            if tag in {"replace", "insert"}:
+                for line in new_lines[j1:j2]:
                     #  Get the leading whitespace and preserve it
                     leading = "".join(itertools.takewhile(str.isspace, line))
                     new_lines_with_blanks.append(f"{leading}{blank_word}-{ctr}")
@@ -189,8 +197,12 @@ class NatLangToStmtBlanks(BaseNatLangToCodeChange):
 
         return "\n".join(new_lines_with_blanks), answers
 
-    def _create_completion_prompt(self, task: NatLangToCodeChangeTask, blank_word: str,
-                                  generated_blanks: Optional[List[str]] = None) -> str:
+    def _create_completion_prompt(
+        self,
+        task: NatLangToCodeChangeTask,
+        blank_word: str,
+        generated_blanks: Optional[List[str]] = None,
+    ) -> str:
         """
         Helper method to create the prompt. Strings the few-shot examples together, and adds the target description to
         the beginning of the prompt.
@@ -222,7 +234,9 @@ class NatLangToStmtBlanks(BaseNatLangToCodeChange):
                 ex_nl_str = ex.nl
 
             prompt_strs.append(f"Change Description:\n{ex_nl_str}\n")
-            ex_blanked_code, ex_answers = self.create_blanks_and_answers(ex.old_code, ex.new_code, blank_word)
+            ex_blanked_code, ex_answers = self.create_blanks_and_answers(
+                ex.old_code, ex.new_code, blank_word
+            )
             prompt_strs.append(f"Blanked Code:\n{ex_blanked_code}\n")
             #  Put in the answers one-by-one
             prompt_strs.append(f"Answers:")
@@ -236,7 +250,9 @@ class NatLangToStmtBlanks(BaseNatLangToCodeChange):
             else:
                 #  We use the stop-token to signal the end of each blank.
                 for ans_idx, ans in enumerate(ex_answers, 1):
-                    prompt_strs.append(f"{self.default_blank_word}-{ans_idx}: {ans} {self.stop_token}")
+                    prompt_strs.append(
+                        f"{self.default_blank_word}-{ans_idx}: {ans} {self.stop_token}"
+                    )
 
             prompt_strs.append("\n----")
 
@@ -257,18 +273,26 @@ class NatLangToStmtBlanks(BaseNatLangToCodeChange):
         num_blanks = task.target_blanked.count(self.default_blank_word)
         if (not self.all_at_once) and len(generated_blanks) < num_blanks:
             for idx, ans in enumerate(generated_blanks, 1):
-                prompt_strs.append(f"{self.default_blank_word}-{idx}: {ans} {self.stop_token}")
+                prompt_strs.append(
+                    f"{self.default_blank_word}-{idx}: {ans} {self.stop_token}"
+                )
 
-            prompt_strs.append(f"{self.default_blank_word}-{len(generated_blanks) + 1}:")
+            prompt_strs.append(
+                f"{self.default_blank_word}-{len(generated_blanks) + 1}:"
+            )
 
         return "\n".join(prompt_strs)
 
-    def get_changed_code(self, task: NatLangToCodeChangeTask, blank_word: Optional[str] = None) -> str:
+    def get_changed_code(
+        self, task: NatLangToCodeChangeTask, blank_word: Optional[str] = None
+    ) -> str:
         if blank_word is None:
             blank_word = self.default_blank_word
 
         if task.target_blanked is None:
-            raise ValueError(f"{self.__class__.__name__} requires `target_blank` to be supplied in the task.")
+            raise ValueError(
+                f"{self.__class__.__name__} requires `target_blank` to be supplied in the task."
+            )
 
         num_blanks = task.target_blanked.count(blank_word)
 
@@ -290,7 +314,7 @@ class NatLangToStmtBlanks(BaseNatLangToCodeChange):
             text = resp.completions[0].text
 
             generated_blanks: List[str] = []
-            for line in text.split('\n'):
+            for line in text.split("\n"):
                 line = line.strip()
                 if line == "":
                     continue
@@ -298,18 +322,22 @@ class NatLangToStmtBlanks(BaseNatLangToCodeChange):
                 if ":" not in line:
                     continue
 
-                code = ":".join(line.split(':')[1:])
+                code = ":".join(line.split(":")[1:])
                 generated_blanks.append(code)
 
             if len(generated_blanks) != num_blanks:
-                raise ModelFailedError(f"Model did not fill in all the blanks successfully")
+                raise ModelFailedError(
+                    f"Model did not fill in all the blanks successfully"
+                )
 
         else:
             generated_blanks: List[str] = []
             for _ in range(num_blanks):
                 #  We ask for blanks one by one. This ensures that the model fills all the blanks, unlike the
                 #  all-at-once case. This does increase the number of calls to the model.
-                completion_prompt = self._create_completion_prompt(task, blank_word, generated_blanks=generated_blanks)
+                completion_prompt = self._create_completion_prompt(
+                    task, blank_word, generated_blanks=generated_blanks
+                )
 
                 resp = langmodels.openai_completion(
                     engine=self.engine,
@@ -317,7 +345,9 @@ class NatLangToStmtBlanks(BaseNatLangToCodeChange):
                     temperature=self.temperature,
                     num_completions=1,
                     max_tokens=self.max_tokens,
-                    stop=[self.stop_token],  # Use new-line as the stop-token for single-line descriptions.
+                    stop=[
+                        self.stop_token
+                    ],  # Use new-line as the stop-token for single-line descriptions.
                     retry_wait_duration=60,
                     max_retries=5,
                     retrieve_top_tokens=False,

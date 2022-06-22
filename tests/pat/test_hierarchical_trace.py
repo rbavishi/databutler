@@ -8,19 +8,34 @@ import pandas as pd
 
 from databutler.pat import astlib
 from databutler.pat.analysis.clock import LogicalClock
-from databutler.pat.analysis.hierarchical_trace.builder import get_hierarchical_trace_instrumentation
-from databutler.pat.analysis.hierarchical_trace.core import DefEvent, AccessEvent, ObjWriteEvent
-from databutler.pat.analysis.instrumentation import Instrumenter, ExprWrappersGenerator, ExprWrapper, Instrumentation
+from databutler.pat.analysis.hierarchical_trace.builder import (
+    get_hierarchical_trace_instrumentation,
+)
+from databutler.pat.analysis.hierarchical_trace.core import (
+    DefEvent,
+    AccessEvent,
+    ObjWriteEvent,
+)
+from databutler.pat.analysis.instrumentation import (
+    Instrumenter,
+    ExprWrappersGenerator,
+    ExprWrapper,
+    Instrumentation,
+)
 
 
 @attr.s(cmp=False, repr=False)
 class DfRecorder(ExprWrappersGenerator):
     _dfs = attr.ib(init=False, factory=list)
 
-    def gen_expr_wrappers(self, ast_root: astlib.AstNode) -> Dict[astlib.BaseExpression, List[ExprWrapper]]:
+    def gen_expr_wrappers(
+        self, ast_root: astlib.AstNode
+    ) -> Dict[astlib.BaseExpression, List[ExprWrapper]]:
         wrappers = {}
         for expr in self.iter_valid_exprs(ast_root):
-            wrappers[expr] = [ExprWrapper(callable=self.record_df, name=self.gen_wrapper_id())]
+            wrappers[expr] = [
+                ExprWrapper(callable=self.record_df, name=self.gen_wrapper_id())
+            ]
         return wrappers
 
     def record_df(self, value):
@@ -63,13 +78,15 @@ class HierarchicalTraceTests(unittest.TestCase):
         events = trace.get_events()
         def_events = [d for d in events if isinstance(d, DefEvent)]
         access_events = [a for a in events if isinstance(a, AccessEvent)]
-        for param in ['x', 'y', 'z', 'args', 'a', 'b', 'c', 'default', 'kwargs']:
+        for param in ["x", "y", "z", "args", "a", "b", "c", "default", "kwargs"]:
             valid_defs = [d for d in def_events if d.name == param]
             self.assertEqual(1, len(valid_defs), param)
             self.assertIsNotNone(valid_defs[0].owner, param)
 
-        self.assertTrue(any(d.name == 'func' for d in def_events))
-        self.assertTrue(any(a.name == 'func' and a.def_event is not None for a in access_events))
+        self.assertTrue(any(d.name == "func" for d in def_events))
+        self.assertTrue(
+            any(a.name == "func" and a.def_event is not None for a in access_events)
+        )
 
     def test_2(self):
         code = """
@@ -85,9 +102,9 @@ class HierarchicalTraceTests(unittest.TestCase):
 
         events = self.get_trace(code).get_events()
         def_events = [d for d in events if isinstance(d, DefEvent)]
-        self.assertEqual(3, len([d for d in def_events if d.name == 'x']))
+        self.assertEqual(3, len([d for d in def_events if d.name == "x"]))
         for d in def_events:
-            if d.name == 'x':
+            if d.name == "x":
                 self.assertIsNone(d.owner)
 
     def test_3(self):
@@ -118,8 +135,8 @@ class HierarchicalTraceTests(unittest.TestCase):
         for d in def_events:
             ctr_dict[d.name] += 1
 
-        self.assertEqual(3, ctr_dict['c1'])
-        self.assertEqual(3, ctr_dict['c2'])
+        self.assertEqual(3, ctr_dict["c1"])
+        self.assertEqual(3, ctr_dict["c2"])
 
     def test_4(self):
         code = """
@@ -163,7 +180,9 @@ class HierarchicalTraceTests(unittest.TestCase):
         clock = LogicalClock()
         df_recorder = DfRecorder()
         trace_instrumentation = get_hierarchical_trace_instrumentation(clock=clock)
-        instrumentation = trace_instrumentation | Instrumentation.from_generators(df_recorder)
+        instrumentation = trace_instrumentation | Instrumentation.from_generators(
+            df_recorder
+        )
 
         instrumenter = Instrumenter(instrumentation)
         new_ast, globs = instrumenter.process(code_ast)

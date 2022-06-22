@@ -3,7 +3,10 @@ import inspect
 from typing import Any, List, Callable, Tuple
 
 from databutler.pat.analysis.clock import LogicalClock
-from databutler.pat.analysis.hierarchical_trace.builder_utils import TraceItemsCollector, TraceEventsCollector
+from databutler.pat.analysis.hierarchical_trace.builder_utils import (
+    TraceItemsCollector,
+    TraceEventsCollector,
+)
 from databutler.pat.analysis.hierarchical_trace import specs
 from databutler.pat.analysis.hierarchical_trace.specs import SPECS
 
@@ -88,7 +91,7 @@ def check_spec(func, ret_val, args, kwargs) -> List[Tuple[Any, str]]:
         #  Okay looks like this might be an issue with Python 3.6 and below for builtin methods.
         #  For now mark everything as written.
         #  TODO : Improve precision
-        return [*((i, 'write') for i in args), *((v, 'write') for v in kwargs.values())]
+        return [*((i, "write") for i in args), *((v, "write") for v in kwargs.values())]
 
     specs = SPECS[func]
     reads_and_writes = []
@@ -98,9 +101,11 @@ def check_spec(func, ret_val, args, kwargs) -> List[Tuple[Any, str]]:
     return reads_and_writes
 
 
-def setup(clock: LogicalClock,
-          trace_events_collector: TraceEventsCollector,
-          trace_items_collector: TraceItemsCollector):
+def setup(
+    clock: LogicalClock,
+    trace_events_collector: TraceEventsCollector,
+    trace_items_collector: TraceItemsCollector,
+):
     specs._CLOCK = clock
     specs._TRACE_EVENTS_COLLECTOR = trace_events_collector
     specs._TRACE_ITEMS_COLLECTOR = trace_items_collector
