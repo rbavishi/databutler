@@ -139,6 +139,8 @@ def run_tasks_in_parallel_iter(
                 result = next(iterator)
 
             except StopIteration:
+                if pbar is not None:
+                    pbar.close()
                 break
 
             except TimeoutError as error:
