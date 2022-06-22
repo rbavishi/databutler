@@ -2,11 +2,14 @@ import ast
 import textwrap
 import unittest
 
+import pytest
+
 from databutler.pat import astlib
 from databutler.pat.analysis.type_analysis.inference import run_mypy
 
 
 class TypeInferenceTests(unittest.TestCase):
+    @pytest.mark.xfail(reason="This test is flaky due to mypy.")
     def test_simple_1(self):
         code = textwrap.dedent(
             """
@@ -46,6 +49,7 @@ class TypeInferenceTests(unittest.TestCase):
                 continue
             print(astlib.to_code(node), typ)
 
+    @pytest.mark.xfail(reason="This test is flaky due to mypy.")
     def test_simple_2(self):
         code = textwrap.dedent(
             """
@@ -59,6 +63,7 @@ class TypeInferenceTests(unittest.TestCase):
         for node, typ in inferred_types.items():
             print(astlib.to_code(node), typ)
 
+    @pytest.mark.xfail(reason="This test is flaky due to mypy.")
     def test_simple_3(self):
         code = textwrap.dedent(
             """

@@ -1,12 +1,15 @@
 import textwrap
 import unittest
 
+import pytest
+
 import databutler.mining.kaggle.static_analysis.pandas_mining_utils
 from databutler.mining.kaggle.static_analysis import pandas_mining as mining
 from databutler.pat import astlib
 
 
 class StaticPandasMiningTests(unittest.TestCase):
+    @pytest.mark.xfail(reason="This test is flaky due to mypy.")
     def test_find_library_usages_1(self):
         code = textwrap.dedent(
             """
@@ -32,6 +35,7 @@ class StaticPandasMiningTests(unittest.TestCase):
         print(result)
         self.assertEquals(5, len(result))
 
+    @pytest.mark.xfail(reason="This test is flaky due to mypy.")
     def test_find_constants_1(self):
         code = textwrap.dedent(
             """
@@ -58,6 +62,7 @@ class StaticPandasMiningTests(unittest.TestCase):
             {int, dict, set, list, tuple}, {type(i) for i in result.values()}
         )
 
+    @pytest.mark.xfail(reason="This test is flaky due to mypy.")
     def test_mine_code_1(self):
         code = textwrap.dedent(
             """
@@ -102,6 +107,7 @@ class StaticPandasMiningTests(unittest.TestCase):
         for res in mining.mine_code(code):
             print(res)
 
+    @pytest.mark.xfail(reason="This test is flaky due to mypy.")
     def test_mine_code_2(self):
         code = textwrap.dedent(
             """
