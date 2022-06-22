@@ -5,7 +5,7 @@ from databutler.utils import langmodels
 
 class CompletionWrapperTests(unittest.TestCase):
     def test_simple_1(self):
-        engine = "code-davinci-001"
+        engine = "code-davinci-002"
         prompt = "Q: Capital of France?\n" "A: Paris\n" "Q: Capital of Belgium?\n" "A:"
 
         resp1 = langmodels.openai_completion(
@@ -29,7 +29,7 @@ class CompletionWrapperTests(unittest.TestCase):
         self.assertIsNotNone(resp2.completions[0].top_logprobs)
 
     def test_simple_2(self):
-        engine = "code-davinci-001"
+        engine = "code-davinci-002"
         prompt = (
             "Q: Capital of France?\n" "A: Paris\n" "Q: Capital of Belgium?\n" "A: Bru"
         )
@@ -56,7 +56,7 @@ class CompletionWrapperTests(unittest.TestCase):
         self.assertEqual(1, len(resp2.completions[0].top_logprobs))
 
     def test_retrieve_top_tokens_hard_1(self):
-        engine = "code-davinci-001"
+        engine = "code-davinci-002"
         prompt = (
             "Q: Capital of France?\n"
             "A: Paris is the capital\n"

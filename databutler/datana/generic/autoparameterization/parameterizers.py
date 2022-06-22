@@ -19,7 +19,7 @@ class ParameterizationTask:
 @attrs.define(eq=False, repr=False)
 class SimpleParameterizer:
     temperature: float = 0.0
-    engine: str = "code-davinci-001"
+    engine: str = "code-davinci-002"
     #  How many maximum additional tokens should be utilized by the parameterized nl and code combined?
     tokens_surplus: int = 96
 

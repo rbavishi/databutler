@@ -57,7 +57,7 @@ class FullCodeChangeToNatLang(BaseCodeChangeToNatLang):
     """
 
     temperature: float = 0.0
-    engine: str = "code-davinci-001"
+    engine: str = "code-davinci-002"
     max_tokens: int = 256
 
     default_task_desc: str = "Describe the difference between the old Python code and new Python code snippets below."
@@ -224,7 +224,7 @@ class DiffToNatLang(FullCodeChangeToNatLang):
     """
 
     temperature: float = 0.0
-    engine: str = "code-davinci-001"
+    engine: str = "code-davinci-002"
     max_tokens: int = 256
 
     default_task_desc: str = (

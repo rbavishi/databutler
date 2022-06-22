@@ -84,7 +84,7 @@ class BaseCodeToNatLang(ABC):
 @attrs.define(eq=False)
 class SimpleCodeToNatLang(BaseCodeToNatLang):
     temperature: float = 0.0
-    engine: str = "code-davinci-001"
+    engine: str = "code-davinci-002"
     max_tokens: int = 256
 
     min_latency: Optional[int] = None
