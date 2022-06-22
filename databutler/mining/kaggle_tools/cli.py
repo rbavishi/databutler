@@ -300,7 +300,9 @@ def run_notebook(
         )
 
     if executor_name == "simple_executor":
-        from databutler.mining.kaggle_tools.execution.simple_executor import SimpleExecutor
+        from databutler.mining.kaggle_tools.execution.simple_executor import (
+            SimpleExecutor,
+        )
 
         executor = SimpleExecutor
 

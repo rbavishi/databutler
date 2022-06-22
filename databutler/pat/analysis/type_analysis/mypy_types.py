@@ -5,6 +5,23 @@ from mypy import types
 from mypy.types import Type as MypyType
 
 
+def process_typ_str(typ_str: str) -> str:
+    mapping = {
+        "builtins.list": "List",
+        "builtins.dict": "Dict",
+        "builtins.set": "Set",
+        "builtins.tuple": "Tuple",
+        "builtins.str": "str",
+        "builtins.int": "int",
+        "builtins.float": "float",
+        "builtins.bool": "bool",
+    }
+    for k, v in mapping.items():
+        typ_str = typ_str.replace(k, v)
+
+    return typ_str
+
+
 @attrs.define
 class SerializedMypyType:
     type_json: Union[str, Dict[str, Any]]
@@ -145,12 +162,56 @@ class SerializedMypyType:
     def is_float_type(self) -> bool:
         return self.equals("builtins.float")
 
-    def to_string(self) -> str:
-        try:
-            return repr(self.as_mypy())
-        except:
+    def _to_string_type_json(self, type_json: Union[str, Dict]) -> str:
+        if isinstance(type_json, str):
+            return process_typ_str(type_json)
+        elif type_json[".class"] == "Instance":
+            if isinstance(type_json.get("args", None), list):
+                return (
+                    process_typ_str(type_json["type_ref"])
+                    + "["
+                    + ", ".join(
+                        [
+                            process_typ_str(self._to_string_type_json(i))
+                            for i in type_json["args"]
+                        ]
+                    )
+                    + "]"
+                )
+            else:
+                return process_typ_str(type_json["type_ref"])
+
+        elif type_json[".class"] == "LiteralType":
+            return process_typ_str(type_json["fallback"])
+
+        elif type_json[".class"] == "TupleType":
             return (
-                self.type_json
-                if isinstance(self.type_json, str)
-                else self.type_json[".class"]
+                "Tuple"
+                + "["
+                + ", ".join(
+                    [
+                        process_typ_str(self._to_string_type_json(i))
+                        for i in type_json["items"]
+                    ]
+                )
+                + "]"
             )
+
+        elif type_json[".class"] == "UnionType":
+            return (
+                "Union"
+                + "["
+                + ", ".join(
+                    [
+                        process_typ_str(self._to_string_type_json(i))
+                        for i in type_json["items"]
+                    ]
+                )
+                + "]"
+            )
+
+        else:
+            return repr(getattr(types, type_json[".class"]).deserialize(type_json))
+
+    def to_string(self) -> str:
+        return self._to_string_type_json(self.type_json)

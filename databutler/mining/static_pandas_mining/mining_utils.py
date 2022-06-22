@@ -38,9 +38,8 @@ class MinedResult:
     code: str
     template: str
     kind: str
-    nb_owner: str
-    nb_slug: str
     uid: str
+    reference: str
 
     expr_type: Optional[SerializedMypyType]
     type_map: Dict[str, SerializedMypyType]
@@ -48,6 +47,7 @@ class MinedResult:
     series_vars: List[str]
     template_vars: Dict[str, List[str]]
 
+    extra_context_vars: Dict[str, str] = attrs.field(factory=dict)
     lib_usages: Dict[str, str] = attrs.field(factory=dict)
 
     def to_json(self) -> JsonDict:
@@ -58,17 +58,24 @@ class MinedResult:
         pass
 
     def prettify(self) -> str:
+        try:
+            typ_string = self.expr_type.to_string()
+        except:
+            import traceback
+
+            print(traceback.format_exc())
+            typ_string = self.expr_type.type_json
+
         with contextlib.redirect_stdout(io.StringIO()) as f_out:
-            url = f"https://kaggle.com/{self.nb_owner}/{self.nb_slug}"
-            print(f"UID: {self.uid}\nKind: {self.kind}\nURL: {url}")
+            print(f"UID: {self.uid}\nKind: {self.kind}\nReference: {self.reference}")
             print("----------")
             print(f"Code:\n{self.code}")
             print("----------")
             print(f"Templatized:\n{self.template}")
             print("----------")
-            print(
-                f"Value Type: {'Any' if self.expr_type is None else self.expr_type.type_json}"
-            )
+            print(f"Extra Context Vars:\n{self.extra_context_vars}")
+            print("----------")
+            print(f"Value Type: {typ_string}")
             print("==========")
 
         return f_out.getvalue()
@@ -202,6 +209,39 @@ def find_constants(code_ast: astlib.AstNode) -> Dict[astlib.BaseExpression, Any]
     return result
 
 
+def find_single_use_expressions(
+    code_ast: astlib.AstNode,
+) -> Dict[astlib.BaseExpression, Any]:
+    """Finds single-use (one def and one use). Sound but not necessarily complete right now."""
+    #  TODO: Perform proper dataflow analysis (constant propagation)
+    result: Dict[astlib.BaseExpression, Any] = {}
+    defs, accesses = astlib.get_definitions_and_accesses(code_ast)
+
+    #  We will only focus on accesses whose defs are top-level statements to avoid
+    #  having to bother about loops etc.
+    top_level_stmts = set(astlib.iter_body_stmts(code_ast))
+    accesses = [
+        a
+        for a in accesses
+        if all(d.enclosing_node in top_level_stmts for d in a.definitions)
+    ]
+
+    for access in accesses:
+        if len(access.definitions) != 1:
+            continue
+
+        cur = access.definitions[0]
+        if len(cur.accesses) != 1:
+            continue
+
+        if not isinstance(cur.enclosing_node, (astlib.AnnAssign, astlib.Assign)):
+            continue
+
+        print("OKAY", astlib.to_code(cur.enclosing_node), astlib.to_code(access.node))
+
+    return result
+
+
 def replace_constants(
     target: astlib.AstNode,
     true_exprs: Collection[astlib.BaseExpression],
@@ -225,17 +265,19 @@ def replace_constants(
     return target, output_mapping
 
 
-def has_undefined_references(
+def extract_context(
     target: astlib.AstNode,
     free_vars: Collection[astlib.Name],
     inferred_types: Dict[astlib.BaseExpression, SerializedMypyType],
     lib_usages: Dict[astlib.Name, str],
-) -> bool:
-    """Checks if there are any undefined variables that are not library usages and not dfs/series"""
+) -> Optional[Dict]:
+    """Checks if there are any undefined variables that are not library usages and not dfs/series. If yes, they
+    become part of the context vars. If they do not have a type associated, then we discard the whole snippet."""
+    context_vars: Dict[str, Any] = {}
     for node in free_vars:
         if node not in lib_usages:
             if node not in inferred_types:
-                return True
+                return None
 
             typ = inferred_types[node]
             is_builtin_func = typ.is_callable_type() and node.value in _BUILTIN_FUNCS
@@ -245,9 +287,15 @@ def has_undefined_references(
                 or typ.is_bool_type()
                 or is_builtin_func
             ):
-                return True
+                if typ.is_any_type():
+                    return None
 
-    return False
+                if typ.is_callable_type():
+                    return None
+
+                context_vars[node.value] = typ.to_string()
+
+    return context_vars
 
 
 def normalize_df_series_vars(
@@ -418,7 +466,15 @@ def normalize_col_accesses(
 
     output_mapping: NodeReplMap = {}
     if len(repl_map) != 0:
-        target = astlib.with_deep_replacements(target, repl_map, output_mapping)
+        cur_code: str = astlib.to_code(target)
+        changed: bool = True
+        while changed:
+            changed = False
+            target = astlib.with_deep_replacements(target, repl_map, output_mapping)
+            new_code = astlib.to_code(target)
+            if cur_code != new_code:
+                changed = True
+                cur_code = new_code
 
     return target, output_mapping
 

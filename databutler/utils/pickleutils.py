@@ -385,14 +385,14 @@ class PickledMapReader(Mapping):
 
         return obj
 
-    def keys(self) -> Iterator[Hashable]:
+    def keys(self) -> Iterator[Any]:
         yield from self._keys_offset_map.keys()
 
     def values(self) -> Iterator[Any]:
         for _, value in self.items():
             yield value
 
-    def items(self) -> Iterator[Tuple[Hashable, Any]]:
+    def items(self) -> Iterator[Tuple[Any, Any]]:
         #  We sort to avoid the pointer bouncing around to improve page utilization.
         #  We also do NOT utilize the cache.
         for key, offset in sorted(self._keys_offset_map.items(), key=lambda x: x[1]):

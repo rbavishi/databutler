@@ -4,7 +4,7 @@ import unittest
 import pytest
 
 from databutler.mining.static_pandas_mining import mining_utils
-from databutler.mining.static_pandas_mining import mining
+from databutler.mining.static_pandas_mining.mining_core import generic_mine_code
 from databutler.pat import astlib
 
 
@@ -28,9 +28,7 @@ class StaticPandasMiningTests(unittest.TestCase):
         )
 
         code_ast = astlib.parse(code)
-        result = mining_utils.find_library_usages(
-            code_ast
-        )
+        result = mining_utils.find_library_usages(code_ast)
         print(result)
         self.assertEquals(5, len(result))
 
@@ -50,11 +48,7 @@ class StaticPandasMiningTests(unittest.TestCase):
         )
 
         code_ast = astlib.parse(code)
-        result = (
-            mining_utils.find_constants(
-                code_ast
-            )
-        )
+        result = mining_utils.find_constants(code_ast)
         self.assertEqual(6, len(result))
         self.assertSetEqual(
             {int, dict, set, list, tuple}, {type(i) for i in result.values()}
@@ -79,11 +73,7 @@ class StaticPandasMiningTests(unittest.TestCase):
         )
 
         code_ast = astlib.parse(code)
-        result = (
-            mining_utils.find_constants(
-                code_ast
-            )
-        )
+        result = mining_utils.find_constants(code_ast)
 
         print(result)
         self.assertEqual(0, len(result))
@@ -130,7 +120,7 @@ class StaticPandasMiningTests(unittest.TestCase):
         """
         )
 
-        for res in mining.mine_code(code):
+        for res in generic_mine_code(code, "", ""):
             print(res)
 
     @pytest.mark.xfail(reason="This test is flaky due to mypy.")
@@ -153,5 +143,29 @@ class StaticPandasMiningTests(unittest.TestCase):
         """
         )
 
-        for res in mining.mine_code(code):
+        for res in generic_mine_code(code, "", ""):
+            print(res)
+
+    @pytest.mark.xfail(reason="This test is flaky due to mypy.")
+    def test_mine_code_3(self):
+        code = textwrap.dedent(
+            """
+        import pandas as pd
+        import collections
+        import seaborn as sns
+        df = pd.read_csv("titanic.csv")
+        c = collections.Counter([1, 1, 2])
+        df2 = pd.DataFrame(c, orient="index")
+        mylist = [obj, obj, obj]
+        mylist.append(5)
+        for b in range(1, 10):
+            df3 = pd.DataFrame([[b, None], mylist])
+            
+        df.columns
+        df.heady(5)
+        sns.heatmap(df.corr())
+        """
+        )
+
+        for res in generic_mine_code(code, "", ""):
             print(res)

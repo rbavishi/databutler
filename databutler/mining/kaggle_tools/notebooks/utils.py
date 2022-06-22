@@ -1,7 +1,6 @@
 import json
 import os
 import re
-import traceback
 from contextlib import contextmanager
 from typing import Dict
 
@@ -10,7 +9,9 @@ import requests
 from databutler.utils import pickleutils, caching
 from databutler.mining.kaggle_tools import utils
 from databutler.mining.kaggle_tools.exceptions import NotebookFetchError
-from databutler.mining.kaggle_tools.notebooks.scraping import convert_kaggle_html_to_ipynb
+from databutler.mining.kaggle_tools.notebooks.scraping import (
+    convert_kaggle_html_to_ipynb,
+)
 
 
 @caching.caching_function

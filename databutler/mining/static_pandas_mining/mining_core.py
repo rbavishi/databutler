@@ -1,15 +1,16 @@
 import os
 import random
 import shutil
-from typing import Dict, Any, List, Set, Optional, Tuple
+from abc import ABC, abstractmethod
+from typing import Dict, Any, List, Set, Optional, Tuple, Iterator
 
+import attrs
 import click
 import fire
 import tqdm
 
+import numpy as np
 import pandas as pd
-from databutler.mining.kaggle_tools.notebooks import utils as nb_utils
-from databutler.mining.kaggle_tools.notebooks.notebook import KaggleNotebook
 from databutler.mining.static_pandas_mining.mining_utils import (
     find_library_usages,
     find_constants,
@@ -17,7 +18,7 @@ from databutler.mining.static_pandas_mining.mining_utils import (
     DF_TYPE,
     SERIES_TYPE,
     GROUPBY_TYPES,
-    has_undefined_references,
+    extract_context,
     normalize_df_series_vars,
     normalize_call_args,
     normalize_col_accesses,
@@ -26,6 +27,7 @@ from databutler.mining.static_pandas_mining.mining_utils import (
     MinedResult,
     get_created_mypy_cache_dir_paths,
     is_purely_df_or_series_like,
+    find_single_use_expressions,
 )
 from databutler.pat import astlib
 from databutler.pat.analysis.type_analysis.inference import run_mypy
@@ -34,6 +36,29 @@ from databutler.utils import pickleutils, code as codeutils, multiprocess
 
 JsonDict = Dict
 MINING_RESULTS_FILE = "pandas_mining_results.pkl"
+PROCESSED_KEYS_FILE = "pandas_mining_processed_keys.pkl"
+
+KNOWN_ATTRS: Set[str] = {
+    "loc",
+    "iloc",
+    "at",
+    "iat",
+    "str",
+    "dt",
+    "cat",
+    "plot",
+    "hist",
+    "box",
+    "kde",
+    "area",
+    "scatter",
+    "hexbin",
+}
+MAX_STRING_CONSTANTS = 15
+
+
+def get_num_string_constants(node: astlib.AstNode) -> int:
+    return sum(1 for n in astlib.walk(node) if isinstance(n, astlib.SimpleString))
 
 
 def prepare_mined_result(
@@ -43,8 +68,7 @@ def prepare_mined_result(
     lib_usages: Dict[astlib.Name, str],
     constants: Dict[astlib.BaseExpression, Any],
     kind: str,
-    nb_owner: str,
-    nb_slug: str,
+    reference: str,
 ) -> Optional[MinedResult]:
     # import time
     # s = time.time()
@@ -88,10 +112,14 @@ def prepare_mined_result(
     _fixup_metadata(repl_map, target)
     # print("CONST REPL", astlib.to_code(target))
 
-    #  Ignore if any undefined non-import, non-df, non-series variables
-    if has_undefined_references(target, free_vars, inferred_types, lib_usages):
-        # print("SKIPPING", astlib.to_code(target))
+    #  Ignore if any undefined non-import, non-df, non-series, any-type variables
+    context_vars = extract_context(target, free_vars, inferred_types, lib_usages)
+    if context_vars is None:
         return None
+
+    # if len(context_vars) != 0:
+    #     print("CONTEXT_VARS", context_vars)
+    #     print(astlib.to_code(target))
 
     target, repl_map = normalize_call_args(target, inferred_types)
     _fixup_metadata(repl_map, target)
@@ -109,6 +137,9 @@ def prepare_mined_result(
             true_exprs.append(expr)
     _fixup_metadata(repl_map, target)
 
+    if get_num_string_constants(target) > MAX_STRING_CONSTANTS:
+        return None
+
     #  Create templates for clustering
     template, template_vars_map = templatize(
         target, true_exprs, free_vars, inferred_types, lib_usages
@@ -119,8 +150,7 @@ def prepare_mined_result(
         code=codeutils.normalize_code_fast(astlib.to_code(target)),
         template=codeutils.normalize_code_fast(astlib.to_code(template)),
         kind=kind,
-        nb_owner=nb_owner,
-        nb_slug=nb_slug,
+        reference=reference,
         uid="",  # Will be set later
         expr_type=expr_type,
         type_map={
@@ -130,16 +160,17 @@ def prepare_mined_result(
         df_vars=df_vars,
         series_vars=series_vars,
         template_vars=template_vars_map,
+        extra_context_vars=context_vars,
         lib_usages={k.value: v for k, v in lib_usages.items()},
     )
     # print("-----", id(code_ast), time.time() - s)
     return res
 
 
-def mine_code(
+def generic_mine_code(
     code: str,
-    nb_owner: str = "owner",
-    nb_slug: str = "slug",
+    reference: str,
+    base_uid: str,
     mypy_cache_path: Optional[str] = None,
 ) -> List[MinedResult]:
     result: List[MinedResult] = []
@@ -184,6 +215,15 @@ def mine_code(
         if (not isinstance(node, astlib.Call)) or node in df_series_gpby_exprs:
             continue
 
+        #  Caller type if known, should be a callable
+        caller_type = inferred_types.get(node.func, None)
+        if (
+            caller_type is not None
+            and (not caller_type.is_any_type())
+            and (not caller_type.is_callable_type())
+        ):
+            continue
+
         #  We are looking for a function call whose caller involves a dataframe/series/groupby
         if any(
             n in df_series_gpby_exprs
@@ -205,8 +245,13 @@ def mine_code(
     call_exprs_with_df_series_gpby_args = set()
     for node in astlib.iter_true_exprs(code_ast, context=code_ast):
         if isinstance(node, astlib.Call) and node not in all_found_exprs:
-            #  We do not want print statements
-            if isinstance(node.func, astlib.Name) and node.func.value == "print":
+            #  Caller type if known, should be a callable
+            caller_type = inferred_types.get(node.func, None)
+            if (
+                caller_type is not None
+                and (not caller_type.is_any_type())
+                and (not caller_type.is_callable_type())
+            ):
                 continue
 
             #  Do not want expressions whose parents were found in the previous step
@@ -231,6 +276,32 @@ def mine_code(
             if any(child in all_found_exprs for child in astlib.iter_children(node)):
                 subscript_exprs_with_df_series_gpby_values.add(node)
 
+    #  Find attribute expressions that take dataframe / series / groupby values that were identified / ignored
+    #  in the previous steps
+    all_found_exprs.update(subscript_exprs_with_df_series_gpby_values)
+    attr_access_exprs: Set[astlib.Attribute] = set()
+    for node in astlib.iter_true_exprs(code_ast, context=code_ast):
+        if (
+            isinstance(node, astlib.Attribute)
+            and node not in all_found_exprs
+            and node.value in df_series_gpby_exprs
+        ):
+            #  Ignore these by default
+            if node.attr.value in KNOWN_ATTRS:
+                continue
+
+            #  Do not want expressions whose parents were found in the previous step
+            if any(n in all_found_exprs for n in astlib.iter_parents(node, code_ast)):
+                continue
+
+            #  Parent cannot be another attribute or a function call
+            parent = astlib.get_parent(node, code_ast)
+            if isinstance(parent, astlib.Attribute) or isinstance(parent, astlib.Call):
+                continue
+
+            if node.value in df_series_gpby_exprs:
+                attr_access_exprs.add(node)
+
     #  Eliminate accessor expressions.
     #  For example, do not count df['A'] > 10, when it is part of df[df['A'] > 10]
     for expr in df_exprs | series_exprs:
@@ -250,8 +321,7 @@ def mine_code(
                     lib_usages,
                     constants,
                     "DF_EXPR",
-                    nb_owner,
-                    nb_slug,
+                    reference,
                 )
             )
 
@@ -265,8 +335,7 @@ def mine_code(
                     lib_usages,
                     constants,
                     "SERIES_EXPR",
-                    nb_owner,
-                    nb_slug,
+                    reference,
                 )
             )
 
@@ -280,8 +349,7 @@ def mine_code(
                     lib_usages,
                     constants,
                     "API_USAGE",
-                    nb_owner,
-                    nb_slug,
+                    reference,
                 )
             )
 
@@ -294,8 +362,20 @@ def mine_code(
                 lib_usages,
                 constants,
                 "CALLED_W_PD_ARGS",
-                nb_owner,
-                nb_slug,
+                reference,
+            )
+        )
+
+    for expr in attr_access_exprs:
+        result.append(
+            prepare_mined_result(
+                expr,
+                code_ast,
+                inferred_types,
+                lib_usages,
+                constants,
+                "DF_SERIES_GROUPBY_ATTR_ACCESS",
+                reference,
             )
         )
 
@@ -308,12 +388,14 @@ def mine_code(
                 lib_usages,
                 constants,
                 "SUBSCRIPT_W_PD_ARGS",
-                nb_owner,
-                nb_slug,
+                reference,
             )
         )
 
     result = [res for res in result if res is not None]
+
+    #  Dedup by code
+    result = list({res.code: res for res in result}.values())
 
     #  Remove multiple entries of DF1[STR1] (column-access) as they are usually too many in number
     col_acc_template = "DF1[STR1]"
@@ -330,48 +412,22 @@ def mine_code(
 
     #  Assign UIDs
     for idx, res in enumerate(result, 1):
-        res.uid = f"{nb_owner}/{nb_slug}:{idx}"
+        res.uid = f"{base_uid}:{idx}"
 
-    # for res in result:
-    #     print(res.code)
-    #     print(res.template)
-    #     print("-----------")
-
-    # unique_templates = {res.template for res in result}
-
-    # print(f"Found {len(result)} results")
-    # print(f"Found {len(unique_templates)} unique templates")
     return result
 
 
-def _mine_notebook(
-    nb: KaggleNotebook, mypy_cache_path: Optional[str] = None
+@attrs.define(eq=False, repr=False)
+class MiningTask:
+    normalized_code: str
+    reference: str
+    base_uid: str
+
+
+def _run_mining_task_mp(
+    args: Tuple[MiningTask, multiprocess.mp.Queue]
 ) -> List[MinedResult]:
-    #  Convert notebook to script
-    normalized_code = codeutils.normalize_code_fast(astlib.to_code(nb.get_astlib_ast()))
-    mined_results = mine_code(
-        normalized_code, nb.owner, nb.slug, mypy_cache_path=mypy_cache_path
-    )
-    return mined_results
-
-
-def mine_notebook(owner: str, slug: str) -> List[MinedResult]:
-    return _mine_notebook(
-        KaggleNotebook.from_raw_data(
-            owner, slug, nb_utils.retrieve_notebook_data(owner, slug)
-        )
-    )
-
-
-#
-# def _mine_notebook_mp_helper(nb: KaggleNotebook) -> Tuple[List[MinedResult], str]:
-#     return _mine_notebook(nb, multiprocess_safe=True), get_mypy_cache_dir_path(os.getpid())
-
-
-def _mine_notebook_mp_helper(
-    args: Tuple[KaggleNotebook, multiprocess.mp.Queue]
-) -> List[MinedResult]:
-    nb, available_mypy_cache_paths = args
+    task, available_mypy_cache_paths = args
     try:
         cache_path = available_mypy_cache_paths.get(block=False)
         # print(f"\nReusing {cache_path}:{os.getpid()}\n", flush=True)
@@ -380,7 +436,12 @@ def _mine_notebook_mp_helper(
         # print(f"\nCreated New {cache_path}:{os.getpid()}\n", flush=True)
 
     try:
-        return _mine_notebook(nb, mypy_cache_path=cache_path)
+        return generic_mine_code(
+            task.normalized_code,
+            task.reference,
+            task.base_uid,
+            mypy_cache_path=cache_path,
+        )
     finally:
         #  This will likely not be executed if there is a timeout, so the cache path will be lost
         #  until the chunk is finished. That's a loss we will have to take.
@@ -388,46 +449,83 @@ def _mine_notebook_mp_helper(
         available_mypy_cache_paths.put(cache_path)
 
 
-def start_mining_campaign(
-    campaign_dir: str,
-    append: bool = False,
-    num_processes: int = 2,
-    chunk_size: int = 10000,
-    timeout_per_notebook: int = 100,
-    saving_frequency: int = 1000,
-    num_notebooks: Optional[int] = None,
-    start_idx: Optional[int] = None,
-) -> None:
-    os.makedirs(campaign_dir, exist_ok=True)
-    outfile_path = os.path.join(campaign_dir, MINING_RESULTS_FILE)
-    if os.path.exists(outfile_path) and not append:
-        if not click.confirm("Overwrite existing mining results?"):
-            print(f"Cancelling...")
-            return
+@attrs.define(eq=False, repr=False)
+class BaseMiningCampaign(ABC):
+    campaign_dir: str
+    random_seed: int = attrs.field(default=42)
 
-        os.unlink(outfile_path)
+    def reset_random_seed(self) -> None:
+        random.seed(self.random_seed)
+        np.random.seed(self.random_seed)
 
-    with nb_utils.get_local_nb_data_storage_reader() as reader, pickleutils.PickledMapWriter(
-        outfile_path, overwrite_existing=(not append)
-    ) as writer:
-        #  Fetch all notebook (owner, slug) pairs
-        all_keys: List[Tuple[str, str]] = list(reader.keys())
-        print(f"Found {len(all_keys)} notebooks in total")
+    @abstractmethod
+    def nb_keys_iterator(self) -> Iterator[str]:
+        pass
+
+    @abstractmethod
+    def get_tasks_for_keys(self, keys: List[str]) -> List[MiningTask]:
+        pass
+
+    @staticmethod
+    def construct_mining_results_path(campaign_dir: str) -> str:
+        return os.path.join(campaign_dir, MINING_RESULTS_FILE)
+
+    @property
+    def mining_results_path(self) -> str:
+        return self.construct_mining_results_path(self.campaign_dir)
+
+    @property
+    def processed_keys_path(self) -> str:
+        return os.path.join(self.campaign_dir, PROCESSED_KEYS_FILE)
+
+    def get_already_processed_keys(self) -> Set[str]:
+        if not os.path.exists(self.processed_keys_path):
+            return set()
+        with pickleutils.PickledMapReader(self.processed_keys_path) as reader:
+            return set(reader.keys())
+
+    def run(
+        self,
+        append: bool = False,
+        num_processes: int = 2,
+        chunk_size: int = 10000,
+        timeout_per_notebook: int = 100,
+        saving_frequency: int = 1000,
+        num_notebooks: Optional[int] = None,
+        start_idx: Optional[int] = None,
+    ) -> None:
+        campaign_dir: str = self.campaign_dir
+        os.makedirs(campaign_dir, exist_ok=True)
+        if os.path.exists(self.mining_results_path) and not append:
+            if not click.confirm(
+                "Overwrite existing mining results and restart from scratch?"
+            ):
+                print(
+                    f"Cancelling... Use --append if you want to add to existing results."
+                )
+                return
+
+            os.unlink(self.mining_results_path)
+            if os.path.exists(self.processed_keys_path):
+                os.unlink(self.processed_keys_path)
+
+        self.reset_random_seed()
+        all_nb_keys: List[str] = list(self.nb_keys_iterator())
+        print(f"Found {len(all_nb_keys)} notebooks in total")
+        already_processed_keys: Set[str] = self.get_already_processed_keys()
+        print(f"Found {len(already_processed_keys)} already processed notebooks")
+        keys_to_process: List[str] = [
+            key for key in all_nb_keys if key not in already_processed_keys
+        ]
+
+        random.shuffle(keys_to_process)
         if num_notebooks is not None or start_idx is not None:
-            num_notebooks = num_notebooks or len(all_keys)
+            num_notebooks = num_notebooks or len(keys_to_process)
             start_idx = start_idx or 0
-            all_keys = all_keys[start_idx : start_idx + num_notebooks]
-            print(f"Only considering {len(all_keys)} notebooks")
-
-        if append and os.path.exists(outfile_path):
-            finished_keys = {
-                tuple(key.split(":")[0].split("/")) for key in writer.keys()
-            }
-            print(f"Already mined {len(finished_keys)} notebooks")
-            all_keys = [key for key in all_keys if key not in finished_keys]
-            print(f"Only considering {len(all_keys)} notebooks")
-
-        random.shuffle(all_keys)
+            keys_to_process = keys_to_process[start_idx : start_idx + num_notebooks]
+            print(f"Only considering {len(keys_to_process)} notebooks")
+        else:
+            print(f"Considering {len(keys_to_process)} notebooks")
 
         num_snippets_found = 0
         succ = exceptions = timeouts = other = 0
@@ -446,143 +544,145 @@ def start_mining_campaign(
             else:
                 print(f"WARNING: Did not find mypy cache path {path}")
 
-        try:
-            for idx in tqdm.tqdm(range(0, len(all_keys), chunk_size)):
-                chunk = all_keys[idx : idx + chunk_size]
-                tasks = [
-                    (
-                        KaggleNotebook.from_raw_data(owner, slug, reader[owner, slug]),
-                        available_mypy_cache_paths,
-                    )
-                    for owner, slug in chunk
-                ]
+        unique_code_so_far: Set[str] = set()
 
-                try:
-                    save_ctr = 0
-                    mp_iter = multiprocess.run_tasks_in_parallel_iter(
-                        _mine_notebook_mp_helper,
-                        tasks=tasks,
-                        use_progress_bar=True,
-                        num_workers=num_processes,
-                        timeout_per_task=timeout_per_notebook,
-                    )
-                    for (nb, _), result in zip(tasks, mp_iter):
-                        if (
-                            result.is_success()
-                            and isinstance(result.result, list)
-                            and len(result.result) > 0
-                        ):
-                            num_snippets_found += len(result.result)
-                            for snippet in result.result:
-                                writer[snippet.uid] = snippet
+        with pickleutils.PickledMapWriter(
+            self.mining_results_path, overwrite_existing=(not append)
+        ) as writer, pickleutils.PickledMapWriter(
+            self.processed_keys_path, overwrite_existing=(not append)
+        ) as processed_keys_writer, open(
+            os.path.join(campaign_dir, "mining_snippets_log.txt"), "w"
+        ) as log_file:
+            try:
+                for idx in tqdm.tqdm(range(0, len(keys_to_process), chunk_size)):
+                    chunk = keys_to_process[idx : idx + chunk_size]
+                    tasks: List[Tuple[MiningTask, multiprocess.mp.Queue]] = [
+                        (task, available_mypy_cache_paths)
+                        for task in self.get_tasks_for_keys(chunk)
+                    ]
 
-                        if result.is_success():
-                            succ += 1
-                        elif result.is_exception():
-                            print(f"Failed for https://kaggle.com/{nb.owner}/{nb.slug}")
-                            exceptions += 1
-                        elif result.is_timeout():
-                            print(
-                                f"Timed out for https://kaggle.com/{nb.owner}/{nb.slug}"
-                            )
-                            timeouts += 1
-                        else:
-                            other += 1
+                    try:
+                        save_ctr = 0
+                        mp_iter = multiprocess.run_tasks_in_parallel_iter(
+                            _run_mining_task_mp,
+                            tasks=tasks,
+                            use_progress_bar=True,
+                            num_workers=num_processes,
+                            timeout_per_task=timeout_per_notebook,
+                        )
+                        for key, (task, _), result in zip(chunk, tasks, mp_iter):
+                            if (
+                                result.is_success()
+                                and isinstance(result.result, list)
+                                and len(result.result) > 0
+                            ):
+                                num_snippets_found += len(result.result)
+                                for snippet in result.result:
+                                    writer[snippet.uid] = snippet
+                                    unique_code_so_far.add(snippet.code)
 
-                        #  Make sure we save intermediate results. Saving frequency shouldn't be too high so as to
-                        #  burden the file system.
-                        save_ctr += 1
-                        if save_ctr == saving_frequency:
-                            save_ctr = 0
-                            writer.flush()
+                            print(f"Processed {key}")
+                            if result.is_success():
+                                succ += 1
+                                processed_keys_writer[key] = True
+                            elif result.is_exception():
+                                print(f"Failed for {task.reference}")
+                                exceptions += 1
+                                processed_keys_writer[key] = False
+                            elif result.is_timeout():
+                                print(f"Timed out for {task.reference}")
+                                timeouts += 1
+                                processed_keys_writer[key] = False
+                            else:
+                                other += 1
+                                processed_keys_writer[key] = False
 
-                    print(
-                        f"\n-----\n"
-                        f"Snippets found so far: {num_snippets_found}\n"
-                        f"Success: {succ} Exceptions: {exceptions} Timeouts: {timeouts}"
-                        f"\n-----\n"
-                    )
+                            #  Make sure we save intermediate results. Saving frequency shouldn't be too high so as to
+                            #  burden the file system.
+                            save_ctr += 1
+                            if save_ctr == saving_frequency:
+                                save_ctr = 0
+                                writer.flush()
+                                processed_keys_writer.flush()
 
-                finally:
-                    writer.flush()
-                    print("Cleaning up...")
-                    #  Remove the non-og mypy cache paths
-                    while not available_mypy_cache_paths.empty():
-                        available_mypy_cache_paths.get()
-
-                    created_cache_dirs = set(get_created_mypy_cache_dir_paths())
-                    for path in created_cache_dirs - og_cache_dirs:
-                        _remove_mypy_cache_path(path)
-
-                    #  Requeue the og cache paths
-                    for cache_path in og_cache_dirs:
-                        available_mypy_cache_paths.put(cache_path)
-
-        finally:
-            #  Remove the og mypy cache paths
-            for path in get_created_mypy_cache_dir_paths():
-                _remove_mypy_cache_path(path)
-
-    print("----------------------")
-    print(f"Total Snippets Found: {num_snippets_found}")
-    print("----------------------")
-
-    # with pickleutils.PickledCollectionReader(outfile_path) as reader:
-    #     for res in reader:
-    #         print(res)
-
-
-def merge_mining_results(master_campaign_dir: str, *other_campaign_dirs: str):
-    master_results_path = os.path.join(master_campaign_dir, MINING_RESULTS_FILE)
-    other_results_paths: List[str] = [
-        os.path.join(other_campaign_dir, MINING_RESULTS_FILE)
-        for other_campaign_dir in other_campaign_dirs
-    ]
-
-    seen_templates: Set[str] = set()
-    seen_uids: Set[str] = set()
-    with pickleutils.PickledMapReader(master_results_path) as master_reader:
-        for value in tqdm.tqdm(
-            master_reader.values(),
-            total=len(master_reader),
-            desc="Reading master results",
-        ):
-            assert isinstance(value, MinedResult)
-            seen_templates.add(value.template)
-            seen_uids.add(value.uid)
-
-    for path in other_results_paths:
-        uids_to_add: Set[str] = set()
-        with pickleutils.PickledMapReader(path) as reader:
-            for value in tqdm.tqdm(
-                reader.values(), total=len(reader), desc=f"Reading results from {path}"
-            ):
-                assert isinstance(value, MinedResult)
-                if value.template not in seen_templates:
-                    uids_to_add.add(value.uid)
-
-            print(f"Adding {len(uids_to_add)} uids from {path}")
-
-            with pickleutils.PickledMapWriter(
-                master_results_path, overwrite_existing=False
-            ) as writer:
-                for uid in tqdm.tqdm(
-                    uids_to_add, total=len(uids_to_add), desc="Adding uids"
-                ):
-                    item = reader[uid]
-                    if uid in seen_uids:
-                        item.uid = (
-                            f"{uid}:duplicate_{os.path.basename(os.path.dirname(path))}"
+                        print(
+                            f"\n-----\n"
+                            f"Snippets found so far: {num_snippets_found}\n"
+                            f"Success: {succ} Exceptions: {exceptions} Timeouts: {timeouts}"
+                            f"\n-----\n"
                         )
 
-                    writer[item.uid] = item
+                    finally:
+                        writer.flush()
+                        print("Cleaning up...")
+                        #  Remove the non-og mypy cache paths
+                        while not available_mypy_cache_paths.empty():
+                            available_mypy_cache_paths.get()
 
+                        created_cache_dirs = set(get_created_mypy_cache_dir_paths())
+                        for path in created_cache_dirs - og_cache_dirs:
+                            _remove_mypy_cache_path(path)
 
-if __name__ == "__main__":
-    fire.Fire(
-        {
-            "mine_notebook": mine_notebook,
-            "start_mining_campaign": start_mining_campaign,
-            "merge_mining_results": merge_mining_results,
-        }
-    )
+                        #  Requeue the og cache paths
+                        for cache_path in og_cache_dirs:
+                            available_mypy_cache_paths.put(cache_path)
+
+                        for code in sorted(unique_code_so_far, key=len):
+                            print(code.strip(), file=log_file)
+
+                        log_file.flush()
+                        unique_code_so_far.clear()
+
+            finally:
+                #  Remove the og mypy cache paths
+                for path in get_created_mypy_cache_dir_paths():
+                    _remove_mypy_cache_path(path)
+
+        print("----------------------")
+        print(f"Total Snippets Found: {num_snippets_found}")
+        print("----------------------")
+
+    def merge_mining_results(self, master_campaign_dir: str, *other_campaign_dirs: str):
+        master_results_path = os.path.join(master_campaign_dir, MINING_RESULTS_FILE)
+        other_results_paths: List[str] = [
+            os.path.join(other_campaign_dir, MINING_RESULTS_FILE)
+            for other_campaign_dir in other_campaign_dirs
+        ]
+
+        seen_templates: Set[str] = set()
+        seen_uids: Set[str] = set()
+        with pickleutils.PickledMapReader(master_results_path) as master_reader:
+            for value in tqdm.tqdm(
+                master_reader.values(),
+                total=len(master_reader),
+                desc="Reading master results",
+            ):
+                assert isinstance(value, MinedResult)
+                seen_templates.add(value.template)
+                seen_uids.add(value.uid)
+
+        for path in other_results_paths:
+            uids_to_add: Set[str] = set()
+            with pickleutils.PickledMapReader(path) as reader:
+                for value in tqdm.tqdm(
+                    reader.values(),
+                    total=len(reader),
+                    desc=f"Reading results from {path}",
+                ):
+                    assert isinstance(value, MinedResult)
+                    if value.template not in seen_templates:
+                        uids_to_add.add(value.uid)
+
+                print(f"Adding {len(uids_to_add)} uids from {path}")
+
+                with pickleutils.PickledMapWriter(
+                    master_results_path, overwrite_existing=False
+                ) as writer:
+                    for uid in tqdm.tqdm(
+                        uids_to_add, total=len(uids_to_add), desc="Adding uids"
+                    ):
+                        item = reader[uid]
+                        if uid in seen_uids:
+                            item.uid = f"{uid}:duplicate_{os.path.basename(os.path.dirname(path))}"
+
+                        writer[item.uid] = item
