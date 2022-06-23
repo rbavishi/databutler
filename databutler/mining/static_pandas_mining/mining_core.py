@@ -2,7 +2,7 @@ import os
 import random
 import shutil
 from abc import ABC, abstractmethod
-from typing import Dict, Any, List, Set, Optional, Tuple, Iterator
+from typing import Dict, Any, List, Set, Optional, Tuple, Iterator, Union
 
 import attrs
 import click
@@ -419,7 +419,7 @@ def generic_mine_code(
 
 @attrs.define(eq=False, repr=False)
 class MiningTask:
-    normalized_code: str
+    nb_src: Union[Dict, str]
     reference: str
     base_uid: str
 
@@ -436,8 +436,16 @@ def _run_mining_task_mp(
         # print(f"\nCreated New {cache_path}:{os.getpid()}\n", flush=True)
 
     try:
+        if isinstance(task.nb_src, Dict) or task.nb_src.startswith("{"):
+            code_ast = astlib.parse(task.nb_src, extension=".ipynb")
+        else:
+            code_ast = astlib.parse(task.nb_src)
+
+        normalized_code = codeutils.normalize_code_fast(
+            astlib.to_code(code_ast)
+        )
         return generic_mine_code(
-            task.normalized_code,
+            normalized_code,
             task.reference,
             task.base_uid,
             mypy_cache_path=cache_path,
@@ -463,7 +471,7 @@ class BaseMiningCampaign(ABC):
         pass
 
     @abstractmethod
-    def get_tasks_for_keys(self, keys: List[str]) -> List[MiningTask]:
+    def get_tasks_for_keys(self, keys: List[str]) -> List[Optional[MiningTask]]:
         pass
 
     @staticmethod
@@ -556,10 +564,14 @@ class BaseMiningCampaign(ABC):
             try:
                 for idx in tqdm.tqdm(range(0, len(keys_to_process), chunk_size)):
                     chunk = keys_to_process[idx : idx + chunk_size]
-                    tasks: List[Tuple[MiningTask, multiprocess.mp.Queue]] = [
-                        (task, available_mypy_cache_paths)
-                        for task in self.get_tasks_for_keys(chunk)
-                    ]
+                    tasks: List[Tuple[MiningTask, multiprocess.mp.Queue]] = []
+
+                    for key, task in zip(chunk, self.get_tasks_for_keys(chunk)):
+                        if task is None:
+                            processed_keys_writer[key] = False
+                            continue
+
+                        tasks.append((task, available_mypy_cache_paths))
 
                     try:
                         save_ctr = 0
@@ -581,7 +593,6 @@ class BaseMiningCampaign(ABC):
                                     writer[snippet.uid] = snippet
                                     unique_code_so_far.add(snippet.code)
 
-                            print(f"Processed {key}")
                             if result.is_success():
                                 succ += 1
                                 processed_keys_writer[key] = True

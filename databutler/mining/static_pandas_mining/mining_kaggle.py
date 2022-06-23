@@ -46,12 +46,10 @@ class KaggleMiningCampaign(BaseMiningCampaign):
             for key in keys:
                 owner, slug = key
                 nb = KaggleNotebook.from_raw_data(owner, slug, raw_data=reader[key])
-                normalized_code = codeutils.normalize_code_fast(
-                    astlib.to_code(nb.get_astlib_ast())
-                )
+                nb_json = nb.source_code
                 reference = f"https://kaggle.com/{owner}/{slug}"
                 base_uid = f"{owner}/{slug}"
-                tasks.append(MiningTask(normalized_code, reference, base_uid))
+                tasks.append(MiningTask(nb_json, reference, base_uid))
 
         return tasks
 
