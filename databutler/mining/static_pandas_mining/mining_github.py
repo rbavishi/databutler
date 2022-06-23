@@ -21,7 +21,9 @@ class GithubMiningCampaign(BaseMiningCampaign):
         with get_nb_reader(self.campaign_dir) as reader:
             for key in keys:
                 nb_json = reader[key]
-                reference = f"https://github-notebooks-update1.s3-eu-west-1.amazonaws.com/{key}"
+                reference = (
+                    f"https://github-notebooks-update1.s3-eu-west-1.amazonaws.com/{key}"
+                )
                 base_uid = key
                 tasks.append(MiningTask(nb_json, reference, base_uid))
 

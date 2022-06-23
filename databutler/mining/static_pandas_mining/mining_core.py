@@ -441,9 +441,7 @@ def _run_mining_task_mp(
         else:
             code_ast = astlib.parse(task.nb_src)
 
-        normalized_code = codeutils.normalize_code_fast(
-            astlib.to_code(code_ast)
-        )
+        normalized_code = codeutils.normalize_code_fast(astlib.to_code(code_ast))
         return generic_mine_code(
             normalized_code,
             task.reference,

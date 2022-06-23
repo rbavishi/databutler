@@ -32,7 +32,8 @@ def get_nb(nb_key: str) -> Optional[Dict]:
         if "cells" not in nb_json:
             return None
         nb_json["cells"] = [
-            cell for cell in nb_json["cells"]
+            cell
+            for cell in nb_json["cells"]
             if "source" in cell and cell["cell_type"] == "code"
         ]
         for cell in nb_json["cells"]:
@@ -53,7 +54,12 @@ def get_nb_reader(campaign_dir: str) -> pickleutils.PickledMapReader:
         yield reader
 
 
-def download_notebooks(campaign_dir: str, save_frequency: int = 1000, num_processes: int = 2, num_notebooks: Optional[int] = None) -> None:
+def download_notebooks(
+    campaign_dir: str,
+    save_frequency: int = 1000,
+    num_processes: int = 2,
+    num_notebooks: Optional[int] = None,
+) -> None:
     os.makedirs(campaign_dir, exist_ok=True)
     nb_list_path = os.path.join(campaign_dir, "notebooks_list.json")
     if not os.path.exists(nb_list_path):
@@ -74,19 +80,35 @@ def download_notebooks(campaign_dir: str, save_frequency: int = 1000, num_proces
 
     save_path = os.path.join(campaign_dir, "downloaded_notebooks.pkl")
     skipped_path = os.path.join(campaign_dir, "skipped_notebooks.pkl")
-    with pickleutils.PickledMapWriter(save_path, overwrite_existing=False) as writer, pickleutils.PickledMapWriter(skipped_path, overwrite_existing=False) as skipped_writer:
-        print(f"Already downloaded {len(writer)}, and skipped {len(skipped_writer)} notebooks")
-        to_process: List[str] = cast(List[str], list(set(nb_list) - set(writer.keys()) - set(skipped_writer.keys())))
+    with pickleutils.PickledMapWriter(
+        save_path, overwrite_existing=False
+    ) as writer, pickleutils.PickledMapWriter(
+        skipped_path, overwrite_existing=False
+    ) as skipped_writer:
+        print(
+            f"Already downloaded {len(writer)}, and skipped {len(skipped_writer)} notebooks"
+        )
+        to_process: List[str] = cast(
+            List[str],
+            list(set(nb_list) - set(writer.keys()) - set(skipped_writer.keys())),
+        )
         print(f"Processing {len(to_process)} notebooks")
 
         random.shuffle(to_process)
 
         ctr = 0
         succ = skipped = failures = 0
-        with tqdm.tqdm(dynamic_ncols=True, desc="Downloading", total=len(to_process)) as pbar:
+        with tqdm.tqdm(
+            dynamic_ncols=True, desc="Downloading", total=len(to_process)
+        ) as pbar:
             for idx in range(0, len(to_process), 10000):
-                chunk = to_process[idx: idx + 10000]
-                for nb_key, res in zip(chunk, multiprocess.run_tasks_in_parallel_iter(get_nb, chunk, num_workers=num_processes)):
+                chunk = to_process[idx : idx + 10000]
+                for nb_key, res in zip(
+                    chunk,
+                    multiprocess.run_tasks_in_parallel_iter(
+                        get_nb, chunk, num_workers=num_processes
+                    ),
+                ):
                     if res.is_success():
                         if res.result is None:
                             skipped += 1
@@ -113,6 +135,8 @@ def download_notebooks(campaign_dir: str, save_frequency: int = 1000, num_proces
 
 
 if __name__ == "__main__":
-    fire.Fire({
-        "download_notebooks": download_notebooks,
-    })
+    fire.Fire(
+        {
+            "download_notebooks": download_notebooks,
+        }
+    )
