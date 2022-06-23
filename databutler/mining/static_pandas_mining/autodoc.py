@@ -608,7 +608,7 @@ def build_next_chunk(
     return chunk
 
 
-def run_autodoc_new(
+def run_autodoc(
     campaign_dir: str,
     few_shot_version: int = 1,
     batch_size: int = 10,
@@ -801,6 +801,6 @@ if __name__ == "__main__":
 
     fire.Fire(
         {
-            "run_autodoc": run_autodoc_new,
+            "run_autodoc": run_autodoc,
         }
     )
