@@ -238,6 +238,13 @@ def generic_mine_code(
         ):
             api_usage_exprs.add(node)
 
+    #  Only keep the parent, not the children
+    api_usage_exprs = {
+        node
+        for node in api_usage_exprs
+        if all(n not in api_usage_exprs for n in astlib.iter_parents(node, code_ast))
+    }
+
     all_found_exprs = df_series_gpby_exprs | api_usage_exprs
 
     #  3. Find function calls / subscript accesses that take dataframe / series / groupby arguments that were not
