@@ -164,6 +164,9 @@ class StaticPandasMiningTests(unittest.TestCase):
         df.columns
         df.heady(5)
         sns.heatmap(df.corr())
+        df.to_xml("titanic.xml")
+        df.kurt()
+        df.rolling(2, min_periods=1).sum()
         """
         )
 
