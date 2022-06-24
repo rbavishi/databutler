@@ -496,7 +496,7 @@ def templatize(
         const_val = None if not is_const else astlib.get_constant_value(node)
         if not (
             (isinstance(node, astlib.Name) and node in free_vars)
-            or (is_const and not isinstance(const_val, (set, dict, list, tuple)))
+            or is_const
         ):
             continue
 
@@ -527,6 +527,27 @@ def templatize(
                 key = "bool"
             elif typ.is_float_type():
                 key = "float"
+            elif is_const and isinstance(const_val, (set, dict, list, tuple)):
+                if len(const_val) == 0:
+                    continue
+
+                if isinstance(const_val, (set, list, tuple)):
+                    first_elem_class = type(next(iter(const_val)))
+                    if all(isinstance(elem, first_elem_class) for elem in const_val):
+                        key = first_elem_class.__name__
+                    else:
+                        key = ""
+
+                    if isinstance(const_val, set):
+                        key += "_set"
+                    elif isinstance(const_val, list):
+                        key += "_list"
+                    elif isinstance(const_val, tuple):
+                        key += "_tuple"
+
+                else:
+                    key = "dict"
+
             else:
                 while typ.is_union_type():
                     typ = typ.unpack_union_type()[0]
