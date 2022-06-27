@@ -487,9 +487,13 @@ class BaseMiningCampaign(ABC):
     def mining_results_path(self) -> str:
         return self.construct_mining_results_path(self.campaign_dir)
 
+    @staticmethod
+    def construct_processed_keys_path(campaign_dir: str) -> str:
+        return os.path.join(campaign_dir, PROCESSED_KEYS_FILE)
+
     @property
     def processed_keys_path(self) -> str:
-        return os.path.join(self.campaign_dir, PROCESSED_KEYS_FILE)
+        return self.construct_processed_keys_path(self.campaign_dir)
 
     def get_already_processed_keys(self) -> Set[str]:
         if not os.path.exists(self.processed_keys_path):
@@ -536,7 +540,9 @@ class BaseMiningCampaign(ABC):
         else:
             print(f"Considering {len(keys_to_process)} notebooks")
 
-        already_processed_keys: Set[str] = self.get_already_processed_keys().intersection(keys_to_process)
+        already_processed_keys: Set[
+            str
+        ] = self.get_already_processed_keys().intersection(keys_to_process)
         print(f"Found {len(already_processed_keys)} already processed notebooks")
         keys_to_process = [
             key for key in keys_to_process if key not in already_processed_keys
@@ -662,47 +668,35 @@ class BaseMiningCampaign(ABC):
         print(f"Total Snippets Found: {num_snippets_found}")
         print("----------------------")
 
-    def merge_mining_results(self, master_campaign_dir: str, *other_campaign_dirs: str):
-        master_results_path = os.path.join(master_campaign_dir, MINING_RESULTS_FILE)
-        other_results_paths: List[str] = [
-            os.path.join(other_campaign_dir, MINING_RESULTS_FILE)
-            for other_campaign_dir in other_campaign_dirs
-        ]
+    def merge_mining_results(self, *other_campaign_dirs: str):
+        """
+        Merge the mining results from the other campaigns into this one.
+        """
+        for other_campaign_dir in other_campaign_dirs:
+            other_results_path = self.construct_mining_results_path(other_campaign_dir)
+            other_processed_keys_path = self.construct_processed_keys_path(
+                other_campaign_dir
+            )
 
-        seen_templates: Set[str] = set()
-        seen_uids: Set[str] = set()
-        with pickleutils.PickledMapReader(master_results_path) as master_reader:
-            for value in tqdm.tqdm(
-                master_reader.values(),
-                total=len(master_reader),
-                desc="Reading master results",
-            ):
-                assert isinstance(value, MinedResult)
-                seen_templates.add(value.template)
-                seen_uids.add(value.uid)
-
-        for path in other_results_paths:
-            uids_to_add: Set[str] = set()
-            with pickleutils.PickledMapReader(path) as reader:
-                for value in tqdm.tqdm(
-                    reader.values(),
-                    total=len(reader),
-                    desc=f"Reading results from {path}",
+            with pickleutils.PickledMapWriter(
+                self.mining_results_path, overwrite_existing=False
+            ) as writer_results, pickleutils.PickledMapWriter(
+                self.processed_keys_path, overwrite_existing=False
+            ) as writer_processed_keys, pickleutils.PickledMapReader(
+                other_results_path
+            ) as reader_results, pickleutils.PickledMapReader(
+                other_processed_keys_path
+            ) as reader_processed_keys:
+                for key, value in tqdm.tqdm(
+                    reader_results.items(),
+                    dynamic_ncols=True,
+                    desc=f"Merging results from {other_campaign_dir}",
                 ):
-                    assert isinstance(value, MinedResult)
-                    if value.template not in seen_templates:
-                        uids_to_add.add(value.uid)
+                    writer_results[key] = value
 
-                print(f"Adding {len(uids_to_add)} uids from {path}")
-
-                with pickleutils.PickledMapWriter(
-                    master_results_path, overwrite_existing=False
-                ) as writer:
-                    for uid in tqdm.tqdm(
-                        uids_to_add, total=len(uids_to_add), desc="Adding uids"
-                    ):
-                        item = reader[uid]
-                        if uid in seen_uids:
-                            item.uid = f"{uid}:duplicate_{os.path.basename(os.path.dirname(path))}"
-
-                        writer[item.uid] = item
+                for key, value in tqdm.tqdm(
+                    reader_processed_keys.items(),
+                    dynamic_ncols=True,
+                    desc=f"Merging processed keys from {other_campaign_dir}",
+                ):
+                    writer_processed_keys[key] = value
