@@ -525,11 +525,7 @@ class BaseMiningCampaign(ABC):
         self.reset_random_seed()
         all_nb_keys: List[str] = list(self.nb_keys_iterator())
         print(f"Found {len(all_nb_keys)} notebooks in total")
-        already_processed_keys: Set[str] = self.get_already_processed_keys().intersection(all_nb_keys)
-        print(f"Found {len(already_processed_keys)} already processed notebooks")
-        keys_to_process: List[str] = [
-            key for key in all_nb_keys if key not in already_processed_keys
-        ]
+        keys_to_process: List[str] = all_nb_keys
 
         random.shuffle(keys_to_process)
         if num_notebooks is not None or start_idx is not None:
@@ -539,6 +535,14 @@ class BaseMiningCampaign(ABC):
             print(f"Only considering {len(keys_to_process)} notebooks")
         else:
             print(f"Considering {len(keys_to_process)} notebooks")
+
+        already_processed_keys: Set[str] = self.get_already_processed_keys().intersection(keys_to_process)
+        print(f"Found {len(already_processed_keys)} already processed notebooks")
+        keys_to_process = [
+            key for key in keys_to_process if key not in already_processed_keys
+        ]
+
+        print(f"Processing {len(keys_to_process)} notebooks")
 
         num_snippets_found = 0
         succ = exceptions = timeouts = other = 0
