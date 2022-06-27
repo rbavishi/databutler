@@ -494,10 +494,7 @@ def templatize(
     for node in true_exprs:
         is_const = astlib.is_constant(node)
         const_val = None if not is_const else astlib.get_constant_value(node)
-        if not (
-            (isinstance(node, astlib.Name) and node in free_vars)
-            or is_const
-        ):
+        if not ((isinstance(node, astlib.Name) and node in free_vars) or is_const):
             continue
 
         if node in lib_usages:
