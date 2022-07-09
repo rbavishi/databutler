@@ -574,12 +574,12 @@ class CanonicalDescriptionsGenerator:
             for desc in descs
         ]
 
-        #  Compute the max tokens as the max of the target code lengths + target nl lengths + 64
+        #  Compute the max tokens as the max of the target code lengths + target nl lengths + 128
         max_tokens = max(
             [
                 len(langmodels.tokenize(desc.target_code, self.engine)["token_ids"])
                 + len(desc.desc.primary_desc)
-                + 64
+                + 128
                 for desc in descs
             ]
         )
