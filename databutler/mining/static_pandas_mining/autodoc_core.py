@@ -42,20 +42,13 @@ class AutodocStatus:
     failed_uids: Set[str]
 
     @staticmethod
-    def from_campaign_dir(campaign_dir: str) -> "AutodocStatus":
-        mining_results_path = BaseMiningCampaign.construct_mining_results_path(
-            campaign_dir
-        )
+    def from_campaign_dir(campaign_dir: str, preprocessing: AutodocPreprocessing) -> "AutodocStatus":
         success_path = os.path.join(campaign_dir, AUTODOC_SUCCESS_PATH)
         failure_path = os.path.join(campaign_dir, AUTODOC_FAILURE_PATH)
 
-        all_uids: Set[str] = set()
+        all_uids: Set[str] = {item.key for item in preprocessing.items}
         successful_uids: Set[str] = set()
         failed_uids: Set[str] = set()
-
-        if os.path.exists(mining_results_path):
-            with pickleutils.PickledMapReader(mining_results_path) as reader:
-                all_uids.update(reader.keys())
 
         if os.path.exists(success_path):
             with pickleutils.PickledMapReader(success_path) as reader:
@@ -330,18 +323,18 @@ class AutodocCampaign:
         return transferred_results
 
     def run(self, batch_size: int) -> None:
-        status = AutodocStatus.from_campaign_dir(self.campaign_dir)
+        preprocessing = self.run_preprocessing()
+        print(
+            f"Preprocessing done, found {len(preprocessing.template_processing_order)} templates"
+        )
 
+        status = AutodocStatus.from_campaign_dir(self.campaign_dir, preprocessing)
         print(f"Found {len(status.all_uids)} UIDs to process")
         print(
             f"Already processed {len(status.processed_uids)} UIDs "
             f"({len(status.successful_uids)} successful, {len(status.failed_uids)} failed)"
         )
 
-        preprocessing = self.run_preprocessing()
-        print(
-            f"Preprocessing done, found {len(preprocessing.template_processing_order)} templates"
-        )
         chunk_builder = AutodocChunkBuilder(preprocessing=preprocessing, status=status)
         chunk_builder.init(batch_size=batch_size)
         logger.add(os.path.join(self.campaign_dir, "autodoc.log"), level="DEBUG")
