@@ -54,6 +54,9 @@ class AutodocPreprocessing:
                 )
             )
 
+        #  Deduplicate by code
+        preprocessed_items = list({item.code: item for item in preprocessed_items}.values())
+
         #  Fix the support of each item.
         for item in preprocessed_items:
             item.support = code_counter[item.code]

@@ -188,7 +188,7 @@ class AutodocCampaign:
             success_descs = []
             failed_descs = []
             for desc in descs:
-                (success_descs if desc.success else failed_descs).append(desc)
+                (success_descs if (desc.equivalent and desc.parameterized) else failed_descs).append(desc)
 
             autodoc_results.append(
                 AutodocResult(
@@ -291,7 +291,8 @@ class AutodocCampaign:
 
                         found.append(
                             CanonicalAutodocDescription(
-                                success=True,
+                                equivalent=True,
+                                parameterized=True,
                                 target_code=snippet_code,
                                 target_template=snippet.template,
                                 generated_code=snippet_code,
@@ -321,10 +322,10 @@ class AutodocCampaign:
 
                 pbar.set_postfix(succ=succ, fail=fail)
 
-        for res in transferred_results:
-            print(res.code)
-            for desc in res.canonical_descs:
-                print(desc.desc.primary_desc)
+        # for res in transferred_results:
+        #     print(res.code)
+        #     for desc in res.canonical_descs:
+        #         print(desc.desc.primary_desc)
 
         return transferred_results
 
@@ -343,6 +344,7 @@ class AutodocCampaign:
         )
         chunk_builder = AutodocChunkBuilder(preprocessing=preprocessing, status=status)
         chunk_builder.init(batch_size=batch_size)
+        logger.add(os.path.join(self.campaign_dir, "autodoc.log"), level="DEBUG")
 
         with pickleutils.PickledMapReader(
             self.mining_results_path
@@ -356,6 +358,7 @@ class AutodocCampaign:
             total=len(status.all_uids)
         ) as pbar:
             pbar.update(len(status.processed_uids))
+            pbar.refresh()
 
             while not chunk_builder.is_finished():
                 cur_processed = len(status.processed_uids)
@@ -363,11 +366,14 @@ class AutodocCampaign:
                 if len(chunk) == 0:
                     break
 
-                print(f"Processing chunk of size {len(chunk)}")
-
+                logger.info(f"Processing chunk of size {len(chunk)}")
                 chunk_snippets: List[MinedResult] = [
                     mining_results_reader[entry.key] for entry in chunk
                 ]
+
+                for snippet in chunk_snippets:
+                    logger.opt(raw=True).info(f"Processsing {snippet.uid}: {snippet.code}\n")
+
                 # chunk_snippets = [s for s in chunk_snippets if "Glucose" in s.code and "replace" in s.code]
                 # for s in chunk_snippets:
                 #     print(s.extra_context_vars, s.template)
@@ -391,7 +397,7 @@ class AutodocCampaign:
                         ]
 
                         if len(other_items) > 0:
-                            print(f"Attempting transfer for: {snippet.code}")
+                            logger.info(f"Attempting transfer for: {snippet.code}")
                             transferred_results = self.attempt_autodoc_transfer(
                                 autodoc_res, other_items, mining_results_reader
                             )
@@ -401,6 +407,8 @@ class AutodocCampaign:
                                 ] = transferred_result
                                 status.successful_uids.add(transferred_result.uid)
                                 status.processed_uids.add(transferred_result.uid)
+
+                            logger.info(f"Transferred {len(transferred_results)} results")
 
                     else:
                         writer_failed[snippet.uid] = autodoc_res
@@ -412,9 +420,11 @@ class AutodocCampaign:
                 pbar.set_postfix(
                     succ=len(status.successful_uids), fail=len(status.failed_uids)
                 )
+                pbar.refresh()
 
                 writer_success.flush()
                 writer_failed.flush()
+                break
 
 
 if __name__ == "__main__":

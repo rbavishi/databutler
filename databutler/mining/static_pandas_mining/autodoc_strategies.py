@@ -61,7 +61,9 @@ class AutodocDescription:
     target_template: str
     generated_code: str
     #  Was the generated code equivalent to the target code?
-    success: bool
+    equivalent: bool
+    #  Was the parameterization successul?
+    parameterized: bool
     #  How much assistance was provided for the second step of the bidirectional consistency check.
     #  0 = no assistance.
     assistance_level: int
@@ -499,9 +501,9 @@ class CanonicalDescriptionsGenerator:
                 flattened_snippets, flattened_candidates, normalized_codes, target_codes
             ):
                 if generated_code is None:
-                    success = False
+                    equivalent = False
                 else:
-                    success = generated_code == target_code
+                    equivalent = generated_code == target_code
 
                 logger.opt(colors=True, raw=True).debug("<e>Code Generation:</e>\n")
                 logger.opt(colors=True, raw=True).debug(
@@ -513,13 +515,13 @@ class CanonicalDescriptionsGenerator:
                 logger.opt(colors=True, raw=True).debug(
                     f"<e>Target: {target_code}\n</e>"
                 )
-                if success:
+                if equivalent:
                     logger.opt(colors=True, raw=True).debug(
-                        f"<e>Equivalent: <g>{success}</g></e>\n"
+                        f"<e>Equivalent: <g>{equivalent}</g></e>\n"
                     )
                 else:
                     logger.opt(colors=True, raw=True).debug(
-                        f"<e>Equivalent: <r>{success}</r></e>\n"
+                        f"<e>Equivalent: <r>{equivalent}</r></e>\n"
                     )
                 logger.opt(colors=True, raw=True).debug(
                     f"<e>Assistance Level: {assistance_level}</e>\n"
@@ -534,7 +536,9 @@ class CanonicalDescriptionsGenerator:
                         target_code=target_code,
                         target_template=snippet.template,
                         generated_code=generated_code,
-                        success=success,
+                        equivalent=equivalent,
+                        #  Will update this later
+                        parameterized=False,
                         assistance_level=assistance_level,
                         #  We will populate this later.
                         parameterized_nl=None,
@@ -633,9 +637,9 @@ class CanonicalDescriptionsGenerator:
             if is_valid:
                 desc.parameterized_nl = generated_param_nl
                 desc.parameterized_code = generated_param_code
-                desc.success = True
+                desc.parameterized = True
             else:
-                desc.success = False
+                desc.parameterized = False
 
     def process_nl_candidates(
         self,
@@ -684,7 +688,7 @@ class CanonicalDescriptionsGenerator:
             for snippet, candidate, result in zip(
                 todo_snippets, todo_candidates, results
             ):
-                if not result.success:
+                if not result.equivalent:
                     to_process.append((snippet, candidate, result))
                 else:
                     autodoc_results[snippet.uid].append(result)
@@ -717,13 +721,13 @@ class CanonicalDescriptionsGenerator:
                     f"Parameterized Code: {result.parameterized_code}\n"
                 )
 
-                if result.success:
+                if result.equivalent and result.parameterized:
                     logger.opt(colors=True, raw=True).debug(
-                        f"Equivalence and Parameterization: <g>{result.success}</g>\n"
+                        f"Equivalence and Parameterization: <g>{True}</g>\n"
                     )
                 else:
                     logger.opt(colors=True, raw=True).debug(
-                        f"Equivalence and Parameterization: <r>{result.success}</r>\n"
+                        f"Equivalence and Parameterization: <r>{False}</r>\n"
                     )
 
                 logger.opt(raw=True).debug(
