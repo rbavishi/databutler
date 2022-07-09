@@ -424,7 +424,6 @@ class AutodocCampaign:
 
                 writer_success.flush()
                 writer_failed.flush()
-                break
 
 
 if __name__ == "__main__":
