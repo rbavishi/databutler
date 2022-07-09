@@ -114,27 +114,40 @@ def normalize_keyword_argument_order(code: str):
         return codeutils.normalize_code_fast(code)
 
 
-def normalize_code_for_comparison(code: str, df_args: Set[str]):
+def normalize_code_for_comparison(
+    code: str, df_args: Set[str], replace_singleton_lists: bool = True
+):
     code = normalize_keyword_argument_order(code)
     code_ast = astlib.parse(code)
 
+    repl_map = {}
+
     #  Replace attribute-based column access to the best of our ability
     if len(df_args) == 0:
-        return code
+        for node in astlib.walk(code_ast):
+            if (
+                isinstance(node, astlib.Attribute)
+                and isinstance(node.value, astlib.Name)
+                and node.value.value in df_args
+            ):
+                if not hasattr(pd.DataFrame, node.attr.value):
+                    new_node = astlib.parse_expr(
+                        f'{node.value.value}["{node.attr.value}"]'
+                    )
+                    repl_map[node] = new_node
 
-    attr_repl = {}
-    for node in astlib.walk(code_ast):
-        if (
-            isinstance(node, astlib.Attribute)
-            and isinstance(node.value, astlib.Name)
-            and node.value.value in df_args
-        ):
-            if not hasattr(pd.DataFrame, node.attr.value):
-                new_node = astlib.parse_expr(f'{node.value.value}["{node.attr.value}"]')
-                attr_repl[node] = new_node
+    if replace_singleton_lists:
+        #  Replace singleton lists with the element. This is really useful for pandas where a column or a singleton
+        #  list containing a column often have the same meaning.
+        for node in astlib.walk(code_ast):
+            if isinstance(node, astlib.List):
+                if len(node.elements) == 1 and isinstance(
+                    node.elements[0], astlib.cst.Element
+                ):
+                    repl_map[node] = node.elements[0].value
 
-    if len(attr_repl) > 0:
-        code_ast = astlib.with_deep_replacements(code_ast, attr_repl)
+    if len(repl_map) > 0:
+        code_ast = astlib.with_deep_replacements(code_ast, repl_map)
 
     return codeutils.normalize_code_fast(astlib.to_code(code_ast))
 
