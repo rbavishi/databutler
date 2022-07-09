@@ -1,4 +1,3 @@
-import os
 import collections
 import os
 from typing import Iterator, Tuple, List, Set, Deque, Dict
@@ -12,6 +11,7 @@ from databutler.mining.static_pandas_mining.autodoc_preprocessing import (
     AutodocPreprocessing,
     PreprocessedItem,
 )
+from databutler.mining.static_pandas_mining.autodoc_result import AutodocResult
 from databutler.mining.static_pandas_mining.autodoc_strategies import (
     AutodocFewShotExample,
     CanonicalDescriptionsGenerator,
@@ -42,7 +42,9 @@ class AutodocStatus:
     failed_uids: Set[str]
 
     @staticmethod
-    def from_campaign_dir(campaign_dir: str, preprocessing: AutodocPreprocessing) -> "AutodocStatus":
+    def from_campaign_dir(
+        campaign_dir: str, preprocessing: AutodocPreprocessing
+    ) -> "AutodocStatus":
         success_path = os.path.join(campaign_dir, AUTODOC_SUCCESS_PATH)
         failure_path = os.path.join(campaign_dir, AUTODOC_FAILURE_PATH)
 
@@ -122,18 +124,6 @@ class AutodocChunkBuilder:
         return len(self.active_item_iters) == 0
 
 
-@attrs.define(eq=False, repr=False)
-class AutodocResult:
-    uid: str
-    code: str
-    template: str
-    success: bool
-    canonical_descs: List[CanonicalAutodocDescription]
-    additional_descs: List[AutodocDescription]
-    failed_descs: List[AutodocDescription]
-    is_derived: bool = False
-
-
 @attrs.define(eq=False, repr=False, slots=False)
 class AutodocCampaign:
     campaign_dir: str
@@ -181,7 +171,11 @@ class AutodocCampaign:
             success_descs = []
             failed_descs = []
             for desc in descs:
-                (success_descs if (desc.equivalent and desc.parameterized) else failed_descs).append(desc)
+                (
+                    success_descs
+                    if (desc.equivalent and desc.parameterized)
+                    else failed_descs
+                ).append(desc)
 
             autodoc_results.append(
                 AutodocResult(
@@ -365,7 +359,9 @@ class AutodocCampaign:
                 ]
 
                 for snippet in chunk_snippets:
-                    logger.opt(raw=True).info(f"Processsing {snippet.uid}: {snippet.code}\n")
+                    logger.opt(raw=True).info(
+                        f"Processsing {snippet.uid}: {snippet.code}\n"
+                    )
 
                 # chunk_snippets = [s for s in chunk_snippets if "Glucose" in s.code and "replace" in s.code]
                 # for s in chunk_snippets:
@@ -401,7 +397,9 @@ class AutodocCampaign:
                                 status.successful_uids.add(transferred_result.uid)
                                 status.processed_uids.add(transferred_result.uid)
 
-                            logger.info(f"Transferred {len(transferred_results)} results")
+                            logger.info(
+                                f"Transferred {len(transferred_results)} results"
+                            )
 
                     else:
                         writer_failed[snippet.uid] = autodoc_res
