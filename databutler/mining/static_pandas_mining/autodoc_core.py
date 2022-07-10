@@ -11,13 +11,11 @@ from databutler.mining.static_pandas_mining.autodoc_preprocessing import (
     AutodocPreprocessing,
     PreprocessedItem,
 )
-from databutler.mining.static_pandas_mining.autodoc_result import AutodocResult
+from databutler.mining.static_pandas_mining.autodoc_result import AutodocResult, NLDescription, AutodocDescription, \
+    CanonicalAutodocDescription
 from databutler.mining.static_pandas_mining.autodoc_strategies import (
     AutodocFewShotExample,
-    CanonicalDescriptionsGenerator,
-    NLDescription,
-    AutodocDescription,
-    CanonicalAutodocDescription,
+    DescriptionsGenerator,
     normalize_code_results,
 )
 from databutler.mining.static_pandas_mining.autodoc_utils import find_instantiation_map
@@ -160,40 +158,39 @@ class AutodocCampaign:
 
     def process_snippets(self, snippets: List[MinedResult]) -> List[AutodocResult]:
         #  First try to generate canonical descriptions
-        canonical_gen = CanonicalDescriptionsGenerator()
-        descs_list: List[List[AutodocDescription]] = canonical_gen.generate(
+        desc_gen = DescriptionsGenerator()
+        autodoc_results: List[AutodocResult] = desc_gen.generate(
             snippets=snippets,
             few_shot_examples=self.few_shot,
         )
 
-        autodoc_results: List[AutodocResult] = []
-        for snippet, descs in zip(snippets, descs_list):
-            success_descs = []
-            failed_descs = []
-            for desc in descs:
-                (
-                    success_descs
-                    if (desc.equivalent and desc.parameterized)
-                    else failed_descs
-                ).append(desc)
-
-            autodoc_results.append(
-                AutodocResult(
-                    uid=snippet.uid,
-                    code=snippet.code,
-                    template=snippet.template,
-                    success=len(success_descs) > 0,
-                    canonical_descs=success_descs,
-                    #  We will populate this later
-                    additional_descs=[],
-                    failed_descs=failed_descs,
-                )
-            )
-
+        for snippet, result in zip(snippets, autodoc_results):
             logger.opt(colors=True, raw=True).info(
-                f"<g>{len(success_descs)}</g> successful and <r>{len(failed_descs)}</r> failed "
+                f"<g>{len(result.canonical_descs)}</g> canonical successful, "
+                f"<r>{len(result.failed_descs)}</r> canonical failed, "
+                f"<g>{len(result.additional_descs)}</g> additional successful "
                 f"for code: <e>{snippet.code}</e>\n"
             )
+
+        for snippet, result in zip(snippets, autodoc_results):
+            logger_ = logger.opt(colors=True, raw=True)
+            logger_.info(f"Code: <e>{snippet.code}</e>\n")
+            logger_.info(f"Template: <e>{snippet.template}</e>\n")
+            logger_.info("-------------\n")
+
+            logger_.info(f"<m>{len(result.canonical_descs)} Canonical Descriptions:</m>\n")
+            for desc in result.canonical_descs:
+                logger_.info(f"<m>Assistance Level: {desc.assistance_level}</m>\n")
+                logger_.info(f"<m>{desc.desc.pretty_print()}</m>\n")
+                logger_.info(f"<m>Parameterized NL: {desc.parameterized_nl}</m>\n")
+                logger_.info(f"<m>Parameterized Code:\n{desc.parameterized_code}</m>\n")
+                logger_.info("-------------\n")
+
+            logger_.info(f"<y>{len(result.additional_descs)} Additional Descriptions:</y>\n")
+            for desc in result.additional_descs:
+                logger_.info(f"<y>Assistance Level: {desc.assistance_level}</y>\n")
+                logger_.info(f"<y>{desc.desc.pretty_print()}</y>\n")
+                logger_.info("-------------\n")
 
         return autodoc_results
 
@@ -298,7 +295,7 @@ class AutodocCampaign:
                             template=snippet.template,
                             success=True,
                             canonical_descs=found,
-                            additional_descs=[],
+                            additional_descs=autodoc_res.additional_descs,
                             failed_descs=[],
                             is_derived=True,
                         )
@@ -358,12 +355,17 @@ class AutodocCampaign:
                     mining_results_reader[entry.key] for entry in chunk
                 ]
 
+                # chunk_snippets = [
+                #     s
+                #     for s in chunk_snippets
+                #     if "drop" in s.code and "inplace" in s.code
+                # ]
+
                 for snippet in chunk_snippets:
                     logger.opt(raw=True).info(
-                        f"Processsing {snippet.uid}: {snippet.code}\n"
+                        f"Processing {snippet.uid}: {snippet.code}\n"
                     )
 
-                # chunk_snippets = [s for s in chunk_snippets if "Glucose" in s.code and "replace" in s.code]
                 # for s in chunk_snippets:
                 #     print(s.extra_context_vars, s.template)
                 try:

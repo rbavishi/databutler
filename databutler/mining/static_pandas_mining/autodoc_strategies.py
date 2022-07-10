@@ -7,6 +7,8 @@ from typing import List, Dict, Optional, Collection, Union, Set, Tuple
 
 import attrs
 
+from databutler.mining.static_pandas_mining.autodoc_result import AutodocResult, NLDescription, AutodocDescription, \
+    CanonicalAutodocDescription
 from databutler.mining.static_pandas_mining.autodoc_utils import (
     normalize_code_for_comparison,
     find_instantiation_map,
@@ -15,64 +17,6 @@ from databutler.mining.static_pandas_mining.mining_utils import MinedResult
 from databutler.pat import astlib
 from databutler.utils import langmodels
 from databutler.utils.logging import logger
-
-
-@attrs.define(eq=False, repr=False)
-class NLDescription:
-    """Basic container for a natural language description of code"""
-
-    #  The description that will be associated with the snippet in the database.
-    primary_desc: str
-    #  Additional NL that only helps the nl-to-code part of bidirectional consistency.
-    auxiliary_descs: List[str]
-    #  Additional (code) context that helps the nl-to-code part of bidirectional consistency.
-    context: str
-
-    @staticmethod
-    def deserialize(v_dict: dict) -> "NLDescription":
-        return NLDescription(
-            primary_desc=v_dict["primary_desc"],
-            auxiliary_descs=v_dict.get("auxiliary_descs", []),
-            context=v_dict.get("context", ""),
-        )
-
-    def serialize(self) -> Dict:
-        return {
-            "primary_desc": self.primary_desc,
-            "auxiliary_descs": self.auxiliary_descs,
-            "context": self.context,
-        }
-
-    def pretty_print(self) -> str:
-        auxiliary = "\n** ".join([""] + self.auxiliary_descs).strip()
-        return (
-            f"* {self.primary_desc}\n"
-            f"{auxiliary}\n"
-            f"{'Context: ' + self.context if self.context else ''}"
-        )
-
-
-@attrs.define(eq=False, repr=False)
-class AutodocDescription:
-    """Container for a single Autodoc description result after performing the bidirectional consistency check"""
-
-    desc: NLDescription
-    target_code: str
-    target_template: str
-    generated_code: str
-    #  Was the generated code equivalent to the target code?
-    equivalent: bool
-    #  Was the parameterization successul?
-    parameterized: bool
-    #  How much assistance was provided for the second step of the bidirectional consistency check.
-    #  0 = no assistance.
-    assistance_level: int
-
-
-@attrs.define(eq=False, repr=False)
-class CanonicalAutodocDescription(AutodocDescription):
-    parameterized_nl: Optional[str]
-    parameterized_code: Optional[str]
 
 
 @attrs.define(eq=False, repr=False)
@@ -187,8 +131,8 @@ def check_parameterization(
 
 
 @attrs.define(eq=False, repr=False)
-class CanonicalDescriptionsGenerator:
-    """Container for logic to generate canonical descriptions"""
+class DescriptionsGenerator:
+    """Main container for autodoc logic"""
 
     task_description_desc_gen: str = (
         "Describe the following data science code snippets in plain english. "
@@ -354,6 +298,85 @@ class CanonicalDescriptionsGenerator:
             print("")
 
             print("Parameterized Description:", end="")
+            return captured_stdout.getvalue()
+
+    def create_diverse_desc_gen_prompt(
+        self,
+        target_param_code: str,
+        few_shot_examples: List[AutodocFewShotExample],
+    ) -> str:
+        """
+        Create prompt to prime the model to generate diverse descriptions given a parameterized code snippet.
+        """
+        with redirect_stdout(io.StringIO()) as captured_stdout:
+            #  Before the examples, describe the task. This does seem to improve the model's performance.
+            print(self.task_description_desc_gen)
+            print("")
+
+            #  First, put in the few shot examples.
+            for ex in few_shot_examples:
+                print("Code:")
+                print(ex.parameterized_code.rstrip())
+                print("")
+
+                print("Description:")
+                for desc in ex.nl_descs:
+                    print(f"* {desc.primary_desc}")
+
+                print("")
+                print(self.stop_token)
+                print("")
+
+            #  Then, put in the target code.
+            print("Code:")
+            print(target_param_code.rstrip())
+            print("")
+
+            print("Description:")
+            print("* ", end="")
+
+            return captured_stdout.getvalue()
+
+    def create_diverse_code_gen_prompt(
+        self,
+        target_desc: NLDescription,
+        few_shot_examples: List[AutodocFewShotExample],
+        use_auxiliary_descs: bool = True,
+    ) -> str:
+        """
+        Create prompt to prime the model to generate code given a diverse, less-precise description.
+        """
+        with redirect_stdout(io.StringIO()) as captured_stdout:
+            #  Before the examples, describe the task. This does seem to improve the model's performance.
+            print(self.task_description_code_gen)
+            print("")
+
+            #  First, put in the few shot examples.
+            for ex in few_shot_examples:
+                print("Description:")
+                print("*", ex.canonical.primary_desc)
+                if use_auxiliary_descs:
+                    for desc in ex.canonical.auxiliary_descs:
+                        print("*", desc)
+
+                print("")
+                print("Code:")
+                print(ex.parameterized_code.rstrip())
+                print("")
+
+                print(self.stop_token)
+                print("")
+
+            #  Then, put in the target description.
+            print("Description:")
+            print(f"* {target_desc.primary_desc}")
+            if use_auxiliary_descs:
+                for desc in target_desc.auxiliary_descs:
+                    print(f"* {desc}")
+
+            print("Code:")
+            print(target_desc.context, end="")
+
             return captured_stdout.getvalue()
 
     def generate_nl_candidates(
@@ -641,6 +664,251 @@ class CanonicalDescriptionsGenerator:
             else:
                 desc.parameterized = False
 
+    def generate_diverse_description_candidates(
+        self,
+        worklist: List[Dict],
+        few_shot_examples: List[AutodocFewShotExample],
+        batch_size: int = 10,
+        num_candidates_per_item: int = 5,
+        max_tokens: int = 32 * 3,
+        temperature: float = 0.8,
+        key_manager: Optional[langmodels.OpenAIKeyManager] = None,
+    ) -> List[List[NLDescription]]:
+        results: List[List[NLDescription]] = []
+        if len(worklist) > batch_size:
+            for idx in range(0, len(worklist), batch_size):
+                results.extend(
+                    self.generate_diverse_description_candidates(
+                        worklist[idx : idx + batch_size],
+                        few_shot_examples=few_shot_examples,
+                        batch_size=batch_size,
+                        num_candidates_per_item=num_candidates_per_item,
+                        temperature=temperature,
+                        key_manager=key_manager,
+                    )
+                )
+
+            return results
+
+        #  Gather the prompts
+        prompts: List[str] = [
+            self.create_diverse_desc_gen_prompt(item["param_code"], few_shot_examples)
+            for item in worklist
+        ]
+
+        #  Batch it up into a single request.
+        responses: List[
+            langmodels.OpenAICompletionResponse
+        ] = langmodels.openai_completion(
+            engine=self.engine,
+            prompts=prompts,
+            temperature=temperature,
+            num_completions=num_candidates_per_item,
+            max_tokens=max_tokens,
+            stop=[self.stop_token],
+            key_manager=key_manager,
+        )
+
+        #  Everything should be in bullet point format.
+        bullet_points_list: List[List[str]] = []
+        for resp in responses:
+            collected: Set[str] = set()
+            for completion in resp.completions:
+                collected.update(completion.text.strip().split("\n* "))
+
+            bullet_points_list.append(list(collected))
+
+        #  Prepare NLDescription objects.
+        for item, bullet_points in zip(worklist, bullet_points_list):
+            param_code = item["param_code"]
+
+            #  First line (containing the signature) will be the context.
+            context = param_code.strip().split("\n")[0]
+
+            descs: List[NLDescription] = []
+            for bullet_point in bullet_points:
+                desc = NLDescription(
+                    primary_desc=bullet_point,
+                    auxiliary_descs=item["canonical_desc"].desc.auxiliary_descs,
+                    context=context,
+                )
+                descs.append(desc)
+
+            results.append(descs)
+
+            logger.opt(raw=True).debug(
+                f"Diverse description candidates for\n{param_code}\n"
+            )
+            for desc in descs:
+                logger.opt(raw=True).debug(f"{desc.primary_desc}\n")
+
+            logger.opt(raw=True).debug("-----------\n")
+
+        return results
+
+    def verify_diverse_desc_candidates(
+        self,
+        worklist: List[Dict],
+        few_shot_examples: List[AutodocFewShotExample],
+        batch_size: int = 10,
+        key_manager: Optional[langmodels.OpenAIKeyManager] = None,
+    ) -> Dict[str, List[AutodocDescription]]:
+        results: Dict[str, List[AutodocDescription]] = collections.defaultdict(list)
+        if len(worklist) > batch_size:
+            for idx in range(0, len(worklist), batch_size):
+                for k, v in self.verify_diverse_desc_candidates(
+                    worklist[idx : idx + batch_size],
+                    few_shot_examples=few_shot_examples,
+                    batch_size=batch_size,
+                    key_manager=key_manager,
+                ).items():
+                    results[k].extend(v)
+
+            return results
+
+        for assistance_level in [0, 1]:
+            if assistance_level == 0:
+                use_auxiliary_descs = False
+            else:
+                use_auxiliary_descs = True
+
+            #  Gather the prompts
+            prompts: List[str] = [
+                self.create_diverse_code_gen_prompt(
+                    item["candidate"],
+                    few_shot_examples,
+                    use_auxiliary_descs=use_auxiliary_descs,
+                )
+                for item in worklist
+            ]
+
+            max_tokens = max(
+                (
+                    len(
+                        langmodels.tokenize(item["param_code"], self.engine)[
+                            "token_ids"
+                        ]
+                    )
+                    for item in worklist
+                )
+            )
+
+            #  Batch it up into a single request.
+            responses: List[
+                langmodels.OpenAICompletionResponse
+            ] = langmodels.openai_completion(
+                engine=self.engine,
+                prompts=prompts,
+                temperature=0.0,
+                num_completions=1,
+                max_tokens=max_tokens,
+                stop=[self.stop_token],
+                key_manager=key_manager,
+            )
+            generated_texts: List[str] = [
+                resp.completions[0].text.strip() for resp in responses
+            ]
+
+            #  Failures will go here for the next assistance level, if any.
+            new_worklist: List[Dict] = []
+
+            for item, generated_text in zip(worklist, generated_texts):
+                param_code_body = item["param_code"].strip().split("\n")[1][4:]
+                if param_code_body.startswith("return "):
+                    param_code_body = param_code_body[7:].lstrip()
+
+                if generated_text.startswith("return "):
+                    generated_text = generated_text[7:].lstrip()
+
+                normalized_code = normalize_code_results(
+                    [generated_text], set(), replace_singleton_lists=False
+                )[0]
+                if normalized_code == param_code_body:
+                    desc = AutodocDescription(
+                        desc=item["candidate"],
+                        assistance_level=assistance_level,
+                        target_code=item["param_code"],
+                        target_template="",
+                        generated_code=generated_text,
+                        equivalent=True,
+                    )
+                    results[item["snippet"].uid].append(desc)
+                else:
+                    new_worklist.append(item)
+
+            worklist = new_worklist
+            if len(worklist) == 0:
+                break
+
+        return results
+
+    def generate_diverse_descriptions(
+        self,
+        snippets: List[MinedResult],
+        canonical_descs: List[List[CanonicalAutodocDescription]],
+        few_shot_examples: List[AutodocFewShotExample],
+        batch_size: int = 10,
+        key_manager: Optional[langmodels.OpenAIKeyManager] = None,
+    ) -> Dict[str, List[AutodocDescription]]:
+        """
+        Generate diverse descriptions from the canonical descriptions.
+        """
+        assert len(snippets) == len(canonical_descs)
+        assert all(
+            all(desc.parameterized for desc in descs) and len(descs) > 0
+            for descs in canonical_descs
+        )
+
+        #  Prepare the worklist by getting all the unique parameterizations for each snippet.
+        worklist: List[Dict] = []
+        for snippet, descs in zip(snippets, canonical_descs):
+            #  Uniqify using the parameterized code.
+            uniqified_descs: List[CanonicalAutodocDescription] = list(
+                {
+                    desc.parameterized_code.replace("    return ", "    "): desc
+                    for desc in descs
+                }.values()
+            )
+            for desc in uniqified_descs:
+                worklist.append(
+                    {
+                        "snippet": snippet,
+                        "param_code": desc.parameterized_code,
+                        "canonical_desc": desc,
+                    }
+                )
+
+        #  Generate the diverse description candidates
+        desc_candidates: List[
+            List[NLDescription]
+        ] = self.generate_diverse_description_candidates(
+            worklist,
+            few_shot_examples=few_shot_examples,
+            batch_size=batch_size,
+            key_manager=key_manager,
+        )
+
+        #  Perform the bidirectional consistency check for these candidates.
+        verification_worklist: List[Dict] = [
+            {
+                "snippet": item["snippet"],
+                "param_code": item["param_code"],
+                "canonical_desc": item["canonical_desc"],
+                "candidate": cand,
+            }
+            for cands, item in zip(desc_candidates, worklist)
+            for cand in cands
+        ]
+
+        verified_descs: Dict[str, List[AutodocDescription]] = self.verify_diverse_desc_candidates(
+            verification_worklist,
+            few_shot_examples=few_shot_examples,
+            batch_size=batch_size,
+            key_manager=key_manager,
+        )
+
+        return verified_descs
+
     def process_nl_candidates(
         self,
         snippets: List[MinedResult],
@@ -648,7 +916,7 @@ class CanonicalDescriptionsGenerator:
         few_shot_examples: List[AutodocFewShotExample],
         batch_size: int = 10,
         key_manager: Optional[langmodels.OpenAIKeyManager] = None,
-    ) -> List[List[CanonicalAutodocDescription]]:
+    ) -> List[AutodocResult]:
         to_process: List[
             Tuple[MinedResult, NLDescription, Optional[CanonicalAutodocDescription]]
         ] = []
@@ -656,7 +924,7 @@ class CanonicalDescriptionsGenerator:
             for candidate in candidates:
                 to_process.append((snippet, candidate, None))
 
-        autodoc_results: Dict[
+        canonical_descs: Dict[
             str, List[CanonicalAutodocDescription]
         ] = collections.defaultdict(list)
         parameterization_worklist: List[CanonicalAutodocDescription] = []
@@ -691,13 +959,13 @@ class CanonicalDescriptionsGenerator:
                 if not result.equivalent:
                     to_process.append((snippet, candidate, result))
                 else:
-                    autodoc_results[snippet.uid].append(result)
+                    canonical_descs[snippet.uid].append(result)
                     parameterization_worklist.append(result)
 
         #  Add the failure cases too.
         for snippet, candidate, result in to_process:
             if result is not None:
-                autodoc_results[snippet.uid].append(result)
+                canonical_descs[snippet.uid].append(result)
 
         #  Perform generalization
         if len(parameterization_worklist) > 0:
@@ -710,7 +978,7 @@ class CanonicalDescriptionsGenerator:
 
         for snippet in snippets:
             logger.opt(raw=True).debug("Code Generation Results:\n")
-            for result in autodoc_results[snippet.uid]:
+            for result in canonical_descs[snippet.uid]:
                 logger.opt(raw=True).debug(f"{result.desc.pretty_print()}\n")
                 logger.opt(raw=True).debug(f"Generated: {result.generated_code}\n")
                 logger.opt(raw=True).debug(f"Target: {result.target_code}\n")
@@ -735,6 +1003,49 @@ class CanonicalDescriptionsGenerator:
                 )
                 logger.opt(raw=True).debug(f"--------------------------------------\n")
 
+        autodoc_results: Dict[str, AutodocResult] = {}
+        for snippet in snippets:
+            success_descs: List[AutodocDescription] = []
+            failed_descs: List[AutodocDescription] = []
+            for desc in canonical_descs[snippet.uid]:
+                (success_descs if desc.equivalent and desc.parameterized else failed_descs).append(desc)
+
+            autodoc_results[snippet.uid] = AutodocResult(
+                uid=snippet.uid,
+                code=snippet.code,
+                template=snippet.template,
+                success=len(success_descs) > 0,
+                canonical_descs=success_descs,
+                #  We will populate this later
+                additional_descs=[],
+                failed_descs=failed_descs,
+            )
+
+        #  Prepare worklist for diverse description generation.
+        diverse_desc_worklist: List[
+            Tuple[MinedResult, List[CanonicalAutodocDescription]]
+        ] = []
+        for snippet in snippets:
+            descs = canonical_descs[snippet.uid]
+            successful_descs = [
+                desc for desc in descs if desc.parameterized and desc.equivalent
+            ]
+            if len(successful_descs) > 0:
+                diverse_desc_worklist.append((snippet, successful_descs))
+
+        #  Generate diverse descriptions.
+        if len(diverse_desc_worklist) > 0:
+            todo_snippets, todo_descs_list = list(zip(*diverse_desc_worklist))
+            diverse_descs = self.generate_diverse_descriptions(
+                todo_snippets,
+                todo_descs_list,
+                few_shot_examples,
+                batch_size=batch_size,
+                key_manager=key_manager,
+            )
+            for uid, descs in diverse_descs.items():
+                autodoc_results[uid].additional_descs = descs
+
         return [autodoc_results[snippet.uid] for snippet in snippets]
 
     def generate(
@@ -746,7 +1057,7 @@ class CanonicalDescriptionsGenerator:
         num_candidates_per_target: int = 10,
         temperature: float = 0.5,
         key_manager: Optional[langmodels.OpenAIKeyManager] = None,
-    ) -> List[List[AutodocDescription]]:
+    ) -> List[AutodocResult]:
 
         #  Generate the candidates
         candidates_list: List[List[NLDescription]] = self.generate_nl_candidates(
@@ -765,3 +1076,107 @@ class CanonicalDescriptionsGenerator:
             few_shot_examples,
             key_manager=key_manager,
         )
+
+
+@attrs.define(eq=False, repr=False)
+class DiverseDescriptionGenerator:
+    task_description_desc_gen: str = (
+        "Create diverse but complete descriptions of the code snippets below. "
+        "Do not repeat the style or manner of descriptions across bullet points. "
+        "Cover all the operations in the description but no need to reference or explain variables and parameters."
+    )
+    task_description_code_gen: str = ""
+
+    stop_token: str = "END"
+    engine: str = "code-davinci-002"
+
+    def create_desc_gen_prompt(
+        self,
+        target_param_code: str,
+        few_shot_examples: List[AutodocFewShotExample],
+        use_auxiliary_descs: bool = True,
+    ) -> str:
+        """Create prompt to prime the model to generate descriptions given a code snippet.
+
+        This is the first step of the bidirectional consistency check.
+        """
+        with redirect_stdout(io.StringIO()) as captured_stdout:
+            #  Before the examples, describe the task. This does seem to improve the model's performance.
+            print(self.task_description_desc_gen)
+            print("")
+
+            #  First, put in the few shot examples.
+            for ex in few_shot_examples:
+                print("Code:")
+                print(ex.code.rstrip())
+                print("")
+
+                print("Description:")
+                for desc in ex.nl_descs:
+                    print(f"* {desc.primary_desc}")
+
+                print("")
+                print(self.stop_token)
+                print("")
+
+            #  Then, put in the target code.
+            print("Code:")
+            print(target_param_code.rstrip())
+            print("")
+
+            print("Description:")
+            print("* ", end="")
+
+            return captured_stdout.getvalue()
+
+    def create_code_gen_prompt(
+        self,
+        target_desc: NLDescription,
+        target_snippet: MinedResult,
+        few_shot_examples: List[AutodocFewShotExample],
+        use_auxiliary_descs: bool = True,
+    ) -> str:
+        """Create prompt to prime the model to generate code given a code snippet.
+
+        This is the second step of the bidirectional consistency check.
+        """
+        with redirect_stdout(io.StringIO()) as captured_stdout:
+            #  Before the examples, describe the task. This does seem to improve the model's performance.
+            print(self.task_description_code_gen)
+            print("")
+
+            #  First, put in the few shot examples.
+            for ex in few_shot_examples:
+                print("Description:")
+                print("*", ex.canonical.primary_desc)
+                if use_auxiliary_descs:
+                    for desc in ex.canonical.auxiliary_descs:
+                        print("*", desc)
+
+                print("")
+                print("Code:")
+                print(ex.code.rstrip())
+                print("")
+
+                print(self.stop_token)
+                print("")
+
+            #  Then, put in the target description.
+            print("Description:")
+            print(f"* {target_desc.primary_desc}")
+            if use_auxiliary_descs:
+                for desc in target_desc.auxiliary_descs:
+                    print(f"* {desc}")
+
+            if (
+                target_snippet.extra_context_vars is not None
+                and len(target_snippet.extra_context_vars) > 0
+            ):
+                print("Context:")
+                for k, v in target_snippet.extra_context_vars.items():
+                    print(f"{k}: {v}")
+
+                print("")
+
+            print("Code:", end="")
+            return captured_stdout.getvalue()
