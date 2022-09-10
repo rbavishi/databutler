@@ -278,20 +278,31 @@ class CodexBaseline:
         prompt = self.setup_prompt(query, ios)
         prompts = [prompt]
         resps = langmodels.openai_completion(
-            self.engine, prompts=prompts, temperature=self.temperature, stop=["\n"], max_tokens=64, num_completions=self.num_repetitions
+            self.engine,
+            prompts=prompts,
+            temperature=self.temperature,
+            stop=["\n"],
+            max_tokens=64,
+            num_completions=self.num_repetitions,
         )
 
         attempts = 0
-        while all((resp.completions[0].text == "" or resp.completions[0].text.startswith("#")) for resp in resps):
+        while all(
+            (resp.completions[0].text == "" or resp.completions[0].text.startswith("#"))
+            for resp in resps
+        ):
             if attempts == 2:
                 break
             addition = "\n"
             prompts = [p + addition for p in prompts]
             resps = langmodels.openai_completion(
-                self.engine, prompts=prompts, temperature=self.temperature, stop=["\n"], max_tokens=64
+                self.engine,
+                prompts=prompts,
+                temperature=self.temperature,
+                stop=["\n"],
+                max_tokens=64,
             )
             attempts += 1
-
 
         for resp in resps:
             logger.debug(f"Query: {query}")
@@ -349,7 +360,6 @@ class CodexBaseline:
                 if benchmark.get("ignore", False):
                     continue
 
-
                 single_bench_res = bench_results.get(bench_id, {})
                 bench_results[bench_id] = single_bench_res
 
@@ -363,9 +373,11 @@ class CodexBaseline:
                     logger.debug(f"Number of queries: {len(bench_set['queries'])}")
                     for idx, query in enumerate(bench_set["queries"]):
                         # if set_id != "D" or bench_id != "18":
-                            # continue
+                        # continue
                         key = f"{set_id}{idx}"
-                        if (not self.overwrite_existing_results) and key in single_bench_res:
+                        if (
+                            not self.overwrite_existing_results
+                        ) and key in single_bench_res:
                             logger.debug(
                                 f"Skipping benchmark {bench_id}:{key} as result already exists"
                             )
@@ -403,13 +415,13 @@ class Algorithm1(CodexBaseline):
             raise ValueError("model_path must be set")
 
         return EmbeddingBasedSearcher(
-            self.mining_campaign_dir, self.model_path, use_additional_descriptions=self.use_additional_descriptions
+            self.mining_campaign_dir,
+            self.model_path,
+            use_additional_descriptions=self.use_additional_descriptions,
         )
 
     def setup_prompt(self, query: str, ios: List[Dict], match: Dict):
-        task_description: str = (
-            "#  Use the following code example as a guide to write code for the comment below"
-        )
+        task_description: str = "#  Use the following code example as a guide to write code for the comment below"
         context = self.setup_context(ios[0])
         prompt = (
             f"{task_description}\n\n"
@@ -432,11 +444,13 @@ class Algorithm1(CodexBaseline):
             logger.debug(resp.completions[0].text)
             eval_result = self.evaluate_result(resp.completions[0].text, ios)
             logger.debug(f"Eval Result: {eval_result}")
-            trail.append({
-                "ex_nl": match["nl"],
-                "ex_code": match["code"],
-                "generated_code": resp.completions[0].text,
-            })
+            trail.append(
+                {
+                    "ex_nl": match["nl"],
+                    "ex_code": match["code"],
+                    "generated_code": resp.completions[0].text,
+                }
+            )
             if eval_result:
                 return {
                     "query": query,
@@ -460,9 +474,12 @@ class Algorithm1(CodexBaseline):
 
         os.makedirs(self.results_save_path, exist_ok=True)
         path_to_codex_res_file = os.path.join(
-            self.results_save_path, f"codex_baseline_results_{self.codex_base_run_id}.json"
+            self.results_save_path,
+            f"codex_baseline_results_{self.codex_base_run_id}.json",
         )
-        path_to_res_file = os.path.join(self.results_save_path, f"alg1_results_{self.run_id}.json")
+        path_to_res_file = os.path.join(
+            self.results_save_path, f"alg1_results_{self.run_id}.json"
+        )
         path_to_log_file = os.path.join(
             self.results_save_path, f"alg1_results_{self.run_id}.log"
         )
@@ -501,7 +518,6 @@ class Algorithm1(CodexBaseline):
                 if bench_id not in codex_bench_results:
                     continue
 
-
                 single_bench_res = bench_results.get(bench_id, {})
                 bench_results[bench_id] = single_bench_res
 
@@ -520,7 +536,9 @@ class Algorithm1(CodexBaseline):
                         if codex_bench_results[bench_id][key]["success"]:
                             continue
 
-                        if (not self.overwrite_existing_results) and key in single_bench_res:
+                        if (
+                            not self.overwrite_existing_results
+                        ) and key in single_bench_res:
                             logger.debug(
                                 f"Skipping benchmark {bench_id}:{key} as result already exists"
                             )
@@ -580,7 +598,7 @@ class GenerationalModelBaseline:
 
         if os.path.exists(self.training_data_path):
             return pickleutils.smart_load(self.training_data_path)
-    
+
         all_autodoc_results = self.non_derived_autodoc_results
         records: List[Dict] = []
         seen: Set[str] = set()
@@ -589,26 +607,32 @@ class GenerationalModelBaseline:
             for desc in res.canonical_descs:
                 text = desc.desc.primary_desc
                 if text not in seen:
-                    records.append({
-                        "source_text": f"generate-code: {text}",
-                        "target_text": desc.target_code,
-                    })
+                    records.append(
+                        {
+                            "source_text": f"generate-code: {text}",
+                            "target_text": desc.target_code,
+                        }
+                    )
                     seen.add(text)
 
                 text = desc.desc.primary_desc.replace('"', "'")
                 if text not in seen:
-                    records.append({
-                        "source_text": f"generate-code: {text}",
-                        "target_text": desc.target_code,
-                    })
+                    records.append(
+                        {
+                            "source_text": f"generate-code: {text}",
+                            "target_text": desc.target_code,
+                        }
+                    )
                     seen.add(text)
 
                 text = desc.desc.primary_desc.replace('"', "")
                 if text not in seen:
-                    records.append({
-                        "source_text": f"generate-code: {text}",
-                        "target_text": desc.target_code,
-                    })
+                    records.append(
+                        {
+                            "source_text": f"generate-code: {text}",
+                            "target_text": desc.target_code,
+                        }
+                    )
                     seen.add(text)
 
         logger.debug(f"Generated {len(records)} training data points")
@@ -634,7 +658,9 @@ class GenerationalModelBaseline:
         else:
             tokenizer = T5Tokenizer.from_pretrained(self.model_name)
 
-        model = T5ForConditionalGeneration.from_pretrained(self.model_name, return_dict=True)
+        model = T5ForConditionalGeneration.from_pretrained(
+            self.model_name, return_dict=True
+        )
 
         simplet5_model = SimpleT5()
         simplet5_model.tokenizer = tokenizer
@@ -670,7 +696,7 @@ class GenerationalModelBaseline:
         if self.model_name.startswith("Salesforce/codet5"):
             model.tokenizer = RobertaTokenizer.from_pretrained(path)
         else:
-            model.tokenizer = T5Tokenizer.from_pretrained(path) 
+            model.tokenizer = T5Tokenizer.from_pretrained(path)
 
         model.model = T5ForConditionalGeneration.from_pretrained(path)
         model.device = torch.device("cuda")
@@ -706,55 +732,64 @@ class GenerationalModelWithSearchBaseline(GenerationalModelBaseline):
 
         if os.path.exists(self.training_data_path):
             return pickleutils.smart_load(self.training_data_path)
-    
+
         all_autodoc_results = self.non_derived_autodoc_results
         records: List[Dict] = []
         seen: Set[str] = set()
         for res in tqdm.tqdm(all_autodoc_results, desc="Generating training data"):
             assert isinstance(res, AutodocResult)
-            param_pool: List[Dict] = [{
-                "nl": desc.parameterized_nl,
-                "code": desc.parameterized_code,
-            } for desc in res.canonical_descs]
+            param_pool: List[Dict] = [
+                {
+                    "nl": desc.parameterized_nl,
+                    "code": desc.parameterized_code,
+                }
+                for desc in res.canonical_descs
+            ]
 
             for desc in res.canonical_descs:
                 text = desc.desc.primary_desc
                 if text not in seen:
                     param = random.choice(param_pool)
-                    records.append({
-                        "source_text": (
-                            f"ParamNL: {param['nl']}\n"
-                            f"ParamCode: {param['code']}\n"
-                            f"Target Text: {text}\n"
-                        ),
-                        "target_text": desc.target_code,
-                    })
+                    records.append(
+                        {
+                            "source_text": (
+                                f"ParamNL: {param['nl']}\n"
+                                f"ParamCode: {param['code']}\n"
+                                f"Target Text: {text}\n"
+                            ),
+                            "target_text": desc.target_code,
+                        }
+                    )
                     seen.add(text)
 
                 text = desc.desc.primary_desc.replace('"', "'")
                 if text not in seen:
                     param = random.choice(param_pool)
-                    records.append({
-                        "source_text": (
-                            f"ParamNL: {param['nl']}\n"
-                            f"ParamCode: {param['code']}\n"
-                            f"Target Text: {text}\n"
-                        ),
-                        "target_text": desc.target_code,
-                    })
+                    records.append(
+                        {
+                            "source_text": (
+                                f"ParamNL: {param['nl']}\n"
+                                f"ParamCode: {param['code']}\n"
+                                f"Target Text: {text}\n"
+                            ),
+                            "target_text": desc.target_code,
+                        }
+                    )
                     seen.add(text)
 
                 text = desc.desc.primary_desc.replace('"', "")
                 if text not in seen:
                     param = random.choice(param_pool)
-                    records.append({
-                        "source_text": (
-                            f"ParamNL: {param['nl']}\n"
-                            f"ParamCode: {param['code']}\n"
-                            f"Target Text: {text}\n"
-                        ),
-                        "target_text": desc.target_code,
-                    })
+                    records.append(
+                        {
+                            "source_text": (
+                                f"ParamNL: {param['nl']}\n"
+                                f"ParamCode: {param['code']}\n"
+                                f"Target Text: {text}\n"
+                            ),
+                            "target_text": desc.target_code,
+                        }
+                    )
                     seen.add(text)
 
         logger.debug(f"Generated {len(records)} training data points")
@@ -780,7 +815,7 @@ class GenerationalModelWithSearchBaseline(GenerationalModelBaseline):
             print("WOW", prediction)
             results.append(prediction)
 
-        return results 
+        return results
 
 
 @attrs.define(repr=False, eq=False, slots=False)
@@ -800,11 +835,15 @@ class Algorithm2(CodexBaseline):
             raise ValueError("model_path must be set")
 
         return EmbeddingBasedSearcher(
-            self.mining_campaign_dir, self.model_path, use_additional_descriptions=self.use_additional_descriptions
+            self.mining_campaign_dir,
+            self.model_path,
+            use_additional_descriptions=self.use_additional_descriptions,
         )
 
     @cached_property
-    def instantiator(self) -> Union[GenerationalModelBaseline, GenerationalModelWithSearchBaseline]:
+    def instantiator(
+        self,
+    ) -> Union[GenerationalModelBaseline, GenerationalModelWithSearchBaseline]:
         if self.instantiation_model_path is None:
             raise ValueError("instantiation_model_path must be set")
 
@@ -813,12 +852,12 @@ class Algorithm2(CodexBaseline):
         elif self.instantiation_model_type == "generational_w_search":
             return GenerationalModelWithSearchBaseline(self.mining_campaign_dir)
         else:
-            raise ValueError(f"Unknown instantiation_model_type: {self.instantiation_model_type}")
+            raise ValueError(
+                f"Unknown instantiation_model_type: {self.instantiation_model_type}"
+            )
 
     def setup_prompt(self, query: str, ios: List[Dict], match: Dict):
-        task_description: str = (
-            "#  Use the following code example as a guide to write code for the comment below"
-        )
+        task_description: str = "#  Use the following code example as a guide to write code for the comment below"
         context = self.setup_context(ios[0])
         prompt = (
             f"{task_description}\n\n"
@@ -854,7 +893,9 @@ class Algorithm2(CodexBaseline):
             db_matches = self.searcher.process_query(query, num_results=20)
             predictions = self.instantiator.predict(query, db_matches)
         else:
-            raise ValueError(f"Unknown instantiation_model_type: {self.instantiation_model_type}")
+            raise ValueError(
+                f"Unknown instantiation_model_type: {self.instantiation_model_type}"
+            )
 
         trail: List[Dict[str, str]] = []
         for match, pred in zip(db_matches, predictions):
@@ -862,11 +903,13 @@ class Algorithm2(CodexBaseline):
             logger.debug(f"Pred: {pred}")
             eval_result = self.evaluate_result(pred, ios)
             logger.debug(f"Eval Result: {eval_result}")
-            trail.append({
-                "ex_nl": match["nl"],
-                "ex_code": match["code"],
-                "generated_code": pred,
-            })
+            trail.append(
+                {
+                    "ex_nl": match["nl"],
+                    "ex_code": match["code"],
+                    "generated_code": pred,
+                }
+            )
             if eval_result:
                 return {
                     "query": query,
@@ -892,7 +935,9 @@ class Algorithm2(CodexBaseline):
         path_to_codex_res_file = os.path.join(
             self.results_save_path, "codex_baseline_results.json"
         )
-        path_to_res_file = os.path.join(self.results_save_path, f"alg1_results_{self.run_id}.json")
+        path_to_res_file = os.path.join(
+            self.results_save_path, f"alg1_results_{self.run_id}.json"
+        )
         path_to_log_file = os.path.join(
             self.results_save_path, f"alg1_results_{self.run_id}.log"
         )
@@ -952,7 +997,7 @@ class Algorithm2(CodexBaseline):
                         if key not in codex_bench_results[bench_id]:
                             continue
                         # if codex_bench_results[bench_id][key]["success"]:
-                            # continue
+                        # continue
 
                         try:
                             res = self.run_benchmark(
@@ -972,6 +1017,7 @@ class Algorithm2(CodexBaseline):
                             )
                             logger.exception(e)
                             raise e
+
 
 if __name__ == "__main__":
     fire.Fire()
