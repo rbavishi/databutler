@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <!-- Required meta tags -->
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+
+    <!-- Bootstrap CSS -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@4.3.1/dist/css/bootstrap.min.css" integrity="sha384-ggOyR0iXCbMQv3Xipma34MD+dH/1fQ784/j6cY/iJTQUOhcWr7x9JvoRxT2MZw1T" crossorigin="anonymous">
+
+    <title>Post {{ item['id'] }}</title>
+  </head>
+  <body style="margin:5%">
+    <div style="float: left; width: 49%">
+      <a href="/{{ page_num }}" class="btn btn-outline-info" role="button">Back</a>
+      <a href="/process/{{ prev_id }}" class="btn btn-outline-info" role="button">Previous</a>
+      <a href="/process/{{ next_id }}" class="btn btn-outline-info" role="button">Next</a><br>
+      <p><h6>Num Annotated so far: {{ num_annotated }}</h6></p>
+      <p><h6>Num Processed so far: {{ num_processed }}</h6></p>
+      <div class="card">
+        <div class="card-body">
+          <h5 class="card-title">{{ item['intent'] }}</h5>
+          <h6 class="card-subtitle mb-2 text-muted">Score: {{ item['prob'] }}</h6>
+          {% if (item['status'] == 'Unprocessed') %}
+          <p><span class="badge badge-secondary">Unprocessed</span></p>
+          {% elif (item['status'] == 'Processed') %}
+          <p><span class="badge badge-success">Processed</span></p>
+          {% elif (item['status'] == 'Deleted') %}
+          <p><span class="badge badge-danger">Deleted</span></p>
+          {% endif %}
+          <p class="card-text">{{ item['snippet'] }}</p>
+          <a href="https://stackoverflow.com/questions/{{ item['question_id'] }}" class="card-link" target="_blank">StackOverflow Link</a>
+        </div>
+      </div>
+      <br>
+
+      <!-- Form -->
+      {% set cur_intent = (item['metadata']['revised_intent'] if ('revised_intent' in item['metadata']) else '')%}
+      {% set cur_context = (item['metadata']['code_context'] if ('code_context' in item['metadata']) else '')%}
+      {% set cur_gt = (item['metadata']['revised_gt'] if ('revised_gt' in item['metadata']) else item['snippet'])%}
+      {% set cur_abstract_gt = (item['metadata']['abstract_gt'] if ('abstract_gt' in item['metadata']) else cur_gt)%}
+      <form action="/process/{{ item['id'] }}" method="post">
+        <div class="form-group">
+          <label for="revised-intent-box">Revised Intent</label>
+          <textarea class="form-control" id="revised-intent-box" name="revised_intent" rows="1" placeholder="Enter the revised intent here" required="required">{{ cur_intent }}</textarea>
+        </div>
+
+        <div class="form-group">
+          <label for="code-context-box">Code Context</label>
+          <textarea class="form-control" id="code-context-box" name="code_context" rows="5" placeholder="Enter code context" required="required">{{ cur_context }}</textarea>
+        </div>
+
+        <div class="form-group">
+          <label for="revised-gt-box">Revised Ground Truth</label>
+          <textarea class="form-control" id="revised-gt-box" name="revised_gt" rows="1" placeholder="Enter revised ground truth" required="required">{{ cur_gt }}</textarea>
+        </div>
+
+        <div class="form-group">
+          <label for="abstract-gt-box">Abstract Ground Truth</label>
+          <textarea class="form-control" id="abstract-gt-box" name="abstract_gt" rows="1" placeholder="Enter abstract ground truth" required="required">{{ cur_abstract_gt }}</textarea>
+        </div>
+
+
+        <div class="form-check form-check-inline">
+          <input class="form-check-input" type="radio" name="status_selection" id="inlineRadio1" value="process" checked="checked">
+          <label class="form-check-label" for="inlineRadio1">Process</label>
+        </div>
+
+        <div class="form-check form-check-inline">
+          <input class="form-check-input" type="radio" name="status_selection" id="inlineRadio2" value="reset">
+          <label class="form-check-label" for="inlineRadio2">Reset</label>
+        </div>
+
+        <div class="form-check form-check-inline">
+          <input class="form-check-input" type="radio" name="status_selection" id="inlineRadio3" value="deletion">
+          <label class="form-check-label" for="inlineRadio3">Delete</label>
+        </div>
+        <br>
+        <br>
+
+        <button type="submit" class="btn btn-primary">Submit</button>
+      </form>
+    </div>
+    <iframe src="/stackoverflow/{{ item['question_id'] }}" onload="resizeIframe(this)"></iframe>
+
+
+    <!-- Optional JavaScript -->
+    <!-- jQuery first, then Popper.js, then Bootstrap JS -->
+    <script src="https://code.jquery.com/jquery-3.3.1.slim.min.js" integrity="sha384-q8i/X+965DzO0rT7abK41JStQIAqVgRVzpbzo5smXKp4YfRvH+8abtTE1Pi6jizo" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/popper.js@1.14.7/dist/umd/popper.min.js" integrity="sha384-UO2eT0CpHqdSJQ6hJty5KVphtPhzWj9WO1clHTMGa3JDZwrnQq4sF86dIHNDz0W1" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@4.3.1/dist/js/bootstrap.min.js" integrity="sha384-JjSmVgyd0p3pXB1rRibZUAYoIIy6OrQ6VrjIEaFf/nJGzIxFDsf4x0xIM+B07jRM" crossorigin="anonymous"></script>
+    <script>
+      function resizeIframe(obj) {
+        obj.style.height = obj.contentWindow.document.documentElement.scrollHeight + 'px';
+        obj.style.width = "49%";
+        obj.style.float = 'right';
+      }
+    </script>
+  </body>
+</html>

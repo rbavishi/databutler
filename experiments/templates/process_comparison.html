@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <!-- Required meta tags -->
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+
+    <!-- Bootstrap CSS -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@4.3.1/dist/css/bootstrap.min.css" integrity="sha384-ggOyR0iXCbMQv3Xipma34MD+dH/1fQ784/j6cY/iJTQUOhcWr7x9JvoRxT2MZw1T" crossorigin="anonymous">
+
+    <title>Post {{ item.id }}</title>
+  </head>
+  <body style="margin:5%">
+    <div style="float: left; width: 49%">
+      <a href="/{{ page_num }}" class="btn btn-outline-info" role="button">Back</a>
+      <a href="/process/{{ prev_id }}" class="btn btn-outline-info" role="button">Previous</a>
+      <a href="/process/{{ next_id }}" class="btn btn-outline-info" role="button">Next</a><br>
+      <p><h6>Num Processed so far: {{ num_processed }}</h6></p>
+      <div class="card">
+        <div class="card-body">
+          <h5 class="card-title">{{ item.intent }}</h5>
+          <p>
+            {% if (item.status == 'Unprocessed') %}
+            <span class="badge badge-secondary">Unprocessed</span>
+            {% elif (item.status == 'Processed') %}
+            <span class="badge badge-success">Processed</span>
+              {% if (item.metadata['win_verdict']) == 'None' %}
+                <span class="badge badge-secondary">No winner</span>
+              {% elif (item.metadata['win_verdict'] == 'Copilot') %}
+                <span class="badge badge-danger">Winner: Copilot</span>
+              {% elif (item.metadata['win_verdict'] == 'Us') %}
+                <span class="badge badge-success">Winner: Us</span>
+              {% endif %}
+            {% endif %}
+          </p>
+          <p class="card-text">{{ item.ground_truth }}</p>
+          <a href="https://stackoverflow.com/questions/{{ item.question_id }}" class="card-link" target="_blank">StackOverflow Link</a>
+        </div>
+      </div>
+      <br>
+
+      <!-- Form -->
+      <form action="/process/{{ item.id }}" method="post">
+        <div class="card">
+          <div class="card-body">
+            <h5 class="card-title">Copilot Result</h5>
+            <p class="card-text"><pre>{{ item.copilot_result }}</pre></p>
+          </div>
+        </div>
+        <br>
+
+        {% set cur_copilot_verdict = item.metadata['copilot_verdict'] if ('copilot_verdict' in item.metadata) else "" %}
+        {% set cur_ours_verdict = item.metadata['ours_verdict'] if ('ours_verdict' in item.metadata) else "" %}
+        {% set cur_win_verdict = item.metadata['win_verdict'] if ('win_verdict' in item.metadata) else "" %}
+        {% set cur_pres_in_corpus = item.metadata['pres_in_corpus'] if ('pres_in_corpus' in item.metadata) else "" %}
+
+        <h6>Copilot Verdict</h6>
+        {% for value, text in [("0", "Irrelevant"), ("1", "Somewhat Irrelevant"), ("2", "Somewhat Relevant"), ("3", "Relevant")] %}
+          {% set checked = "checked" if (value == cur_copilot_verdict) else "" %}
+          <div class="form-check form-check-inline">
+            <input class="form-check-input" type="radio" required name="copilot_verdict" id="copilot{{ value }}" value={{ value }} {{ checked }}>
+            <label class="form-check-label" for="copilot{{ value }}">{{ text }}</label>
+          </div>
+        {% endfor %}
+        <br>
+        <br>
+
+        <div class="card">
+          <div class="card-body">
+            <h5 class="card-title">Our Results</h5>
+            {% for res in item.our_results %}
+              <div class="card">
+                <div class="card-body">
+                  <h6 class="card-title">{{ res['nl'] }}</h6>
+                  <h6 class="card-subtitle mb-2 text-muted">Score: {{ res['score'] }}</h6>
+                  <p class="card-text"><pre>{{ res['code'] }}</pre></p>
+                </div>
+              </div>
+            {% endfor %}
+          </div>
+        </div>
+        <br>
+
+        <h6>Our Verdict</h6>
+        {% for value, text in [("0", "Irrelevant"), ("1", "Somewhat Irrelevant"), ("2", "Somewhat Relevant"), ("3", "Relevant")] %}
+          {% set checked = "checked" if (value == cur_ours_verdict) else "" %}
+          <div class="form-check form-check-inline">
+            <input class="form-check-input" type="radio" required name="ours_verdict" id="ours{{ value }}" value={{ value }} {{ checked }}>
+            <label class="form-check-label" for="ours{{ value }}">{{ text }}</label>
+          </div>
+        {% endfor %}
+        <br>
+        <br>
+
+        <h6>Present in Corpus</h6>
+        {% for value, text in [("0", "No"), ("1", "Yes")] %}
+        {% set checked = "checked" if (value == cur_pres_in_corpus) else "" %}
+        <div class="form-check form-check-inline">
+          <input class="form-check-input" type="radio" required name="pres_in_corpus" id="pres_in_corpus{{ value }}" value={{ value }} {{ checked }}>
+          <label class="form-check-label" for="pres_in_corpus{{ value }}">{{ text }}</label>
+        </div>
+        {% endfor %}
+        <br>
+        <br>
+
+        <h6>Win</h6>
+        {% for idx, text in [("0", "None"), ("1", "Copilot"), ("2", "Us")] %}
+          {% set checked = "checked" if (text == cur_win_verdict) else "" %}
+          <div class="form-check form-check-inline">
+            <input class="form-check-input" type="radio" required name="win_verdict" id="win{{ idx }}" value={{ text }} {{ checked }}>
+            <label class="form-check-label" for="win{{ idx }}">{{ text }}</label>
+          </div>
+        {% endfor %}
+        <br>
+        <br>
+        <button type="submit" class="btn btn-primary">Submit</button>
+      </form>
+    </div>
+    <iframe src="/stackoverflow/{{ item.question_id }}" onload="resizeIframe(this)"></iframe>
+
+
+    <!-- Optional JavaScript -->
+    <!-- jQuery first, then Popper.js, then Bootstrap JS -->
+    <script src="https://code.jquery.com/jquery-3.3.1.slim.min.js" integrity="sha384-q8i/X+965DzO0rT7abK41JStQIAqVgRVzpbzo5smXKp4YfRvH+8abtTE1Pi6jizo" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/popper.js@1.14.7/dist/umd/popper.min.js" integrity="sha384-UO2eT0CpHqdSJQ6hJty5KVphtPhzWj9WO1clHTMGa3JDZwrnQq4sF86dIHNDz0W1" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@4.3.1/dist/js/bootstrap.min.js" integrity="sha384-JjSmVgyd0p3pXB1rRibZUAYoIIy6OrQ6VrjIEaFf/nJGzIxFDsf4x0xIM+B07jRM" crossorigin="anonymous"></script>
+    <script>
+      function resizeIframe(obj) {
+        obj.style.height = obj.contentWindow.document.documentElement.scrollHeight + 'px';
+        obj.style.width = "49%";
+        obj.style.float = 'right';
+      }
+    </script>
+  </body>
+</html>
