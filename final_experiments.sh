@@ -1,0 +1,17 @@
+#  Codex baselines
+python experiments/jigsaw_experiments.py CodexBaseline --results-save-path=experiments/datana_final --temperature=0.0 --num-repetitions=1 --run-id="code001-temp0.0" --engine="code-davinci-001" run
+python experiments/jigsaw_experiments.py CodexBaseline --results-save-path=experiments/datana_final --temperature=0.5 --num-repetitions=5 --run-id="code001-temp0.5" --engine="code-davinci-001" run
+python experiments/jigsaw_experiments.py CodexBaseline --results-save-path=experiments/datana_final --temperature=0.0 --num-repetitions=1 --run-id="code002-temp0.0" --engine="code-davinci-002" run
+python experiments/jigsaw_experiments.py CodexBaseline --results-save-path=experiments/datana_final --temperature=0.5 --num-repetitions=5 --run-id="code002-temp0.5" --engine="code-davinci-002" run
+
+#  Datana
+python experiments/jigsaw_experiments.py Algorithm1 --results-save-path=experiments/datana_final --model-path="/public/databutler/scratch/pandas_mining_06_22/model_v1" --run-id="run_v1_001" --engine="code-davinci-001" --codex-base-run-id="code001-temp0.0" --mining-campaign-dir="./scratch/pandas_mining_06_22" run
+python experiments/jigsaw_experiments.py Algorithm1 --results-save-path=experiments/datana_final --model-path="/public/databutler/scratch/pandas_mining_06_22/model_v1" --run-id="run_v1_002" --engine="code-davinci-002" --codex-base-run-id="code002-temp0.0" --mining-campaign-dir="./scratch/pandas_mining_06_22" run
+python experiments/jigsaw_experiments.py Algorithm1 --results-save-path=experiments/datana_final --model-path="/public/databutler/scratch/pandas_mining_06_22/model_v2" --run-id="run_v2_001" --engine="code-davinci-001" --codex-base-run-id="code001-temp0.0" --mining-campaign-dir="./scratch/pandas_mining_06_22" run
+python experiments/jigsaw_experiments.py Algorithm1 --results-save-path=experiments/datana_final --model-path="/public/databutler/scratch/pandas_mining_06_22/model_v2" --run-id="run_v2_002" --engine="code-davinci-002" --codex-base-run-id="code002-temp0.0" --mining-campaign-dir="./scratch/pandas_mining_06_22" run
+
+#  Ablation
+python experiments/jigsaw_experiments.py Algorithm1 --results-save-path=experiments/datana_final --model-path="/public/databutler/scratch/pandas_mining_06_22/model_no_add_desc" --run-id="run_001_no_add_desc" --engine="code-davinci-001" --codex-base-run-id="code001-temp0.0" --mining-campaign-dir="./scratch/pandas_mining_06_22" --use-additional-descriptions=False run
+python experiments/jigsaw_experiments.py Algorithm1 --results-save-path=experiments/datana_final --model-path="/public/databutler/scratch/pandas_mining_06_22/model_no_add_desc" --run-id="run_002_no_add_desc" --engine="code-davinci-002" --codex-base-run-id="code002-temp0.0" --mining-campaign-dir="./scratch/pandas_mining_06_22" --use-additional-descriptions=False run
+python experiments/jigsaw_experiments.py Algorithm1 --results-save-path=experiments/datana_final --model-path="/public/databutler/scratch/pandas_mining_06_22/model_codebert" --run-id="run_001_vanilla_codebert" --engine="code-davinci-001" --codex-base-run-id="code001-temp0.0" --mining-campaign-dir="./scratch/pandas_mining_06_22" run
+python experiments/jigsaw_experiments.py Algorithm1 --results-save-path=experiments/datana_final --model-path="/public/databutler/scratch/pandas_mining_06_22/model_codebert" --run-id="run_002_vanilla_codebert" --engine="code-davinci-002" --codex-base-run-id="code002-temp0.0" --mining-campaign-dir="./scratch/pandas_mining_06_22" run
