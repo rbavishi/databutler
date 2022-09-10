@@ -7,8 +7,12 @@ from typing import List, Dict, Optional, Collection, Union, Set, Tuple
 
 import attrs
 
-from databutler.mining.static_pandas_mining.autodoc_result import AutodocResult, NLDescription, AutodocDescription, \
-    CanonicalAutodocDescription
+from databutler.mining.static_pandas_mining.autodoc_result import (
+    AutodocResult,
+    NLDescription,
+    AutodocDescription,
+    CanonicalAutodocDescription,
+)
 from databutler.mining.static_pandas_mining.autodoc_utils import (
     normalize_code_for_comparison,
     find_instantiation_map,
@@ -434,7 +438,7 @@ class DescriptionsGenerator:
             )
             for desc in nl_descs:
                 logger.opt(colors=True, raw=True).debug(
-                    f"<m>{desc.pretty_print()}</m>\n"
+                    "<m>{desc}</m>\n", desc=desc.pretty_print()
                 )
 
             nl_descs_list.append(nl_descs)
@@ -530,7 +534,7 @@ class DescriptionsGenerator:
 
                 logger.opt(colors=True, raw=True).debug("<e>Code Generation:</e>\n")
                 logger.opt(colors=True, raw=True).debug(
-                    f"<e>{desc.pretty_print()}</e>\n"
+                    "<e>{desc}</e>\n", desc=desc.pretty_print()
                 )
                 logger.opt(colors=True, raw=True).debug(
                     f"<e>Generated: {generated_code}\n</e>"
@@ -823,6 +827,17 @@ class DescriptionsGenerator:
                 normalized_code = normalize_code_results(
                     [generated_text], set(), replace_singleton_lists=False
                 )[0]
+                logger.opt(raw=True).debug(
+                    f"Description: {item['candidate'].pretty_print()}\n"
+                )
+                open_tag = "<g>" if normalized_code == param_code_body else "<r>"
+                close_tag = "</g>" if normalized_code == param_code_body else "</r>"
+                logger.opt(raw=True, colors=True).debug(
+                    f"Generated ({assistance_level}): <y>{normalized_code}</y>\n"
+                    f"Target: <e>{param_code_body}</e>\n"
+                    f"Success: {open_tag}{normalized_code == param_code_body}{close_tag}\n"
+                    f"-------------------------------\n"
+                )
                 if normalized_code == param_code_body:
                     desc = AutodocDescription(
                         desc=item["candidate"],
@@ -900,7 +915,9 @@ class DescriptionsGenerator:
             for cand in cands
         ]
 
-        verified_descs: Dict[str, List[AutodocDescription]] = self.verify_diverse_desc_candidates(
+        verified_descs: Dict[
+            str, List[AutodocDescription]
+        ] = self.verify_diverse_desc_candidates(
             verification_worklist,
             few_shot_examples=few_shot_examples,
             batch_size=batch_size,
@@ -1008,7 +1025,11 @@ class DescriptionsGenerator:
             success_descs: List[AutodocDescription] = []
             failed_descs: List[AutodocDescription] = []
             for desc in canonical_descs[snippet.uid]:
-                (success_descs if desc.equivalent and desc.parameterized else failed_descs).append(desc)
+                (
+                    success_descs
+                    if desc.equivalent and desc.parameterized
+                    else failed_descs
+                ).append(desc)
 
             autodoc_results[snippet.uid] = AutodocResult(
                 uid=snippet.uid,
